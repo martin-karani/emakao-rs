@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE subscriptions\n            SET status               = 'cancelled',\n                cancelled_at         = now(),\n                cancel_reason        = $2,\n                grace_period_ends_at = current_period_end,\n                updated_at           = now()\n            WHERE agency_id = $1\n              AND status NOT IN ('cancelled')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b6b29f3a77f89a8d9559fbf9cec0c8d2ebedaa371cd65574aae56a1ea250e73d"
+}

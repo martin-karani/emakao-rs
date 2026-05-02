@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE subscriptions\n            SET plan_tier = CASE $1::text\n                WHEN 'starter'    THEN 'core'\n                WHEN 'growth'     THEN 'plus'\n                WHEN 'enterprise' THEN 'max'\n                ELSE plan_tier\n            END\n            WHERE agency_id = $2::uuid\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bdd45971861c286ef747438bfa1bd62ae16631d60cdd1ab19cfb553c75fd599f"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE subscriptions\n            SET status                = 'active',\n                last_payment_ref      = $2,\n                last_payment_at       = now(),\n                current_period_end    = now() + INTERVAL '1 month',\n                payment_failure_count = 0,\n                updated_at            = now()\n            WHERE agency_id = $1\n              AND status IN ('past_due', 'trialing', 'active')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d5927d2876fb88e0c208dd44b99034fe2f02605945413a7f23bb949bdd667a3c"
+}

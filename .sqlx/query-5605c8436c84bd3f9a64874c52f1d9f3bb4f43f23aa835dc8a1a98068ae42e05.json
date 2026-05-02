@@ -1,0 +1,85 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT wo.id, wo.property_id, wo.unit_id, wo.title, wo.description,\n                   wo.status, wo.priority, wo.vendor_id, wo.reported_by,\n                   wo.created_at, wo.updated_at\n            FROM work_orders wo\n            JOIN properties p ON p.id = wo.property_id\n            WHERE p.agency_id = $1::uuid\n              AND ($2::uuid IS NULL OR wo.property_id = $2::uuid)\n            ORDER BY\n                CASE wo.priority\n                    WHEN 'emergency' THEN 1\n                    WHEN 'high'      THEN 2\n                    WHEN 'medium'    THEN 3\n                    ELSE 4\n                END,\n                wo.created_at DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "property_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "unit_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "priority",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "vendor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "reported_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5605c8436c84bd3f9a64874c52f1d9f3bb4f43f23aa835dc8a1a98068ae42e05"
+}

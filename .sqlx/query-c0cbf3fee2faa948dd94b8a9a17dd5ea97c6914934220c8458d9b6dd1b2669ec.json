@@ -1,0 +1,102 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,\n                   o.phone, o.company_name, o.kra_pin, o.bank_name,\n                   o.bank_account, o.mpesa_number, o.portal_status,\n                   o.created_at, o.updated_at\n            FROM owners o\n            JOIN users u ON u.id = o.user_id\n            WHERE u.agency_id = $1::uuid\n            ORDER BY o.created_at DESC\n            LIMIT $2 OFFSET $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "first_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "last_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "phone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "company_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "kra_pin",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "bank_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "bank_account",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "mpesa_number",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "portal_status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c0cbf3fee2faa948dd94b8a9a17dd5ea97c6914934220c8458d9b6dd1b2669ec"
+}

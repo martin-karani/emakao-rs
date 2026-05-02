@@ -1,0 +1,12 @@
+/target/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+.idea/
+.vscode/
+Cargo.lock
+combine.py
+emakao_rust_new_structure.txt

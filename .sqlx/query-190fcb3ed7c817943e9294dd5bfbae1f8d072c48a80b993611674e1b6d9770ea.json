@@ -1,0 +1,91 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT a.id, a.property_id, a.unit_id, a.resident_id,\n                   a.start_date, a.end_date, a.rent_amount_kes, a.deposit_kes,\n                   a.billing_frequency, a.status, a.created_at, a.updated_at\n            FROM agreements a\n            JOIN properties p ON p.id = a.property_id\n            WHERE p.agency_id = $1\n              AND ($2::uuid IS NULL OR a.property_id = $2)\n            ORDER BY a.created_at DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "property_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "unit_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "resident_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "start_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "end_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 6,
+        "name": "rent_amount_kes",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "deposit_kes",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "billing_frequency",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "190fcb3ed7c817943e9294dd5bfbae1f8d072c48a80b993611674e1b6d9770ea"
+}

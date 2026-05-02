@@ -1,0 +1,89 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT a.id, a.property_id, a.unit_id, a.resident_id,\n                   a.start_date, a.end_date, a.rent_amount_kes, a.deposit_kes,\n                   a.billing_frequency, a.status, a.created_at, a.updated_at\n            FROM agreements a\n            JOIN properties p ON p.id = a.property_id\n            WHERE a.id = $1 AND p.agency_id = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "property_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "unit_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "resident_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "start_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 5,
+        "name": "end_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 6,
+        "name": "rent_amount_kes",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "deposit_kes",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "billing_frequency",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c675e7fd2f8b305f9e4bd5180d106a322682e4476608523495de788c768df394"
+}

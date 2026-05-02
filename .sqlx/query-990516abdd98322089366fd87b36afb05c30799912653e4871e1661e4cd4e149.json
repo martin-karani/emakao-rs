@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM feature_overrides WHERE agency_id = $1 AND feature_key = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "990516abdd98322089366fd87b36afb05c30799912653e4871e1661e4cd4e149"
+}

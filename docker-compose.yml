@@ -1,0 +1,96 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: emakao
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: emakao_platform # primary DB created automatically
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql # creates emakao_tenant
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U emakao" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+
+  openfga:
+    image: openfga/openfga:latest
+    command: run
+    ports:
+      - "8080:8080" # HTTP
+      - "8081:8081" # gRPC
+    environment:
+      OPENFGA_DATASTORE_ENGINE: memory
+    healthcheck:
+      test: [ "CMD", "grpc_health_probe", "-addr=:8081" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # emakao:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   env_file: .env
+  #   environment:
+  #     PLATFORM_DATABASE_URL: postgres://emakao:password@postgres:5432/emakao_platform
+  #     TENANT_DATABASE_URL:   postgres://emakao:password@postgres:5432/emakao_tenant
+  #     REDIS_URL:             redis://redis:6379
+  #     AWS_ENDPOINT_URL:      http://minio:9000
+  #     OPENFGA_URL:           http://openfga:8080
+  #     SMTP_HOST:             mailhog
+  #     SMTP_PORT:             "1025"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   restart: on-failure
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

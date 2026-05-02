@@ -1,0 +1,5 @@
+# .cargo/config.toml
+[env]
+SQLX_OFFLINE            = { value = "true", force = false }
+PLATFORM_DATABASE_URL   = { value = "postgres://emakao:password@localhost:5432/emakao_platform", force = false }
+TENANT_DATABASE_URL     = { value = "postgres://emakao:password@localhost:5432/emakao_tenant",   force = false }
