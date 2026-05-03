@@ -18,6 +18,7 @@ use crate::{
     infrastructure::db::agreement_repository_sqlx::PgAgreementRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::agreement::{CreateAgreementDto, ListAgreementsParams},
@@ -26,6 +27,18 @@ use crate::{
     },
 };
 
+/// List lease agreements, optionally filtered by property
+#[utoipa::path(
+    get,
+    path = "/api/v1/agreements",
+    params(ListAgreementsParams),
+    responses(
+        (status = 200, description = "List of agreements",          body = Vec<AgreementResponse>),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Agreements",
+    security(("bearer_token" = []))
+)]
 pub async fn list_agreements(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -49,6 +62,19 @@ pub async fn list_agreements(
     ))
 }
 
+/// Get a single lease agreement by UUID
+#[utoipa::path(
+    get,
+    path = "/api/v1/agreements/{id}",
+    params(("id" = Uuid, Path, description = "Agreement UUID")),
+    responses(
+        (status = 200, description = "Agreement found",             body = AgreementResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 404, description = "Agreement not found",         body = ErrorResponse),
+    ),
+    tag = "Agreements",
+    security(("bearer_token" = []))
+)]
 pub async fn get_agreement(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -60,6 +86,19 @@ pub async fn get_agreement(
     Ok(Json(AgreementResponse::from(agreement)))
 }
 
+/// Create a new lease agreement
+#[utoipa::path(
+    post,
+    path = "/api/v1/agreements",
+    request_body = CreateAgreementDto,
+    responses(
+        (status = 201, description = "Agreement created",           body = AgreementResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 422, description = "Validation error",            body = ErrorResponse),
+    ),
+    tag = "Agreements",
+    security(("bearer_token" = []))
+)]
 pub async fn create_agreement(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -87,6 +126,19 @@ pub async fn create_agreement(
     ))
 }
 
+/// Terminate a lease agreement early
+#[utoipa::path(
+    post,
+    path = "/api/v1/agreements/{id}/terminate",
+    params(("id" = Uuid, Path, description = "Agreement UUID")),
+    responses(
+        (status = 204, description = "Agreement terminated"),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 404, description = "Agreement not found",         body = ErrorResponse),
+    ),
+    tag = "Agreements",
+    security(("bearer_token" = []))
+)]
 pub async fn terminate_agreement(
     State(state): State<AppState>,
     ctx: TenantContext,

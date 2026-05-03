@@ -23,6 +23,7 @@ use crate::{
     infrastructure::db::maintenance_repository_sqlx::PgMaintenanceRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::maintenance::{CreateWorkOrderDto, ListWorkOrdersParams, UpdateWorkOrderDto},
@@ -32,6 +33,18 @@ use crate::{
     },
 };
 
+/// List maintenance work orders
+#[utoipa::path(
+    get,
+    path = "/api/v1/work-orders",
+    params(ListWorkOrdersParams),
+    responses(
+        (status = 200, description = "List of work orders", body = Vec<WorkOrderResponse>),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+    ),
+    tag = "Maintenance",
+    security(("bearer_token" = []))
+)]
 pub async fn list_work_orders(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -60,6 +73,19 @@ pub async fn list_work_orders(
     ))
 }
 
+/// Get work order details
+#[utoipa::path(
+    get,
+    path = "/api/v1/work-orders/{id}",
+    params(("id" = Uuid, Path, description = "Work order UUID")),
+    responses(
+        (status = 200, description = "Work order details", body = WorkOrderResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Work order not found", body = ErrorResponse),
+    ),
+    tag = "Maintenance",
+    security(("bearer_token" = []))
+)]
 pub async fn get_work_order(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -75,6 +101,19 @@ pub async fn get_work_order(
     Ok(Json(WorkOrderResponse::from(order)))
 }
 
+/// Create a new maintenance work order
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders",
+    request_body = CreateWorkOrderDto,
+    responses(
+        (status = 201, description = "Work order created", body = WorkOrderResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Maintenance",
+    security(("bearer_token" = []))
+)]
 pub async fn create_work_order(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -106,6 +145,21 @@ pub async fn create_work_order(
     Ok((StatusCode::CREATED, Json(WorkOrderResponse::from(order))))
 }
 
+/// Update work order status or vendor
+#[utoipa::path(
+    patch,
+    path = "/api/v1/work-orders/{id}",
+    params(("id" = Uuid, Path, description = "Work order UUID")),
+    request_body = UpdateWorkOrderDto,
+    responses(
+        (status = 200, description = "Work order updated", body = WorkOrderResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Work order not found", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Maintenance",
+    security(("bearer_token" = []))
+)]
 pub async fn update_work_order(
     State(state): State<AppState>,
     ctx: TenantContext,

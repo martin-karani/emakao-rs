@@ -59,7 +59,7 @@ uuid              = { version = "1",       features = ["v4", "serde"] }
 time              = { version = "0.3",     features = ["serde"] }
 rust_decimal      = { version = "1.41",    features = ["db-postgres"] }
 
-utoipa            = { version = "5.4",     features = ["axum_extras", "uuid", "time"] }
+utoipa            = { version = "5.4",     features = ["axum_extras", "uuid", "time", "decimal"] }
 utoipa-swagger-ui = { version = "9.0",     features = ["axum"] }
 
 tonic             = { version = "0.14.5" }

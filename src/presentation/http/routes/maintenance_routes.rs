@@ -14,7 +14,7 @@ pub fn routes() -> Router<AppState> {
             get(list_work_orders).post(create_work_order),
         )
         .route(
-            "/api/v1/work-orders/:id",
+            "/api/v1/work-orders/{id}",
             get(get_work_order).patch(update_work_order),
         )
 }

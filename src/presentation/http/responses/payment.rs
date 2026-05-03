@@ -1,11 +1,12 @@
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::payment::{ClaimStatus, PaymentClaim, PaymentMethodType};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PaymentClaimResponse {
     pub id: Uuid,
     pub property_id: Uuid,

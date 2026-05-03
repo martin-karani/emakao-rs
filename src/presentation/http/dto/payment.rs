@@ -1,11 +1,12 @@
 use garde::Validate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::domain::payment::{ClaimStatus, PaymentMethodType};
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct SubmitClaimDto {
     #[garde(skip)]
     pub property_id: Uuid,
@@ -24,7 +25,7 @@ pub struct SubmitClaimDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct ReviewClaimDto {
     #[garde(skip)]
     pub approve: bool,
@@ -34,7 +35,7 @@ pub struct ReviewClaimDto {
     pub rejection_reason: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListClaimsParams {
     pub property_id: Option<Uuid>,
     pub status: Option<ClaimStatus>,

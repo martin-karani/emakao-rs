@@ -1,13 +1,14 @@
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::utility::{
     BillingMode, MeterReading, MeterType, UtilityBill, UtilityBillStatus, UtilityMeter,
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UtilityMeterResponse {
     pub id: Uuid,
     pub unit_id: Uuid,
@@ -32,7 +33,7 @@ impl From<UtilityMeter> for UtilityMeterResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MeterReadingResponse {
     pub id: Uuid,
     pub meter_id: Uuid,
@@ -53,7 +54,7 @@ impl From<MeterReading> for MeterReadingResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UtilityBillResponse {
     pub id: Uuid,
     pub meter_id: Uuid,

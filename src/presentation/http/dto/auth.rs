@@ -1,7 +1,8 @@
 use garde::Validate;
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct LoginDto {
     #[garde(email)]
     pub email: String,
@@ -9,7 +10,7 @@ pub struct LoginDto {
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct RegisterDto {
     #[garde(email)]
     pub email: String,
@@ -20,7 +21,7 @@ pub struct RegisterDto {
     pub role: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RefreshDto {
     pub refresh_token: String,
 }

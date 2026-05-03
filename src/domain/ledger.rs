@@ -1,9 +1,10 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use time::{Date, OffsetDateTime};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LedgerEntryType {
     Rent,
@@ -62,7 +63,6 @@ pub struct LedgerEntry {
     pub metadata: serde_json::Value,
 }
 
-/// Command passed to `LedgerRepository::create`.
 pub struct CreateLedgerEntryCommand {
     pub agreement_id: Option<Uuid>,
     pub unit_id: Option<Uuid>,

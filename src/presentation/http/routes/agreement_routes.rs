@@ -16,9 +16,9 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/agreements",
             get(list_agreements).post(create_agreement),
         )
-        .route("/api/v1/agreements/:id", get(get_agreement))
+        .route("/api/v1/agreements/{id}", get(get_agreement))
         .route(
-            "/api/v1/agreements/:id/terminate",
+            "/api/v1/agreements/{id}/terminate",
             post(terminate_agreement),
         )
 }

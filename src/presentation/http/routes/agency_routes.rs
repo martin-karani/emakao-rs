@@ -19,12 +19,12 @@ pub fn admin_routes() -> Router<AppState> {
         // ── Per-agency FGA tuple management ──────────────────────────────
         // :fga_store_id is the OpenFGA store ID stored in agencies.fga_store_id
         .route(
-            "/api/v1/admin/agencies/:fga_store_id/permissions/tuples",
+            "/api/v1/admin/agencies/{fga_store_id}/permissions/tuples",
             post(write_permission_tuple).delete(delete_permission_tuple),
         )
         // ── Per-agency authorization model updates ────────────────────────
         .route(
-            "/api/v1/admin/agencies/:fga_store_id/permissions/model",
+            "/api/v1/admin/agencies/{fga_store_id}/permissions/model",
             post(update_auth_model),
         )
 }

@@ -18,6 +18,7 @@ use crate::{
     infrastructure::db::vendor_repository_sqlx::PgVendorRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::vendor::{CreateVendorDto, ListVendorsParams, UpdateVendorDto},
@@ -27,6 +28,18 @@ use crate::{
     },
 };
 
+/// List vendors
+#[utoipa::path(
+    get,
+    path = "/api/v1/vendors",
+    params(ListVendorsParams),
+    responses(
+        (status = 200, description = "List of vendors", body = Vec<VendorResponse>),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+    ),
+    tag = "Vendors",
+    security(("bearer_token" = []))
+)]
 pub async fn list_vendors(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -54,6 +67,19 @@ pub async fn list_vendors(
     ))
 }
 
+/// Get vendor by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/vendors/{id}",
+    params(("id" = Uuid, Path, description = "Vendor UUID")),
+    responses(
+        (status = 200, description = "Vendor details", body = VendorResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Vendor not found", body = ErrorResponse),
+    ),
+    tag = "Vendors",
+    security(("bearer_token" = []))
+)]
 pub async fn get_vendor(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -69,6 +95,19 @@ pub async fn get_vendor(
     Ok(Json(VendorResponse::from(vendor)))
 }
 
+/// Create a new vendor
+#[utoipa::path(
+    post,
+    path = "/api/v1/vendors",
+    request_body = CreateVendorDto,
+    responses(
+        (status = 201, description = "Vendor created", body = VendorResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Vendors",
+    security(("bearer_token" = []))
+)]
 pub async fn create_vendor(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -107,6 +146,21 @@ pub async fn create_vendor(
     Ok((StatusCode::CREATED, Json(VendorResponse::from(vendor))))
 }
 
+/// Update vendor details
+#[utoipa::path(
+    patch,
+    path = "/api/v1/vendors/{id}",
+    params(("id" = Uuid, Path, description = "Vendor UUID")),
+    request_body = UpdateVendorDto,
+    responses(
+        (status = 200, description = "Vendor updated", body = VendorResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Vendor not found", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Vendors",
+    security(("bearer_token" = []))
+)]
 pub async fn update_vendor(
     State(state): State<AppState>,
     ctx: TenantContext,

@@ -1,22 +1,23 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::Deserialize;
 use tracing::instrument;
+use utoipa::ToSchema;
 
 use crate::presentation::app_state::AppState;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct MpesaCallback {
     #[serde(rename = "Body")]
     pub body: MpesaCallbackBody,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct MpesaCallbackBody {
     #[serde(rename = "stkCallback")]
     pub stk_callback: StkCallback,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct StkCallback {
     #[serde(rename = "MerchantRequestID")]
     pub merchant_request_id: String,
@@ -30,17 +31,19 @@ pub struct StkCallback {
     pub callback_metadata: Option<CallbackMetadata>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CallbackMetadata {
     #[serde(rename = "Item")]
     pub item: Vec<CallbackItem>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CallbackItem {
     #[serde(rename = "Name")]
     pub name: String,
+    /// JSON value — string, number, or null depending on the field
     #[serde(rename = "Value")]
+    #[schema(value_type = Object, nullable = true)]
     pub value: Option<serde_json::Value>,
 }
 
@@ -53,7 +56,20 @@ impl CallbackMetadata {
     }
 }
 
-/// POST /api/v1/webhooks/mpesa
+/// Receive an M-Pesa STK Push callback from Safaricom
+///
+/// **No authentication required** — Safaricom posts to this URL directly.
+/// Always responds 200 so Safaricom does not retry; internal failures are
+/// logged and handled asynchronously.
+#[utoipa::path(
+    post,
+    path = "/api/v1/webhooks/mpesa",
+    request_body = MpesaCallback,
+    responses(
+        (status = 200, description = "Callback accepted (always)"),
+    ),
+    tag = "Webhooks"
+)]
 #[instrument(skip(state, payload), fields(checkout_id))]
 pub async fn mpesa_callback(
     State(state): State<AppState>,
@@ -68,8 +84,6 @@ pub async fn mpesa_callback(
         "mpesa callback received"
     );
 
-    // Always respond 200 — Safaricom retries on non-2xx and we must not
-    // let internal errors cause duplicate charges.
     if cb.result_code != 0 {
         tracing::warn!(
             result_code = cb.result_code,
@@ -87,7 +101,6 @@ pub async fn mpesa_callback(
         }
     };
 
-    // Extract payment details from metadata
     let Some(amount_kes) = meta
         .get("Amount")
         .and_then(|v| v.as_f64())
@@ -112,7 +125,6 @@ pub async fn mpesa_callback(
             .or_else(|| v.as_u64().map(|n| n.to_string()))
     });
 
-    // Atomically settle the pending request — returns None if already settled or expired
     let settled = state
         .subscription
         .repo
@@ -142,7 +154,6 @@ pub async fn mpesa_callback(
         "settling subscription payment"
     );
 
-    // Activate / update the subscription for the confirmed plan
     if let Err(e) = state
         .subscription
         .change_plan
@@ -150,10 +161,8 @@ pub async fn mpesa_callback(
         .await
     {
         tracing::error!(%agency_id, error = %e, "change_plan failed after mpesa confirmation");
-        // Do not return early — still record the invoice so payment isn't lost
     }
 
-    // Record the invoice and reactivate the subscription period
     if let Err(e) = state
         .subscription
         .record_payment

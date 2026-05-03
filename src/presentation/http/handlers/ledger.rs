@@ -18,6 +18,7 @@ use crate::{
     infrastructure::db::ledger_repository_sqlx::PgLedgerRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::ledger::{ListLedgerParams, PostChargeDto},
@@ -26,7 +27,21 @@ use crate::{
     },
 };
 
-/// GET /api/v1/agreements/:id/ledger
+/// List ledger entries for an agreement
+#[utoipa::path(
+    get,
+    path = "/api/v1/agreements/{id}/ledger",
+    params(
+        ("id" = Uuid, Path, description = "Agreement UUID"),
+        ListLedgerParams
+    ),
+    responses(
+        (status = 200, description = "List of ledger entries", body = Vec<LedgerEntryResponse>),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+    ),
+    tag = "Ledger",
+    security(("bearer_token" = []))
+)]
 pub async fn list_entries(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -52,7 +67,19 @@ pub async fn list_entries(
     ))
 }
 
-/// GET /api/v1/agreements/:id/balance
+/// Get current balance summary for an agreement
+#[utoipa::path(
+    get,
+    path = "/api/v1/agreements/{id}/balance",
+    params(("id" = Uuid, Path, description = "Agreement UUID")),
+    responses(
+        (status = 200, description = "Balance summary", body = BalanceSummaryResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Agreement not found", body = ErrorResponse),
+    ),
+    tag = "Ledger",
+    security(("bearer_token" = []))
+)]
 pub async fn get_balance(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -65,7 +92,20 @@ pub async fn get_balance(
     Ok(Json(BalanceSummaryResponse::from(summary)))
 }
 
-/// POST /api/v1/agreements/:id/charges
+/// Post a manual charge or credit to an agreement ledger
+#[utoipa::path(
+    post,
+    path = "/api/v1/agreements/{id}/charges",
+    params(("id" = Uuid, Path, description = "Agreement UUID")),
+    request_body = PostChargeDto,
+    responses(
+        (status = 201, description = "Entry posted", body = LedgerEntryResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Ledger",
+    security(("bearer_token" = []))
+)]
 pub async fn post_charge(
     State(state): State<AppState>,
     ctx: TenantContext,

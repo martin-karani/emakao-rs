@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-// ── Property type / config discriminated union ──────────────────────────
+// ── Property type / config discriminated union ──────────────────────────────
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PropertyType {
     SingleFamily,
@@ -15,7 +16,8 @@ pub enum PropertyType {
     AffordableHousing,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// The `type` field discriminates the variant (e.g. `"single_family"`).
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PropertyConfig {
     SingleFamily {
@@ -44,22 +46,20 @@ pub enum PropertyConfig {
     },
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToSchema)]
 pub enum BuildingClass {
     A,
     B,
     C,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToSchema)]
 pub enum BillingCycle {
     Monthly,
     Quarterly,
     SemiAnnual,
     Annual,
 }
-
-// ── Domain model (no sqlx annotations) ─────────────────────────────────
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Property {

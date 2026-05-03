@@ -14,7 +14,7 @@ pub fn routes() -> Router<AppState> {
             get(list_properties).post(create_property),
         )
         .route(
-            "/api/v1/properties/:id",
+            "/api/v1/properties/{id}",
             get(get_property)
                 .put(update_property)
                 .delete(delete_property),

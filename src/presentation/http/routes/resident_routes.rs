@@ -11,5 +11,5 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/residents",
             get(list_residents).post(invite_resident),
         )
-        .route("/api/v1/residents/:id", get(get_resident))
+        .route("/api/v1/residents/{id}", get(get_resident))
 }

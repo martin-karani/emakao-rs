@@ -1,7 +1,8 @@
 use garde::Validate;
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct InviteResidentDto {
     #[garde(length(min = 1, max = 100))]
     pub first_name: String,
@@ -15,7 +16,7 @@ pub struct InviteResidentDto {
     pub national_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListResidentsParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,

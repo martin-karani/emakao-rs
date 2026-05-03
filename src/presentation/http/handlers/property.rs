@@ -19,6 +19,7 @@ use crate::{
     infrastructure::db::property_repository_sqlx::PgPropertyRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::property::{CreatePropertyDto, ListPropertiesParams, UpdatePropertyDto},
@@ -28,7 +29,18 @@ use crate::{
     },
 };
 
-/// GET /api/v1/properties
+#[utoipa::path(
+    get,
+    path = "/api/v1/properties",
+    params(ListPropertiesParams),
+    responses(
+        (status = 200, description = "List of properties",           body = Vec<PropertyResponse>),
+        (status = 401, description = "Missing or invalid JWT",       body = ErrorResponse),
+        (status = 402, description = "Subscription inactive",        body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
 pub async fn list_properties(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -52,7 +64,21 @@ pub async fn list_properties(
     ))
 }
 
-/// GET /api/v1/properties/:id
+/// Get a single property by UUID
+#[utoipa::path(
+    get,
+    path = "/api/v1/properties/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Property UUID")
+    ),
+    responses(
+        (status = 200, description = "Property found",               body = PropertyResponse),
+        (status = 401, description = "Missing or invalid JWT",       body = ErrorResponse),
+        (status = 404, description = "Property not found",           body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
 pub async fn get_property(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -64,7 +90,20 @@ pub async fn get_property(
     Ok(Json(PropertyResponse::from(property)))
 }
 
-/// POST /api/v1/properties
+/// Create a new property
+#[utoipa::path(
+    post,
+    path = "/api/v1/properties",
+    request_body = CreatePropertyDto,
+    responses(
+        (status = 201, description = "Property created",             body = PropertyResponse),
+        (status = 401, description = "Missing or invalid JWT",       body = ErrorResponse),
+        (status = 402, description = "Plan limit reached",           body = ErrorResponse),
+        (status = 422, description = "Validation error",             body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
 pub async fn create_property(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -103,7 +142,23 @@ pub async fn create_property(
     Ok((StatusCode::CREATED, Json(PropertyResponse::from(property))))
 }
 
-/// PUT /api/v1/properties/:id
+/// Update a property's mutable fields
+#[utoipa::path(
+    put,
+    path = "/api/v1/properties/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Property UUID")
+    ),
+    request_body = UpdatePropertyDto,
+    responses(
+        (status = 200, description = "Property updated",             body = PropertyResponse),
+        (status = 401, description = "Missing or invalid JWT",       body = ErrorResponse),
+        (status = 404, description = "Property not found",           body = ErrorResponse),
+        (status = 422, description = "Validation error",             body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
 pub async fn update_property(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -128,7 +183,21 @@ pub async fn update_property(
     Ok(Json(PropertyResponse::from(property)))
 }
 
-/// DELETE /api/v1/properties/:id
+/// Delete a property (hard delete — irreversible)
+#[utoipa::path(
+    delete,
+    path = "/api/v1/properties/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Property UUID")
+    ),
+    responses(
+        (status = 204, description = "Property deleted"),
+        (status = 401, description = "Missing or invalid JWT",       body = ErrorResponse),
+        (status = 404, description = "Property not found",           body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
 pub async fn delete_property(
     State(state): State<AppState>,
     ctx: TenantContext,

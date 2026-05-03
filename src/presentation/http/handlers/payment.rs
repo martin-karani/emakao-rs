@@ -21,6 +21,7 @@ use crate::{
     infrastructure::db::payment_repository_sqlx::PgPaymentRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::payment::{ListClaimsParams, ReviewClaimDto, SubmitClaimDto},
@@ -29,7 +30,18 @@ use crate::{
     },
 };
 
-/// GET /api/v1/payments
+/// List payment claims, optionally filtered by property or status
+#[utoipa::path(
+    get,
+    path = "/api/v1/payments",
+    params(ListClaimsParams),
+    responses(
+        (status = 200, description = "List of payment claims",      body = Vec<PaymentClaimResponse>),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Payments",
+    security(("bearer_token" = []))
+)]
 pub async fn list_claims(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -56,7 +68,19 @@ pub async fn list_claims(
     ))
 }
 
-/// POST /api/v1/payments
+/// Submit a new payment claim (resident self-reports)
+#[utoipa::path(
+    post,
+    path = "/api/v1/payments",
+    request_body = SubmitClaimDto,
+    responses(
+        (status = 201, description = "Payment claim submitted",     body = PaymentClaimResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 422, description = "Validation error",            body = ErrorResponse),
+    ),
+    tag = "Payments",
+    security(("bearer_token" = []))
+)]
 pub async fn submit_claim(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -85,7 +109,21 @@ pub async fn submit_claim(
     Ok((StatusCode::CREATED, Json(PaymentClaimResponse::from(claim))))
 }
 
-/// POST /api/v1/payments/:id/review
+/// Approve or reject a pending payment claim
+#[utoipa::path(
+    post,
+    path = "/api/v1/payments/{id}/review",
+    params(("id" = Uuid, Path, description = "Payment claim UUID")),
+    request_body = ReviewClaimDto,
+    responses(
+        (status = 200, description = "Claim reviewed",              body = PaymentClaimResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 404, description = "Claim not found",             body = ErrorResponse),
+        (status = 422, description = "Validation error",            body = ErrorResponse),
+    ),
+    tag = "Payments",
+    security(("bearer_token" = []))
+)]
 pub async fn review_claim(
     State(state): State<AppState>,
     ctx: TenantContext,

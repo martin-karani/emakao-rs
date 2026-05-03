@@ -1,9 +1,10 @@
 use garde::Validate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateOwnerDto {
     #[garde(length(min = 1, max = 100))]
     pub first_name: String,
@@ -25,7 +26,7 @@ pub struct CreateOwnerDto {
     pub mpesa_number: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateOwnerDto {
     #[garde(length(min = 1, max = 100))]
     pub first_name: Option<String>,
@@ -45,7 +46,7 @@ pub struct UpdateOwnerDto {
     pub mpesa_number: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct AssignOwnerDto {
     #[garde(skip)]
     pub owner_id: Uuid,
@@ -64,7 +65,7 @@ fn validate_ownership(v: &Decimal, _ctx: &()) -> garde::Result {
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListOwnersParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,

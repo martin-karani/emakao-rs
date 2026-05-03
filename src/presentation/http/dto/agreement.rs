@@ -2,11 +2,12 @@ use garde::Validate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use time::Date;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::domain::agreement::BillingFrequency;
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateAgreementDto {
     #[garde(skip)]
     pub property_id: Uuid,
@@ -26,7 +27,7 @@ pub struct CreateAgreementDto {
     pub billing_frequency: BillingFrequency,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListAgreementsParams {
     pub property_id: Option<Uuid>,
     pub limit: Option<i64>,

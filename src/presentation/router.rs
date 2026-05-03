@@ -1,23 +1,6 @@
-// src/presentation/router.rs
-//
-// Middleware execution order (Axum layers run bottom-up in the stack):
-//   1. tenant_resolver  → injects ResolvedAgency + TenantPool
-//   2. require_auth     → injects AuthenticatedUser, validates JWT
-//   3. subscription_middleware → injects ResolvedSubscription, blocks inactive subs
-//
-// Route buckets:
-//   infra           — health / readiness          (no middleware)
-//   webhooks        — M-Pesa callback             (no middleware — Safaricom has no JWT)
-//   websocket       — WebSocket upgrade           (self-authenticates via ?token=)
-//   public_sub      — plan catalogue              (no middleware — marketing pages)
-//   auth            — login / register            (tenant_resolver only)
-//   billing_api     — payment initiation          (tenant_resolver + require_auth, NO sub check)
-//   api             — all other agency routes     (tenant_resolver + require_auth + sub check)
-//   platform_admin  — agency provisioning + FGA   (require_admin only — NO tenant_resolver)
-//                     + subscription admin
-
 use axum::{middleware, Router};
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::presentation::{
     app_state::AppState,
@@ -30,6 +13,7 @@ use crate::presentation::{
         admin_auth::require_admin, auth::require_auth, subscription::subscription_middleware,
         tenant_resolver::tenant_resolver,
     },
+    openapi::ApiDoc,
 };
 
 pub fn build_router(state: AppState) -> Router {
@@ -85,7 +69,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(subscription_routes::admin_routes(state.clone()))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin));
 
-    Router::new()
+    let mut router = Router::new()
         .merge(infra)
         .merge(webhooks)
         .merge(websocket)
@@ -97,5 +81,17 @@ pub fn build_router(state: AppState) -> Router {
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
-        .with_state(state)
+        .with_state(state);
+
+    // ── Swagger UI — only compiled into debug builds ──────────────────────────
+    // Access at: http://localhost:3000/swagger-ui
+    // Raw JSON:  http://localhost:3000/api-docs/openapi.json
+    #[cfg(debug_assertions)]
+    {
+        use utoipa::OpenApi;
+        router = router
+            .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
+    }
+
+    router
 }

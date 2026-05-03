@@ -1,5 +1,3 @@
-// src/presentation/http/routes/subscription_routes.rs
-
 use axum::{
     middleware,
     routing::{delete, get, patch, post},
@@ -35,7 +33,7 @@ use crate::presentation::{
 pub fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/subscription/plans", get(list_plans))
-        .route("/api/v1/subscription/plans/:slug", get(get_plan))
+        .route("/api/v1/subscription/plans/{slug}", get(get_plan))
 }
 
 /// Requires auth + tenant but NOT an active subscription.
@@ -68,23 +66,23 @@ pub fn agency_routes(state: AppState) -> Router<AppState> {
 pub fn admin_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route(
-            "/api/v1/admin/subscriptions/:agency_id",
+            "/api/v1/admin/subscriptions/{agency_id}",
             get(admin_get_status).delete(admin_cancel_subscription),
         )
         .route(
-            "/api/v1/admin/subscriptions/:agency_id/entitlements",
+            "/api/v1/admin/subscriptions/{agency_id}/entitlements",
             get(admin_get_entitlements),
         )
         .route(
-            "/api/v1/admin/subscriptions/:agency_id/plan",
+            "/api/v1/admin/subscriptions/{agency_id}/plan",
             patch(admin_change_plan),
         )
         .route(
-            "/api/v1/admin/subscriptions/:agency_id/overrides",
+            "/api/v1/admin/subscriptions/{agency_id}/overrides",
             post(admin_set_override),
         )
         .route(
-            "/api/v1/admin/subscriptions/:agency_id/overrides/:feature_key",
+            "/api/v1/admin/subscriptions/{agency_id}/overrides/{feature_key}",
             delete(admin_remove_override),
         )
 }

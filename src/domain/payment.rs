@@ -1,9 +1,10 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "claim_status", rename_all = "snake_case")]
 pub enum ClaimStatus {
@@ -12,7 +13,7 @@ pub enum ClaimStatus {
     Rejected,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "payment_method_type", rename_all = "snake_case")]
 pub enum PaymentMethodType {

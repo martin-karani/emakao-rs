@@ -2,11 +2,12 @@ use garde::Validate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use time::Date;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::domain::ledger::LedgerEntryType;
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct PostChargeDto {
     #[garde(skip)]
     pub agreement_id: Option<Uuid>,
@@ -29,11 +30,13 @@ pub struct PostChargeDto {
     pub period_start: Option<Date>,
     #[garde(skip)]
     pub period_end: Option<Date>,
+    /// Arbitrary JSON metadata blob
     #[garde(skip)]
+    #[schema(value_type = Object, nullable = true)]
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListLedgerParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,

@@ -4,16 +4,32 @@ use garde::Validate;
 use crate::{
     application::{
         errors::AppError,
-        use_cases::auth::{login::LoginInput, refresh_token::RefreshInput, register::RegisterInput},
+        use_cases::auth::{
+            login::LoginInput, refresh_token::RefreshInput, register::RegisterInput,
+        },
     },
     domain::agency::ResolvedAgency,
     presentation::{
         app_state::AppState,
-        http::{dto::auth::{LoginDto, RefreshDto, RegisterDto}, responses::auth::TokenResponse},
+        error::ErrorResponse,
+        http::{
+            dto::auth::{LoginDto, RefreshDto, RegisterDto},
+            responses::auth::TokenResponse,
+        },
     },
 };
 
-/// POST /api/v1/auth/login
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/login",
+    request_body = LoginDto,
+    responses(
+        (status = 200, description = "Login successful",        body = TokenResponse),
+        (status = 401, description = "Bad credentials",         body = ErrorResponse),
+        (status = 422, description = "Validation error",        body = ErrorResponse),
+    ),
+    tag = "Auth"
+)]
 pub async fn login(
     State(state): State<AppState>,
     axum::Extension(agency): axum::Extension<ResolvedAgency>,
@@ -39,7 +55,18 @@ pub async fn login(
     }))
 }
 
-/// POST /api/v1/auth/register
+/// Register a new staff user under the current agency tenant
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/register",
+    request_body = RegisterDto,
+    responses(
+        (status = 201, description = "User registered"),
+        (status = 409, description = "Email already exists",    body = ErrorResponse),
+        (status = 422, description = "Validation error",        body = ErrorResponse),
+    ),
+    tag = "Auth"
+)]
 pub async fn register(
     State(state): State<AppState>,
     axum::Extension(agency): axum::Extension<ResolvedAgency>,
@@ -61,7 +88,17 @@ pub async fn register(
     Ok(StatusCode::CREATED)
 }
 
-/// POST /api/v1/auth/refresh
+/// Exchange a refresh token for a new access token
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/refresh",
+    request_body = RefreshDto,
+    responses(
+        (status = 200, description = "Token refreshed",         body = TokenResponse),
+        (status = 401, description = "Invalid refresh token",   body = ErrorResponse),
+    ),
+    tag = "Auth"
+)]
 pub async fn refresh(
     State(state): State<AppState>,
     Json(dto): Json<RefreshDto>,

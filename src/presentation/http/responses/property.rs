@@ -1,10 +1,11 @@
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::property::{Property, PropertyConfig, PropertyType};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PropertyResponse {
     pub id: Uuid,
     pub agency_id: Uuid,

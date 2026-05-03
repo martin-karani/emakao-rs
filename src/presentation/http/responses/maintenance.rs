@@ -1,10 +1,11 @@
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::maintenance::{WorkOrder, WorkOrderPriority, WorkOrderStatus};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct WorkOrderResponse {
     pub id: Uuid,
     pub property_id: Uuid,

@@ -1,12 +1,21 @@
-//! The ONLY file in the codebase that maps AppError → HTTP responses.
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
+use serde::Serialize;
 use serde_json::json;
+use utoipa::ToSchema;
 
 use crate::{application::errors::AppError, domain::errors::DomainError};
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorResponse {
+    /// Machine-readable error code (e.g. `"VALIDATION_ERROR"`, `"NOT_FOUND"`)
+    pub error: String,
+    /// Human-readable explanation
+    pub message: String,
+}
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {

@@ -26,6 +26,7 @@ use crate::{
     infrastructure::db::owner_repository_sqlx::PgOwnerRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::owner::{AssignOwnerDto, CreateOwnerDto, ListOwnersParams, UpdateOwnerDto},
@@ -35,6 +36,18 @@ use crate::{
     },
 };
 
+/// List property owners
+#[utoipa::path(
+    get,
+    path = "/api/v1/owners",
+    params(ListOwnersParams),
+    responses(
+        (status = 200, description = "List of owners", body = Vec<OwnerResponse>),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+    ),
+    tag = "Owners",
+    security(("bearer_token" = []))
+)]
 pub async fn list_owners(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -62,6 +75,19 @@ pub async fn list_owners(
     ))
 }
 
+/// Get owner details
+#[utoipa::path(
+    get,
+    path = "/api/v1/owners/{id}",
+    params(("id" = Uuid, Path, description = "Owner UUID")),
+    responses(
+        (status = 200, description = "Owner details", body = OwnerResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Owner not found", body = ErrorResponse),
+    ),
+    tag = "Owners",
+    security(("bearer_token" = []))
+)]
 pub async fn get_owner(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -77,6 +103,19 @@ pub async fn get_owner(
     Ok(Json(OwnerResponse::from(owner)))
 }
 
+/// Create a new property owner
+#[utoipa::path(
+    post,
+    path = "/api/v1/owners",
+    request_body = CreateOwnerDto,
+    responses(
+        (status = 201, description = "Owner created", body = OwnerResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Owners",
+    security(("bearer_token" = []))
+)]
 pub async fn create_owner(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -114,6 +153,21 @@ pub async fn create_owner(
     Ok((StatusCode::CREATED, Json(OwnerResponse::from(owner))))
 }
 
+/// Update owner details
+#[utoipa::path(
+    patch,
+    path = "/api/v1/owners/{id}",
+    params(("id" = Uuid, Path, description = "Owner UUID")),
+    request_body = UpdateOwnerDto,
+    responses(
+        (status = 200, description = "Owner updated", body = OwnerResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Owner not found", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Owners",
+    security(("bearer_token" = []))
+)]
 pub async fn update_owner(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -145,6 +199,20 @@ pub async fn update_owner(
     Ok(Json(OwnerResponse::from(owner)))
 }
 
+/// Assign an owner to a property
+#[utoipa::path(
+    post,
+    path = "/api/v1/properties/{propertyId}/owners",
+    params(("propertyId" = Uuid, Path, description = "Property UUID")),
+    request_body = AssignOwnerDto,
+    responses(
+        (status = 204, description = "Owner assigned"),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Property or owner not found", body = ErrorResponse),
+    ),
+    tag = "Owners",
+    security(("bearer_token" = []))
+)]
 pub async fn assign_owner_to_property(
     State(state): State<AppState>,
     ctx: TenantContext,

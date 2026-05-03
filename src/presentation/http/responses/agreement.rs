@@ -1,11 +1,12 @@
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::{Date, OffsetDateTime};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::agreement::{Agreement, AgreementStatus, BillingFrequency};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AgreementResponse {
     pub id: Uuid,
     pub property_id: Uuid,

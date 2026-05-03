@@ -17,16 +17,3 @@ pub mod utility_routes;
 pub mod vendor_routes;
 pub mod webhook_routes;
 pub mod websocket_routes;
-
-pub fn all_routes() -> Router<AppState> {
-    Router::new()
-        .merge(property_routes::routes())
-        .merge(resident_routes::routes())
-        .merge(agreement_routes::routes())
-        .merge(payment_routes::routes())
-        .merge(ledger_routes::routes())
-        .merge(utility_routes::routes())
-        .merge(maintenance_routes::routes())
-        .merge(owner_routes::routes())
-        .merge(vendor_routes::routes())
-}

@@ -128,6 +128,15 @@ fn parse_bill_status(s: &str) -> UtilityBillStatus {
     }
 }
 
+fn bill_status_str(s: &UtilityBillStatus) -> &'static str {
+    match s {
+        UtilityBillStatus::Draft => "draft",
+        UtilityBillStatus::Issued => "issued",
+        UtilityBillStatus::Paid => "paid",
+        UtilityBillStatus::Overdue => "overdue",
+    }
+}
+
 impl From<BillRow> for UtilityBill {
     fn from(r: BillRow) -> Self {
         Self {
@@ -161,6 +170,51 @@ impl UtilityRepository for PgUtilityRepo {
         .await?;
 
         Ok(row.map(UtilityMeter::from))
+    }
+
+    async fn find_meters_by_unit(&self, unit_id: Uuid) -> Result<Vec<UtilityMeter>, AppError> {
+        let rows = sqlx::query_as::<_, MeterRow>(
+            r#"
+            SELECT id, unit_id, meter_type, billing_mode,
+                   meter_number, rate_per_unit, created_at
+            FROM utility_meters
+            WHERE unit_id = $1
+            "#,
+        )
+        .bind(unit_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(UtilityMeter::from).collect())
+    }
+
+    async fn find_bills_by_unit(
+        &self,
+        unit_id: Uuid,
+        status: Option<UtilityBillStatus>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<UtilityBill>, AppError> {
+        let status_str = status.as_ref().map(bill_status_str);
+
+        let rows = sqlx::query_as::<_, BillRow>(
+            r#"
+            SELECT id, meter_id, unit_id, units_consumed, amount_kes, status, created_at
+            FROM utility_bills
+            WHERE unit_id = $1
+              AND ($2::text IS NULL OR status = $2)
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4
+            "#,
+        )
+        .bind(unit_id)
+        .bind(status_str)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(UtilityBill::from).collect())
     }
 
     async fn create_meter(&self, cmd: CreateMeterCommand) -> Result<UtilityMeter, AppError> {

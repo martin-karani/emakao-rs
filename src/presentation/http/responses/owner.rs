@@ -1,10 +1,11 @@
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::owner::{Owner, OwnerPortalStatus};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct OwnerResponse {
     pub id: Uuid,
     pub user_id: Option<Uuid>,

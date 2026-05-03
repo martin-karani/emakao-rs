@@ -1,9 +1,10 @@
 use garde::Validate;
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::domain::vendor::VendorStatus;
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateVendorDto {
     #[garde(length(min = 1, max = 200))]
     pub name: String,
@@ -19,7 +20,7 @@ pub struct CreateVendorDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateVendorDto {
     #[garde(length(min = 1, max = 200))]
     pub name: Option<String>,
@@ -37,7 +38,7 @@ pub struct UpdateVendorDto {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListVendorsParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,

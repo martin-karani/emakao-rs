@@ -1,10 +1,11 @@
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::resident::{PortalStatus, Resident};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ResidentResponse {
     pub id: Uuid,
     pub user_id: Uuid,

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO payment_claims (\n                id, property_id, agreement_id, resident_id,\n                method_type, amount_kes, reference_code, proof_url,\n                notes, status, submitted_by\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_review', $10)\n            RETURNING\n                id, property_id, agreement_id, resident_id,\n                method_type, amount_kes, reference_code, proof_url, notes, status,\n                reviewed_by, reviewed_at, review_notes, rejection_reason,\n                ledger_entry_id, submitted_by, created_at AS \"created_at!\", updated_at AS \"updated_at!\"\n            ",
+  "query": "\n            INSERT INTO payment_claims (\n                id, property_id, agreement_id, resident_id,\n                method_type, amount_kes, reference_code, proof_url,\n                notes, status, submitted_by\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_review', $10)\n            RETURNING\n                id, property_id, agreement_id, resident_id,\n                method_type, amount_kes, reference_code, proof_url, notes, status,\n                reviewed_by, reviewed_at, review_notes, rejection_reason,\n                ledger_entry_id, submitted_by, created_at, updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -85,12 +85,12 @@
       },
       {
         "ordinal": 16,
-        "name": "created_at!",
+        "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 17,
-        "name": "updated_at!",
+        "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
@@ -129,5 +129,5 @@
       false
     ]
   },
-  "hash": "2e54fbe841f1fdf519288d339e715c50a910d7176160769370d12af62a31933d"
+  "hash": "86e6cf584cf2a2205f0512160fa34e2ac6d72ce819723b886aeccad37db74f5a"
 }

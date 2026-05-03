@@ -8,5 +8,5 @@ use crate::presentation::{
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/vendors", get(list_vendors).post(create_vendor))
-        .route("/api/v1/vendors/:id", get(get_vendor).put(update_vendor))
+        .route("/api/v1/vendors/{id}", get(get_vendor).put(update_vendor))
 }

@@ -10,7 +10,7 @@ use crate::presentation::{
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/agreements/:id/ledger", get(list_entries))
-        .route("/api/v1/agreements/:id/balance", get(get_balance))
-        .route("/api/v1/agreements/:id/charges", post(post_charge))
+        .route("/api/v1/agreements/{id}/ledger", get(list_entries))
+        .route("/api/v1/agreements/{id}/balance", get(get_balance))
+        .route("/api/v1/agreements/{id}/charges", post(post_charge))
 }

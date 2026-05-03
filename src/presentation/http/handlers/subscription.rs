@@ -6,15 +6,18 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
     application::errors::AppError,
     domain::{agency::ResolvedAgency, subscription::SubscriptionPlan},
-    presentation::{app_state::AppState, middleware::subscription::ResolvedSubscription},
+    presentation::{
+        app_state::AppState, error::ErrorResponse, middleware::subscription::ResolvedSubscription,
+    },
 };
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct SubscriptionStatusResponse {
     pub is_active: bool,
     pub is_trial: bool,
@@ -27,7 +30,7 @@ pub struct SubscriptionStatusResponse {
     pub status: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct PlanResponse {
     pub id: Uuid,
     pub slug: String,
@@ -37,6 +40,8 @@ pub struct PlanResponse {
     pub yearly_price_kes: Option<i32>,
     pub trial_days: i32,
     pub sort_order: i32,
+    /// Arbitrary JSON metadata blob
+    #[schema(value_type = Object, nullable = true)]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -56,27 +61,29 @@ impl From<SubscriptionPlan> for PlanResponse {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct ChangePlanDto {
     pub plan_slug: String,
     pub mpesa_ref: Option<String>,
-    pub custom_price: Option<i32>, // admin-only field
+    /// Admin-only: override the plan price
+    pub custom_price: Option<i32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CancelDto {
     pub reason: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct SetOverrideDto {
     pub feature_key: String,
-    pub value: String, // "true" | "false" | custom string
+    /// `"true"`, `"false"`, or a custom string value
+    pub value: String,
     pub reason: Option<String>,
     pub expires_at: Option<OffsetDateTime>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams, ToSchema)]
 pub struct PaginationQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -84,16 +91,16 @@ pub struct PaginationQuery {
     pub offset: i64,
 }
 
-#[derive(serde::Deserialize, garde::Validate)]
+#[derive(Deserialize, garde::Validate, ToSchema)]
 pub struct InitiatePaymentDto {
     #[garde(length(min = 1))]
     pub plan_slug: String,
-    /// Safaricom phone number, e.g. "254712345678".
+    /// Safaricom phone number, e.g. `"254712345678"`
     #[garde(length(min = 12, max = 13))]
     pub phone_number: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct InitiatePaymentResponse {
     pub checkout_request_id: String,
     pub message: String,
@@ -107,7 +114,15 @@ fn default_limit() -> i64 {
 // Agency-facing handlers
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// GET /api/v1/subscription/plans  — public, no auth required
+/// List all available subscription plans (public, no auth required)
+#[utoipa::path(
+    get,
+    path = "/api/v1/subscription/plans",
+    responses(
+        (status = 200, description = "List of plans",               body = Vec<PlanResponse>),
+    ),
+    tag = "Subscription"
+)]
 pub async fn list_plans(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
     let plans = state.subscription.list_plans.execute().await?;
     Ok(Json(
@@ -118,7 +133,17 @@ pub async fn list_plans(State(state): State<AppState>) -> Result<impl IntoRespon
     ))
 }
 
-/// GET /api/v1/subscription/plans/:slug  — public
+/// Get a single subscription plan by slug
+#[utoipa::path(
+    get,
+    path = "/api/v1/subscription/plans/{slug}",
+    params(("slug" = String, Path, description = "Plan slug, e.g. `starter`")),
+    responses(
+        (status = 200, description = "Plan found",                  body = PlanResponse),
+        (status = 404, description = "Plan not found",              body = ErrorResponse),
+    ),
+    tag = "Subscription"
+)]
 pub async fn get_plan(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -127,7 +152,17 @@ pub async fn get_plan(
     Ok(Json(PlanResponse::from(plan)))
 }
 
-/// GET /api/v1/subscription  — requires active subscription
+/// Get the current agency's subscription status
+#[utoipa::path(
+    get,
+    path = "/api/v1/subscription",
+    responses(
+        (status = 200, description = "Subscription status",         body = SubscriptionStatusResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn get_status(Extension(sub): Extension<ResolvedSubscription>) -> impl IntoResponse {
     Json(SubscriptionStatusResponse {
         is_active: sub.state.is_active,
@@ -142,17 +177,34 @@ pub async fn get_status(Extension(sub): Extension<ResolvedSubscription>) -> impl
     })
 }
 
-/// GET /api/v1/subscription/entitlements
-/// Returns the full feature + limits map so the frontend can drive UI gating
-/// without per-feature round-trips (mirrors NestJS GET /subscription/entitlements).
+/// Get full feature + limits entitlements map
+#[utoipa::path(
+    get,
+    path = "/api/v1/subscription/entitlements",
+    responses(
+        (status = 200, description = "Entitlements map (opaque JSON object)"),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn get_entitlements(
     Extension(sub): Extension<ResolvedSubscription>,
 ) -> impl IntoResponse {
     Json(sub.entitlements)
 }
 
-/// GET /api/v1/subscription/usage
-/// Real counts vs. plan limits for every metered resource.
+/// Get real resource usage vs plan limits
+#[utoipa::path(
+    get,
+    path = "/api/v1/subscription/usage",
+    responses(
+        (status = 200, description = "Usage summary (opaque JSON object)"),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn get_usage(
     State(state): State<AppState>,
     Extension(sub): Extension<ResolvedSubscription>,
@@ -166,7 +218,19 @@ pub async fn get_usage(
     Ok(Json(summary))
 }
 
-/// POST /api/v1/subscription/initiate-payment
+/// Initiate an M-Pesa STK push to pay for a subscription plan
+#[utoipa::path(
+    post,
+    path = "/api/v1/subscription/initiate-payment",
+    request_body = InitiatePaymentDto,
+    responses(
+        (status = 202, description = "STK push initiated",          body = InitiatePaymentResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 422, description = "Validation error",            body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn initiate_payment(
     axum::extract::State(state): axum::extract::State<crate::presentation::app_state::AppState>,
     axum::Extension(agency): axum::Extension<crate::domain::agency::ResolvedAgency>,
@@ -196,7 +260,18 @@ pub async fn initiate_payment(
     ))
 }
 
-/// POST /api/v1/subscription/subscribe  — initial plan selection after signup
+/// Select an initial subscription plan after signup
+#[utoipa::path(
+    post,
+    path = "/api/v1/subscription/subscribe",
+    request_body = ChangePlanDto,
+    responses(
+        (status = 201, description = "Plan selected"),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn subscribe(
     State(state): State<AppState>,
     Extension(agency): Extension<ResolvedAgency>,
@@ -210,7 +285,18 @@ pub async fn subscribe(
     Ok(StatusCode::CREATED)
 }
 
-/// PATCH /api/v1/subscription/plan  — upgrade / downgrade
+/// Upgrade or downgrade the current subscription plan
+#[utoipa::path(
+    patch,
+    path = "/api/v1/subscription/plan",
+    request_body = ChangePlanDto,
+    responses(
+        (status = 204, description = "Plan changed"),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn change_plan(
     State(state): State<AppState>,
     Extension(agency): Extension<ResolvedAgency>,
@@ -224,7 +310,18 @@ pub async fn change_plan(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// DELETE /api/v1/subscription  — cancel (stays active until period end)
+/// Cancel the current subscription (stays active until period end)
+#[utoipa::path(
+    delete,
+    path = "/api/v1/subscription",
+    request_body = CancelDto,
+    responses(
+        (status = 200, description = "Subscription cancelled"),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn cancel_subscription(
     State(state): State<AppState>,
     Extension(agency): Extension<ResolvedAgency>,
@@ -238,7 +335,18 @@ pub async fn cancel_subscription(
     Ok(StatusCode::OK)
 }
 
-/// GET /api/v1/subscription/invoices
+/// List subscription invoices for the current agency
+#[utoipa::path(
+    get,
+    path = "/api/v1/subscription/invoices",
+    params(PaginationQuery),
+    responses(
+        (status = 200, description = "Invoice list (opaque JSON array)"),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Subscription",
+    security(("bearer_token" = []))
+)]
 pub async fn list_invoices(
     State(state): State<AppState>,
     Extension(agency): Extension<ResolvedAgency>,
@@ -253,10 +361,21 @@ pub async fn list_invoices(
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Admin handlers  (platform_admin / support roles only — protect at router level)
+// Platform-admin handlers
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// GET /api/v1/admin/subscriptions/:agencyId
+/// [Admin] Get subscription status for any agency
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/subscriptions/{agencyId}",
+    params(("agencyId" = Uuid, Path, description = "Agency UUID")),
+    responses(
+        (status = 200, description = "Subscription state (opaque JSON object)"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+        (status = 404, description = "Agency not found",               body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn admin_get_status(
     State(state): State<AppState>,
     Path(agency_id): Path<Uuid>,
@@ -265,7 +384,17 @@ pub async fn admin_get_status(
     Ok(Json(state_val))
 }
 
-/// GET /api/v1/admin/subscriptions/:agencyId/entitlements
+/// [Admin] Get entitlements for any agency
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/subscriptions/{agencyId}/entitlements",
+    params(("agencyId" = Uuid, Path, description = "Agency UUID")),
+    responses(
+        (status = 200, description = "Entitlements map (opaque JSON object)"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn admin_get_entitlements(
     State(state): State<AppState>,
     Path(agency_id): Path<Uuid>,
@@ -278,13 +407,21 @@ pub async fn admin_get_entitlements(
     Ok(Json(e))
 }
 
-/// PATCH /api/v1/admin/subscriptions/:agencyId/plan
+/// [Admin] Change plan for any agency (supports custom pricing)
+#[utoipa::path(
+    patch,
+    path = "/api/v1/admin/subscriptions/{agencyId}/plan",
+    params(("agencyId" = Uuid, Path, description = "Agency UUID")),
+    request_body = ChangePlanDto,
+    responses(
+        (status = 204, description = "Plan changed"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn admin_change_plan(
     State(state): State<AppState>,
     Path(agency_id): Path<Uuid>,
-    // Removed: Extension(actor): Extension<ResolvedAgency>
-    // admin routes don't pass through tenant_resolver so ResolvedAgency is
-    // never inserted — extracting it would panic at runtime.
     Json(dto): Json<ChangePlanDto>,
 ) -> Result<impl IntoResponse, AppError> {
     state
@@ -300,12 +437,21 @@ pub async fn admin_change_plan(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /api/v1/admin/subscriptions/:agencyId/overrides
+/// [Admin] Set a feature flag override for any agency
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/subscriptions/{agencyId}/overrides",
+    params(("agencyId" = Uuid, Path, description = "Agency UUID")),
+    request_body = SetOverrideDto,
+    responses(
+        (status = 201, description = "Override set"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn admin_set_override(
     State(state): State<AppState>,
     Path(agency_id): Path<Uuid>,
-    // Removed: Extension(actor): Extension<ResolvedAgency>
-    // Same reason as admin_change_plan above.
     Json(dto): Json<SetOverrideDto>,
 ) -> Result<impl IntoResponse, AppError> {
     state
@@ -316,14 +462,27 @@ pub async fn admin_set_override(
             &dto.feature_key,
             &dto.value,
             dto.reason.as_deref(),
-            None, // overridden_by: platform admin has no agency UUID
+            None,
             dto.expires_at,
         )
         .await?;
     Ok(StatusCode::CREATED)
 }
 
-/// DELETE /api/v1/admin/subscriptions/:agencyId/overrides/:featureKey
+/// [Admin] Remove a feature flag override for any agency
+#[utoipa::path(
+    delete,
+    path = "/api/v1/admin/subscriptions/{agencyId}/overrides/{featureKey}",
+    params(
+        ("agencyId"   = Uuid,   Path, description = "Agency UUID"),
+        ("featureKey" = String, Path, description = "Feature flag key"),
+    ),
+    responses(
+        (status = 204, description = "Override removed"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn admin_remove_override(
     State(state): State<AppState>,
     Path((agency_id, key)): Path<(Uuid, String)>,
@@ -336,7 +495,18 @@ pub async fn admin_remove_override(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// DELETE /api/v1/admin/subscriptions/:agencyId
+/// [Admin] Cancel the subscription for any agency
+#[utoipa::path(
+    delete,
+    path = "/api/v1/admin/subscriptions/{agencyId}",
+    params(("agencyId" = Uuid, Path, description = "Agency UUID")),
+    request_body = CancelDto,
+    responses(
+        (status = 200, description = "Subscription cancelled"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn admin_cancel_subscription(
     State(state): State<AppState>,
     Path(agency_id): Path<Uuid>,

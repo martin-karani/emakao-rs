@@ -17,6 +17,7 @@ use crate::{
     infrastructure::db::resident_repository_sqlx::PgResidentRepo,
     presentation::{
         app_state::AppState,
+        error::ErrorResponse,
         extractors::TenantContext,
         http::{
             dto::resident::{InviteResidentDto, ListResidentsParams},
@@ -25,7 +26,17 @@ use crate::{
     },
 };
 
-/// GET /api/v1/residents
+#[utoipa::path(
+    get,
+    path = "/api/v1/residents",
+    params(ListResidentsParams),
+    responses(
+        (status = 200, description = "List of residents",           body = Vec<ResidentResponse>),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+    ),
+    tag = "Residents",
+    security(("bearer_token" = []))
+)]
 pub async fn list_residents(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -48,7 +59,19 @@ pub async fn list_residents(
     ))
 }
 
-/// GET /api/v1/residents/:id
+/// Get a single resident by UUID
+#[utoipa::path(
+    get,
+    path = "/api/v1/residents/{id}",
+    params(("id" = Uuid, Path, description = "Resident UUID")),
+    responses(
+        (status = 200, description = "Resident found",              body = ResidentResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 404, description = "Resident not found",          body = ErrorResponse),
+    ),
+    tag = "Residents",
+    security(("bearer_token" = []))
+)]
 pub async fn get_resident(
     State(state): State<AppState>,
     ctx: TenantContext,
@@ -60,7 +83,18 @@ pub async fn get_resident(
     Ok(Json(ResidentResponse::from(resident)))
 }
 
-/// POST /api/v1/residents
+#[utoipa::path(
+    post,
+    path = "/api/v1/residents",
+    request_body = InviteResidentDto,
+    responses(
+        (status = 201, description = "Resident invited",            body = ResidentResponse),
+        (status = 401, description = "Missing or invalid JWT",      body = ErrorResponse),
+        (status = 422, description = "Validation error",            body = ErrorResponse),
+    ),
+    tag = "Residents",
+    security(("bearer_token" = []))
+)]
 pub async fn invite_resident(
     State(state): State<AppState>,
     ctx: TenantContext,

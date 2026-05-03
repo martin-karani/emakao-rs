@@ -1,11 +1,12 @@
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::{Date, OffsetDateTime};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::ledger::{BalanceSummary, LedgerEntry, LedgerEntryType};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct LedgerEntryResponse {
     pub id: Uuid,
     pub agreement_id: Option<Uuid>,
@@ -44,7 +45,7 @@ impl From<LedgerEntry> for LedgerEntryResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BalanceSummaryResponse {
     pub agreement_id: Uuid,
     pub total_charged: Decimal,

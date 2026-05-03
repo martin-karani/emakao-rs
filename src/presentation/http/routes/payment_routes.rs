@@ -11,5 +11,5 @@ use crate::presentation::{
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/payments", get(list_claims).post(submit_claim))
-        .route("/api/v1/payments/:id/review", post(review_claim))
+        .route("/api/v1/payments/{id}/review", post(review_claim))
 }
