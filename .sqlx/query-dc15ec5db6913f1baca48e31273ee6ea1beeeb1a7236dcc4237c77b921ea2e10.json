@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT u.id, u.email, u.phone, u.password_hash, u.is_active,\n                   u.must_change_password, uar.role, uar.agency_id\n            FROM users u\n            JOIN user_agency_roles uar ON uar.user_id = u.id\n            WHERE uar.agency_id = $1\n              AND uar.role IN ('admin','manager','agent','platform_admin')\n              AND uar.is_active = true\n              AND (\n                  ($2 = 'email' AND u.email = $3) OR\n                  ($2 = 'phone' AND u.phone = $3)\n              )\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "phone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "must_change_password",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "agency_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dc15ec5db6913f1baca48e31273ee6ea1beeeb1a7236dcc4237c77b921ea2e10"
+}

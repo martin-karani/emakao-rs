@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM portal_user_index WHERE contact=$1 AND contact_type=$2 AND portal=$3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7b37d9aa9ace7a4760a9632cbe18407661e141f7c55318067e2cfb8e965ae77c"
+}

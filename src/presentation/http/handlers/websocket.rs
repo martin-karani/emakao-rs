@@ -15,8 +15,6 @@ use crate::{
     presentation::app_state::AppState,
 };
 
-type ConversationChannels = Arc<dashmap::DashMap<Uuid, broadcast::Sender<String>>>;
-
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,

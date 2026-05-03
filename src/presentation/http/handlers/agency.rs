@@ -1,90 +1,36 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use garde::Validate;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, use_cases::agency::provision::ProvisionAgencyInput},
-    presentation::app_state::AppState,
+    presentation::{
+        app_state::AppState,
+        error::ErrorResponse,
+        http::{
+            dto::{
+                agency::CreateAgencyDto,
+                openfga::{DeleteTupleDto, UpdateAuthModelDto, WriteTupleDto},
+            },
+            responses::{agency::AgencyResponse, openfga::ModelVersionResponse},
+        },
+    },
 };
-
-// ── DTOs ──────────────────────────────────────────────────────────────────────
-
-#[derive(Deserialize, Validate)]
-pub struct CreateAgencyDto {
-    #[garde(length(min = 2, max = 120))]
-    pub name: String,
-
-    /// Lowercase, hyphen-separated, e.g. "acme-realty".
-    /// Must be unique; becomes both the URL slug and the Postgres schema prefix.
-    #[garde(pattern(r"^[a-z0-9]+(?:-[a-z0-9]+)*$"), length(min = 2, max = 63))]
-    pub slug: String,
-
-    #[garde(length(min = 2, max = 2))]
-    pub country_code: String,
-
-    #[garde(length(min = 3, max = 3))]
-    pub currency_code: String,
-}
-
-#[derive(Serialize)]
-pub struct AgencyResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub slug: String,
-    pub schema_name: String,
-    pub fga_store_id: Option<String>,
-    pub status: String,
-}
-
-// ── Tuple management DTOs ─────────────────────────────────────────────────────
-
-/// Body for `POST /api/v1/admin/agencies/:agency_id/permissions/tuples`.
-#[derive(Deserialize, Validate)]
-pub struct WriteTupleDto {
-    /// e.g. "user:550e8400-e29b-41d4-a716-446655440000"
-    #[garde(length(min = 5))]
-    pub user: String,
-    /// e.g. "manager", "viewer", "admin"
-    #[garde(length(min = 1))]
-    pub relation: String,
-    /// e.g. "property:123e4567-e89b-12d3-a456-426614174000"
-    #[garde(length(min = 5))]
-    pub object: String,
-}
-
-/// Body for `DELETE /api/v1/admin/agencies/:agency_id/permissions/tuples`.
-#[derive(Deserialize)]
-pub struct DeleteTupleDto {
-    pub user: String,
-    pub relation: String,
-    pub object: String,
-}
-
-/// Body for `POST /api/v1/admin/agencies/:agency_id/permissions/model`.
-///
-/// Pass a full OpenFGA JSON model.  A new immutable model version is created
-/// in the agency's store; existing tuples continue to resolve correctly until
-/// the next `check` call picks up the new version.
-#[derive(Deserialize)]
-pub struct UpdateAuthModelDto {
-    /// Full authorization model JSON, e.g.:
-    /// `{ "schema_version": "1.1", "type_definitions": [...] }`
-    pub model: serde_json::Value,
-}
-
-#[derive(Serialize)]
-pub struct ModelVersionResponse {
-    pub authorization_model_id: String,
-}
-
-// ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// POST /api/v1/admin/agencies
 ///
 /// Creates an agency row, provisions the tenant Postgres schema (migrations
 /// included), creates an OpenFGA store, seeds the default authorization model,
 /// and persists the `store_id`.  All in one atomic-ish flow.
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/agencies",
+    request_body = CreateAgencyDto,
+    responses(
+        (status = 201, description = "Agency created", body = AgencyResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn create_agency(
     State(state): State<AppState>,
     Json(dto): Json<CreateAgencyDto>,
@@ -123,6 +69,18 @@ pub async fn create_agency(
 /// ```json
 /// { "user": "user:abc123", "relation": "manager", "object": "property:xyz789" }
 /// ```
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/agencies/{fga_store_id}/permissions/tuples",
+    params(("fga_store_id" = String, Path, description = "OpenFGA store ID")),
+    request_body = WriteTupleDto,
+    responses(
+        (status = 204, description = "Permission tuple written"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn write_permission_tuple(
     State(state): State<AppState>,
     axum::extract::Path(fga_store_id): axum::extract::Path<String>,
@@ -141,6 +99,17 @@ pub async fn write_permission_tuple(
 /// DELETE /api/v1/admin/agencies/:fga_store_id/permissions/tuples
 ///
 /// Revoke a relation tuple from the agency's FGA store.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/admin/agencies/{fga_store_id}/permissions/tuples",
+    params(("fga_store_id" = String, Path, description = "OpenFGA store ID")),
+    request_body = DeleteTupleDto,
+    responses(
+        (status = 204, description = "Permission tuple deleted"),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn delete_permission_tuple(
     State(state): State<AppState>,
     axum::extract::Path(fga_store_id): axum::extract::Path<String>,
@@ -161,6 +130,17 @@ pub async fn delete_permission_tuple(
 /// Use this when an agency needs custom types or relations beyond the default
 /// model.  Old model versions remain intact; only new `check` calls will
 /// evaluate the new version.
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/agencies/{fga_store_id}/permissions/model",
+    params(("fga_store_id" = String, Path, description = "OpenFGA store ID")),
+    request_body = UpdateAuthModelDto,
+    responses(
+        (status = 200, description = "Authorization model updated", body = ModelVersionResponse),
+        (status = 401, description = "Missing or invalid admin token", body = ErrorResponse),
+    ),
+    tag = "Admin"
+)]
 pub async fn update_auth_model(
     State(state): State<AppState>,
     axum::extract::Path(fga_store_id): axum::extract::Path<String>,

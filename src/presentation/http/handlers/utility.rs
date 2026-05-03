@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
@@ -21,9 +21,8 @@ use crate::{
     domain::{auth::AuthenticatedUser, subscription::FeatureKey},
     infrastructure::db::utility_repository_sqlx::PgUtilityRepo,
     presentation::{
-        app_state::AppState,
         error::ErrorResponse,
-        extractors::TenantContext,
+        extractors::AgencyContext,
         http::{
             dto::utility::{CreateMeterDto, ListBillsParams, ListMetersParams, RecordReadingDto},
             responses::utility::{UtilityBillResponse, UtilityMeterResponse},
@@ -45,8 +44,7 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_meters(
-    State(_state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListMetersParams>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -85,8 +83,7 @@ pub async fn list_meters(
     security(("bearer_token" = []))
 )]
 pub async fn get_meter(
-    State(_state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -113,8 +110,7 @@ pub async fn get_meter(
     security(("bearer_token" = []))
 )]
 pub async fn create_meter(
-    State(_state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateMeterDto>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -153,8 +149,7 @@ pub async fn create_meter(
     security(("bearer_token" = []))
 )]
 pub async fn record_reading(
-    State(_state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
@@ -190,8 +185,7 @@ pub async fn record_reading(
     security(("bearer_token" = []))
 )]
 pub async fn list_bills(
-    State(_state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListBillsParams>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -237,8 +231,7 @@ pub async fn list_bills(
     security(("bearer_token" = []))
 )]
 pub async fn generate_bill(
-    State(_state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {

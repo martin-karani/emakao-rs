@@ -1,8 +1,10 @@
+use rust_decimal::Decimal;
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::domain::disbursement::{Disbursement, DisbursementMethod, DisbursementStatus};
 use crate::domain::owner::{Owner, OwnerPortalStatus};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -12,7 +14,7 @@ pub struct OwnerResponse {
     pub display_name: String,
     pub first_name: String,
     pub last_name: String,
-    pub email: String,
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub company_name: Option<String>,
     pub kra_pin: Option<String>,
@@ -43,6 +45,45 @@ impl From<Owner> for OwnerResponse {
             portal_status: o.portal_status,
             created_at: o.created_at,
             updated_at: o.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DisbursementResponse {
+    pub id: Uuid,
+    pub agency_id: Uuid,
+    pub owner_id: Uuid,
+    pub property_id: Uuid,
+    pub amount_kes: Decimal,
+    pub method: DisbursementMethod,
+    pub reference: Option<String>,
+    pub status: DisbursementStatus,
+    pub period_start: time::Date,
+    pub period_end: time::Date,
+    pub notes: Option<String>,
+    pub created_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+impl From<Disbursement> for DisbursementResponse {
+    fn from(d: Disbursement) -> Self {
+        Self {
+            id: d.id,
+            agency_id: d.agency_id,
+            owner_id: d.owner_id,
+            property_id: d.property_id,
+            amount_kes: d.amount_kes,
+            method: d.method,
+            reference: d.reference,
+            status: d.status,
+            period_start: d.period_start,
+            period_end: d.period_end,
+            notes: d.notes,
+            created_by: d.created_by,
+            created_at: d.created_at,
+            updated_at: d.updated_at,
         }
     }
 }

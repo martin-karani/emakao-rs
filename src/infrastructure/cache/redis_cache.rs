@@ -37,6 +37,13 @@ impl RedisCache {
         Ok(())
     }
 
+    pub async fn ping(&self) -> Result<String, AppError> {
+        self.pool
+            .ping::<String>()
+            .await
+            .map_err(|e| AppError::ExternalService(e.to_string()))
+    }
+
     pub async fn revoke_token(&self, jti: &str, ttl: Duration) -> Result<(), AppError> {
         self.set(&format!("revoked:{jti}"), "1", Some(ttl)).await
     }

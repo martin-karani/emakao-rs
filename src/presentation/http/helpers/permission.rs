@@ -43,7 +43,7 @@ pub async fn require_permission(
 /// `Ok(())` only when **all** pass.  First failure short-circuits.
 ///
 /// Useful for multi-step handlers that require several permissions.
-pub async fn require_all_permissions(
+pub async fn require_permissions(
     openfga: Arc<dyn OpenFgaPort>,
     store_id: String,
     user_id: Uuid,

@@ -7,7 +7,10 @@ use crate::{
         errors::AppError,
         ports::resident_repository::{CreateResidentCommand, ResidentRepository},
     },
-    domain::resident::{PortalStatus, Resident},
+    domain::{
+        payment::{ClaimStatus, PaymentClaim, PaymentMethodType},
+        resident::{PortalStatus, Resident},
+    },
 };
 
 pub struct PgResidentRepo {
@@ -29,10 +32,10 @@ impl From<PgPool> for PgResidentRepo {
 #[derive(sqlx::FromRow)]
 struct ResidentRow {
     id: Uuid,
-    user_id: Uuid,
+    user_id: Option<Uuid>,
     first_name: String,
     last_name: String,
-    email: String,
+    email: Option<String>,
     phone: Option<String>,
     national_id: Option<String>,
     portal_status: String,
@@ -69,7 +72,7 @@ impl From<ResidentRow> for Resident {
 impl ResidentRepository for PgResidentRepo {
     async fn find_all(
         &self,
-        agency_id: Uuid,
+        _agency_id: Uuid,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Resident>, AppError> {
@@ -79,12 +82,9 @@ impl ResidentRepository for PgResidentRepo {
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
                    r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
             FROM residents r
-            JOIN users u ON u.id = r.user_id
-            WHERE u.agency_id = $1
             ORDER BY r.created_at DESC
-            LIMIT $2 OFFSET $3
+            LIMIT $1 OFFSET $2
             "#,
-            agency_id,
             limit,
             offset
         )
@@ -94,18 +94,33 @@ impl ResidentRepository for PgResidentRepo {
         Ok(rows.into_iter().map(Resident::from).collect())
     }
 
-    async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Resident>, AppError> {
+    async fn find_by_id(&self, _agency_id: Uuid, id: Uuid) -> Result<Option<Resident>, AppError> {
         let row = sqlx::query_as!(
             ResidentRow,
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
                    r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
             FROM residents r
-            JOIN users u ON u.id = r.user_id
-            WHERE r.id = $1 AND u.agency_id = $2
+            WHERE r.id = $1
             "#,
-            id,
-            agency_id
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(Resident::from))
+    }
+
+    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Resident>, AppError> {
+        let row = sqlx::query_as!(
+            ResidentRow,
+            r#"
+            SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
+                   r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
+            FROM residents r
+            WHERE r.user_id = $1
+            "#,
+            user_id
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -115,7 +130,7 @@ impl ResidentRepository for PgResidentRepo {
 
     async fn find_by_email(
         &self,
-        agency_id: Uuid,
+        _agency_id: Uuid,
         email: &str,
     ) -> Result<Option<Resident>, AppError> {
         let row = sqlx::query_as!(
@@ -124,12 +139,10 @@ impl ResidentRepository for PgResidentRepo {
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
                    r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
             FROM residents r
-            JOIN users u ON u.id = r.user_id
-            WHERE r.email = $1 AND u.agency_id = $2
+            WHERE r.email = $1
             LIMIT 1
             "#,
-            email,
-            agency_id
+            email
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -140,28 +153,9 @@ impl ResidentRepository for PgResidentRepo {
     async fn create(&self, cmd: CreateResidentCommand) -> Result<Resident, AppError> {
         let mut tx = self.pool.begin().await?;
 
-        let user_id = Uuid::new_v4();
-
-        sqlx::query!(
-            r#"
-            INSERT INTO users (id, agency_id, email, password_hash, role, is_active)
-            VALUES ($1, $2, $3, '', 'resident', false)
-            ON CONFLICT (agency_id, email) DO NOTHING
-            "#,
-            user_id,
-            cmd.agency_id,
-            cmd.email
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        let real_user_id: Uuid = sqlx::query_scalar!(
-            "SELECT id FROM users WHERE agency_id = $1 AND email = $2",
-            cmd.agency_id,
-            cmd.email
-        )
-        .fetch_one(&mut *tx)
-        .await?;
+        // Create user if not exists? No – user is created by invite flow.
+        // This method is called after user creation; just insert the resident profile.
+        let user_id = cmd.user_id;
 
         let row = sqlx::query_as!(
             ResidentRow,
@@ -170,23 +164,114 @@ impl ResidentRepository for PgResidentRepo {
                 id, user_id, first_name, last_name, email,
                 phone, national_id, portal_status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'invited')
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING
                 id, user_id, first_name, last_name, email,
                 phone, national_id, portal_status, created_at, updated_at
             "#,
             Uuid::new_v4(),
-            real_user_id,
+            user_id,
             cmd.first_name,
             cmd.last_name,
             cmd.email,
             cmd.phone,
-            cmd.national_id
+            cmd.national_id,
+            "invited"
         )
         .fetch_one(&mut *tx)
         .await?;
 
         tx.commit().await?;
         Ok(Resident::from(row))
+    }
+
+    async fn find_payment_claims_by_resident_id(
+        &self,
+        resident_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<PaymentClaim>, AppError> {
+        struct PaymentClaimRow {
+            id: Uuid,
+            property_id: Uuid,
+            agreement_id: Option<Uuid>,
+            resident_id: Option<Uuid>,
+            method_type: String,
+            amount_kes: rust_decimal::Decimal,
+            reference_code: Option<String>,
+            proof_url: Option<String>,
+            notes: Option<String>,
+            status: String,
+            reviewed_by: Option<Uuid>,
+            reviewed_at: Option<time::OffsetDateTime>,
+            review_notes: Option<String>,
+            rejection_reason: Option<String>,
+            ledger_entry_id: Option<Uuid>,
+            submitted_by: Uuid,
+            created_at: time::OffsetDateTime,
+            updated_at: time::OffsetDateTime,
+        }
+
+        let rows = sqlx::query_as!(
+            PaymentClaimRow,
+            r#"
+        SELECT id, property_id, agreement_id, resident_id,
+               method_type, amount_kes, reference_code, proof_url,
+               notes, status, reviewed_by, reviewed_at,
+               review_notes, rejection_reason, ledger_entry_id,
+               submitted_by, created_at, updated_at
+        FROM payment_claims
+        WHERE resident_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+            resident_id,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        fn parse_method(s: &str) -> PaymentMethodType {
+            match s {
+                "mpesa_paybill" => PaymentMethodType::MpesaPaybill,
+                "mpesa_till" => PaymentMethodType::MpesaTill,
+                "bank_transfer" => PaymentMethodType::BankTransfer,
+                _ => PaymentMethodType::Cash,
+            }
+        }
+
+        fn parse_status(s: &str) -> ClaimStatus {
+            match s {
+                "approved" => ClaimStatus::Approved,
+                "rejected" => ClaimStatus::Rejected,
+                _ => ClaimStatus::PendingReview,
+            }
+        }
+
+        rows.into_iter()
+            .map(|r| {
+                Ok(PaymentClaim {
+                    id: r.id,
+                    property_id: r.property_id,
+                    agreement_id: r.agreement_id,
+                    resident_id: r.resident_id,
+                    method_type: parse_method(&r.method_type),
+                    amount_kes: r.amount_kes,
+                    reference_code: r.reference_code,
+                    proof_url: r.proof_url,
+                    notes: r.notes,
+                    status: parse_status(&r.status),
+                    reviewed_by: r.reviewed_by,
+                    reviewed_at: r.reviewed_at,
+                    review_notes: r.review_notes,
+                    rejection_reason: r.rejection_reason,
+                    ledger_entry_id: r.ledger_entry_id,
+                    submitted_by: r.submitted_by,
+                    created_at: r.created_at,
+                    updated_at: r.updated_at,
+                })
+            })
+            .collect()
     }
 }

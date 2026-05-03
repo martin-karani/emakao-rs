@@ -63,7 +63,7 @@ pub fn agency_routes(state: AppState) -> Router<AppState> {
 }
 
 /// Platform admin only — no subscription check (admins always have access).
-pub fn admin_routes(state: AppState) -> Router<AppState> {
+pub fn admin_routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route(
             "/api/v1/admin/subscriptions/{agency_id}",

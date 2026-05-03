@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO property_owners (property_id, owner_id, ownership_percent)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (property_id, owner_id)\n            DO UPDATE SET ownership_percent = EXCLUDED.ownership_percent\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "94d689d0f95dce04394f62da21a04013bec7b79b4303b3fbff2aca3131bc82d5"
+}

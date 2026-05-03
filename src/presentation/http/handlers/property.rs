@@ -20,7 +20,8 @@ use crate::{
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
-        extractors::TenantContext,
+        extractors::AgencyContext,
+        http::helpers::permission::require_permission,
         http::{
             dto::property::{CreatePropertyDto, ListPropertiesParams, UpdatePropertyDto},
             responses::property::PropertyResponse,
@@ -43,9 +44,21 @@ use crate::{
 )]
 pub async fn list_properties(
     State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Query(params): Query<ListPropertiesParams>,
 ) -> Result<impl IntoResponse, AppError> {
+    if let Some(store_id) = ctx.agency.fga_store_id.as_deref() {
+        require_permission(
+            state.openfga.as_ref(),
+            store_id,
+            user.user_id,
+            "staff",
+            &format!("agency:{}", ctx.agency.id),
+        )
+        .await?;
+    }
+
     let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = ListPropertiesUseCase::new(repo);
     let items = usecase
@@ -81,9 +94,21 @@ pub async fn list_properties(
 )]
 pub async fn get_property(
     State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    if let Some(store_id) = ctx.agency.fga_store_id.as_deref() {
+        require_permission(
+            state.openfga.as_ref(),
+            store_id,
+            user.user_id,
+            "can_view",
+            &format!("property:{id}"),
+        )
+        .await?;
+    }
+
     let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = GetPropertyUseCase::new(repo);
     let property = usecase.execute(ctx.agency.id, id).await?;
@@ -106,12 +131,23 @@ pub async fn get_property(
 )]
 pub async fn create_property(
     State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreatePropertyDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
+
+    if let Some(store_id) = ctx.agency.fga_store_id.as_deref() {
+        require_permission(
+            state.openfga.as_ref(),
+            store_id,
+            user.user_id,
+            "staff",
+            &format!("agency:{}", ctx.agency.id),
+        )
+        .await?;
+    }
 
     let repo = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
     let usecase = CreatePropertyUseCase::new(repo);
@@ -161,11 +197,23 @@ pub async fn create_property(
 )]
 pub async fn update_property(
     State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdatePropertyDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
+
+    if let Some(store_id) = ctx.agency.fga_store_id.as_deref() {
+        require_permission(
+            state.openfga.as_ref(),
+            store_id,
+            user.user_id,
+            "can_edit",
+            &format!("property:{id}"),
+        )
+        .await?;
+    }
 
     let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = UpdatePropertyUseCase::new(repo);
@@ -200,9 +248,21 @@ pub async fn update_property(
 )]
 pub async fn delete_property(
     State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    if let Some(store_id) = ctx.agency.fga_store_id.as_deref() {
+        require_permission(
+            state.openfga.as_ref(),
+            store_id,
+            user.user_id,
+            "can_edit",
+            &format!("property:{id}"),
+        )
+        .await?;
+    }
+
     let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = DeletePropertyUseCase::new(repo);
     usecase.execute(ctx.agency.id, id).await?;

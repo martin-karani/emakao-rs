@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
@@ -17,9 +17,8 @@ use crate::{
     domain::auth::AuthenticatedUser,
     infrastructure::db::ledger_repository_sqlx::PgLedgerRepo,
     presentation::{
-        app_state::AppState,
         error::ErrorResponse,
-        extractors::TenantContext,
+        extractors::AgencyContext,
         http::{
             dto::ledger::{ListLedgerParams, PostChargeDto},
             responses::ledger::{BalanceSummaryResponse, LedgerEntryResponse},
@@ -43,8 +42,7 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_entries(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Path(agreement_id): Path<Uuid>,
     Query(params): Query<ListLedgerParams>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -81,8 +79,7 @@ pub async fn list_entries(
     security(("bearer_token" = []))
 )]
 pub async fn get_balance(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Path(agreement_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let repo = Arc::new(PgLedgerRepo::from(ctx.pool));
@@ -107,8 +104,7 @@ pub async fn get_balance(
     security(("bearer_token" = []))
 )]
 pub async fn post_charge(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Path(agreement_id): Path<Uuid>,
     Json(dto): Json<PostChargeDto>,

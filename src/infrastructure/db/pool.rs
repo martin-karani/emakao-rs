@@ -11,26 +11,26 @@ use uuid::Uuid;
 
 const POOL_IDLE_TIMEOUT_SECS: u64 = 300;
 
-/// Injected into every authenticated request by `tenant_resolver` middleware.
+/// Injected into every authenticated request by `resolve_agency_context` middleware.
 #[derive(Clone)]
-pub struct TenantPool(pub PgPool);
+pub struct AgencyPool(pub PgPool);
 
-/// Manages database pools for the platform and all tenant schemas.
+/// Manages database pools for the platform and all agency schemas.
 #[derive(Clone)]
-pub struct TenantPoolManager {
+pub struct AgencyPoolManager {
     platform_pool: PgPool,
-    tenant_pools: Arc<DashMap<String, PgPool>>,
-    tenant_database_url: String,
-    max_connections_per_tenant: u32,
+    agency_pools: Arc<DashMap<String, PgPool>>,
+    agency_database_url: String,
+    max_connections_per_agency: u32,
 }
 
-impl TenantPoolManager {
-    pub fn new(platform_pool: PgPool, tenant_database_url: String) -> Self {
+impl AgencyPoolManager {
+    pub fn new(platform_pool: PgPool, agency_database_url: String) -> Self {
         Self {
             platform_pool,
-            tenant_pools: Arc::new(DashMap::new()),
-            tenant_database_url,
-            max_connections_per_tenant: 10,
+            agency_pools: Arc::new(DashMap::new()),
+            agency_database_url,
+            max_connections_per_agency: 10,
         }
     }
 
@@ -39,10 +39,14 @@ impl TenantPoolManager {
         &self.platform_pool
     }
 
+    pub fn cached_agency_pools(&self) -> usize {
+        self.agency_pools.len()
+    }
+
     /// Returns (or lazily creates) a schema-scoped tenant pool.
-    /// Called by `tenant_resolver` on every authenticated request.
+    /// Called by `resolve_agency_context` on every authenticated request.
     pub async fn for_tenant(&self, schema_name: &str) -> Result<PgPool> {
-        if let Some(pool) = self.tenant_pools.get(schema_name) {
+        if let Some(pool) = self.agency_pools.get(schema_name) {
             return Ok(pool.clone());
         }
 
@@ -51,7 +55,7 @@ impl TenantPoolManager {
             .await
             .with_context(|| format!("could not build pool for schema '{schema_name}'"))?;
 
-        self.tenant_pools
+        self.agency_pools
             .insert(schema_name.to_owned(), pool.clone());
         tracing::debug!(schema = schema_name, "tenant pool created");
         Ok(pool)
@@ -78,7 +82,7 @@ impl TenantPoolManager {
         let schema = schema_name.to_owned();
 
         let opts: PgConnectOptions = self
-            .tenant_database_url
+            .agency_database_url
             .parse()
             .context("invalid TENANT_DATABASE_URL")?;
 
@@ -118,7 +122,7 @@ impl TenantPoolManager {
         let schema = schema_name.to_owned();
 
         let opts: PgConnectOptions = self
-            .tenant_database_url
+            .agency_database_url
             .parse()
             .context("invalid TENANT_DATABASE_URL")?;
 
@@ -127,7 +131,7 @@ impl TenantPoolManager {
             .log_slow_statements(LevelFilter::Warn, std::time::Duration::from_secs(1));
 
         PgPoolOptions::new()
-            .max_connections(self.max_connections_per_tenant)
+            .max_connections(self.max_connections_per_agency)
             .idle_timeout(std::time::Duration::from_secs(POOL_IDLE_TIMEOUT_SECS))
             .after_connect(move |conn, _| {
                 let s = schema.clone();

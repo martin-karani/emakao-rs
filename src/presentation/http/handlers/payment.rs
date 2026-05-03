@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
@@ -20,9 +20,8 @@ use crate::{
     domain::auth::AuthenticatedUser,
     infrastructure::db::payment_repository_sqlx::PgPaymentRepo,
     presentation::{
-        app_state::AppState,
         error::ErrorResponse,
-        extractors::TenantContext,
+        extractors::AgencyContext,
         http::{
             dto::payment::{ListClaimsParams, ReviewClaimDto, SubmitClaimDto},
             responses::payment::PaymentClaimResponse,
@@ -30,7 +29,6 @@ use crate::{
     },
 };
 
-/// List payment claims, optionally filtered by property or status
 #[utoipa::path(
     get,
     path = "/api/v1/payments",
@@ -43,8 +41,7 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_claims(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Query(params): Query<ListClaimsParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let repo = Arc::new(PgPaymentRepo::from(ctx.pool));
@@ -82,8 +79,7 @@ pub async fn list_claims(
     security(("bearer_token" = []))
 )]
 pub async fn submit_claim(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Json(dto): Json<SubmitClaimDto>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -125,8 +121,7 @@ pub async fn submit_claim(
     security(("bearer_token" = []))
 )]
 pub async fn review_claim(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
     Json(dto): Json<ReviewClaimDto>,

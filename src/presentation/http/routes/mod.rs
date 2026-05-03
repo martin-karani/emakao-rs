@@ -1,7 +1,3 @@
-use axum::Router;
-
-use crate::presentation::app_state::AppState;
-
 pub mod agency_routes;
 pub mod agreement_routes;
 pub mod auth_routes;

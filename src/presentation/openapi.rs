@@ -8,9 +8,16 @@ use utoipa::OpenApi;
         crate::presentation::http::handlers::health::ready,
 
         // ── Auth ──────────────────────────────────────────────────────────────
-        crate::presentation::http::handlers::auth::login,
-        crate::presentation::http::handlers::auth::register,
+        crate::presentation::http::handlers::auth::staff_login,
+        crate::presentation::http::handlers::auth::accept_invite,
+        crate::presentation::http::handlers::auth::change_password,
         crate::presentation::http::handlers::auth::refresh,
+
+        // ── Agency Admin ─────────────────────────────────────────────────────
+        crate::presentation::http::handlers::agency::create_agency,
+        crate::presentation::http::handlers::agency::write_permission_tuple,
+        crate::presentation::http::handlers::agency::delete_permission_tuple,
+        crate::presentation::http::handlers::agency::update_auth_model,
 
         // ── Properties ────────────────────────────────────────────────────────
         crate::presentation::http::handlers::property::list_properties,
@@ -23,6 +30,8 @@ use utoipa::OpenApi;
         crate::presentation::http::handlers::resident::list_residents,
         crate::presentation::http::handlers::resident::get_resident,
         crate::presentation::http::handlers::resident::invite_resident,
+        crate::presentation::http::handlers::resident::get_my_profile,
+        crate::presentation::http::handlers::resident::list_my_payments,
 
         // ── Agreements ────────────────────────────────────────────────────────
         crate::presentation::http::handlers::agreement::list_agreements,
@@ -50,8 +59,12 @@ use utoipa::OpenApi;
         crate::presentation::http::handlers::owner::list_owners,
         crate::presentation::http::handlers::owner::get_owner,
         crate::presentation::http::handlers::owner::create_owner,
+        crate::presentation::http::handlers::owner::invite_owner,
         crate::presentation::http::handlers::owner::update_owner,
         crate::presentation::http::handlers::owner::assign_owner_to_property,
+        crate::presentation::http::handlers::owner::get_my_profile,
+        crate::presentation::http::handlers::owner::list_my_properties,
+        crate::presentation::http::handlers::owner::list_my_disbursements,
 
         // ── Vendors ───────────────────────────────────────────────────────────
         crate::presentation::http::handlers::vendor::list_vendors,
@@ -119,6 +132,14 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::auth::RefreshDto,
         crate::presentation::http::responses::auth::TokenResponse,
 
+        // ── Agency admin DTOs / responses ────────────────────────────────────
+        crate::presentation::http::dto::agency::CreateAgencyDto,
+        crate::presentation::http::dto::openfga::WriteTupleDto,
+        crate::presentation::http::dto::openfga::DeleteTupleDto,
+        crate::presentation::http::dto::openfga::UpdateAuthModelDto,
+        crate::presentation::http::responses::agency::AgencyResponse,
+        crate::presentation::http::responses::openfga::ModelVersionResponse,
+
         // ── Property DTOs / responses ─────────────────────────────────────────
         crate::presentation::http::dto::property::CreatePropertyDto,
         crate::presentation::http::dto::property::UpdatePropertyDto,
@@ -159,6 +180,8 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::owner::AssignOwnerDto,
         crate::presentation::http::dto::owner::ListOwnersParams,
         crate::presentation::http::responses::owner::OwnerResponse,
+        crate::presentation::http::responses::owner::DisbursementResponse,
+        crate::presentation::http::responses::property::PropertyWithPercentResponse,
 
         // ── Vendor DTOs / responses ───────────────────────────────────────────
         crate::presentation::http::dto::vendor::CreateVendorDto,
@@ -190,9 +213,14 @@ use utoipa::OpenApi;
         crate::presentation::http::handlers::webhook::CallbackItem,
 
         // ── Health responses ──────────────────────────────────────────────────
-        crate::presentation::http::handlers::health::HealthResponse,
-        crate::presentation::http::handlers::health::ReadyResponse,
-        crate::presentation::http::handlers::health::ComponentStatus,
+        crate::presentation::http::responses::health::HealthResponse,
+        crate::presentation::http::responses::health::ReadyResponse,
+        crate::presentation::http::responses::health::ComponentStatus,
+        crate::presentation::http::responses::health::DependencyStatus,
+        crate::presentation::http::responses::health::DatabasePoolStatus,
+        crate::presentation::http::responses::health::RuntimeStatus,
+        crate::presentation::http::responses::health::ServiceInfo,
+        crate::presentation::http::responses::health::ConfigurationStatus,
     )),
     tags(
         (name = "Health",       description = "Liveness and readiness probes"),

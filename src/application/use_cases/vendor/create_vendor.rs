@@ -2,11 +2,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    application::{
-        errors::AppError,
-        ports::vendor_repository::{VendorRepository},
-    },
-    domain::vendor::{CreateVendorCommand,Vendor},
+    application::{errors::AppError, ports::vendor_repository::VendorRepository},
+    domain::vendor::{CreateVendorCommand, Vendor},
 };
 
 pub struct CreateVendorUseCase {
@@ -30,21 +27,22 @@ impl CreateVendorUseCase {
 
     pub async fn execute(&self, input: CreateVendorInput) -> Result<Vendor, AppError> {
         if input.name.trim().is_empty() {
-            return Err(AppError::Validation("vendor name must not be empty".into()));
+            return Err(AppError::Validation("Vendor name must not be empty".into()));
         }
-
-        // Uses: VendorRepository::create
-        let vendor = self.repo.create(CreateVendorCommand {
-            agency_id: input.agency_id,
-            name: input.name,
-            contact_name: input.contact_name,
-            email: input.email,
-            phone: input.phone,
-            speciality: input.speciality,
-            notes: input.notes,
-        }).await?;
-
-        tracing::info!(vendor_id = %vendor.id, "vendor created");
+        let vendor = self
+            .repo
+            .create(CreateVendorCommand {
+                agency_id: input.agency_id,
+                user_id: None, // directory-only
+                name: input.name,
+                contact_name: input.contact_name,
+                email: input.email,
+                phone: input.phone,
+                speciality: input.speciality,
+                notes: input.notes,
+            })
+            .await?;
+        tracing::info!(vendor_id = %vendor.id, "vendor created without portal access");
         Ok(vendor)
     }
 }

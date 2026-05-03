@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
@@ -22,9 +22,8 @@ use crate::{
     domain::{auth::AuthenticatedUser, subscription::FeatureKey},
     infrastructure::db::maintenance_repository_sqlx::PgMaintenanceRepo,
     presentation::{
-        app_state::AppState,
         error::ErrorResponse,
-        extractors::TenantContext,
+        extractors::AgencyContext,
         http::{
             dto::maintenance::{CreateWorkOrderDto, ListWorkOrdersParams, UpdateWorkOrderDto},
             responses::maintenance::WorkOrderResponse,
@@ -46,8 +45,7 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_work_orders(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListWorkOrdersParams>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -87,8 +85,7 @@ pub async fn list_work_orders(
     security(("bearer_token" = []))
 )]
 pub async fn get_work_order(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -115,8 +112,7 @@ pub async fn get_work_order(
     security(("bearer_token" = []))
 )]
 pub async fn create_work_order(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateWorkOrderDto>,
@@ -161,8 +157,7 @@ pub async fn create_work_order(
     security(("bearer_token" = []))
 )]
 pub async fn update_work_order(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateWorkOrderDto>,

@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
@@ -20,6 +21,13 @@ pub struct PropertyResponse {
     pub updated_at: OffsetDateTime,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PropertyWithPercentResponse {
+    #[serde(flatten)]
+    pub property: PropertyResponse,
+    pub ownership_percent: Decimal,
+}
+
 impl From<Property> for PropertyResponse {
     fn from(p: Property) -> Self {
         Self {
@@ -34,6 +42,15 @@ impl From<Property> for PropertyResponse {
             created_by: p.created_by,
             created_at: p.created_at,
             updated_at: p.updated_at,
+        }
+    }
+}
+
+impl PropertyWithPercentResponse {
+    pub fn from(p: Property, percent: Decimal) -> Self {
+        Self {
+            property: PropertyResponse::from(p),
+            ownership_percent: percent,
         }
     }
 }

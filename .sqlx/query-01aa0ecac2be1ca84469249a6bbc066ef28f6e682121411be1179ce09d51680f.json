@@ -1,0 +1,111 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO owners (\n            id, user_id, first_name, last_name, email, phone,\n            company_name, kra_pin, bank_name, bank_account, mpesa_number,\n            portal_status\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n        RETURNING\n            id, user_id, first_name, last_name, email, phone,\n            company_name, kra_pin, bank_name, bank_account, mpesa_number,\n            portal_status, created_at, updated_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "first_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "last_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "phone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "company_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "kra_pin",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "bank_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "bank_account",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "mpesa_number",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "portal_status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "01aa0ecac2be1ca84469249a6bbc066ef28f6e682121411be1179ce09d51680f"
+}

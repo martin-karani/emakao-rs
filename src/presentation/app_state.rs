@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use dashmap::DashMap;
@@ -17,9 +18,7 @@ use crate::{
         },
         use_cases::{
             agency::provision::ProvisionAgencyUseCase,
-            auth::{
-                login::LoginUseCase, refresh_token::RefreshTokenUseCase, register::RegisterUseCase,
-            },
+            auth::refresh_token::RefreshTokenUseCase,
             subscription::{
                 cancel_subscription::CancelSubscriptionUseCase, change_plan::ChangePlanUseCase,
                 get_entitlements::GetEntitlementsUseCase, get_state::GetSubscriptionStateUseCase,
@@ -39,7 +38,7 @@ use crate::{
         cache::{redis_cache::RedisCache, subscription_cache::SubscriptionCache},
         db::{
             agency_repository_sqlx::PgAgencyRepo, auth_repository_sqlx::PgAuthRepo,
-            pool::TenantPoolManager, subscription_repository_sqlx::PgSubscriptionRepo,
+            pool::AgencyPoolManager, subscription_repository_sqlx::PgSubscriptionRepo,
         },
         email::smtp_adapter::SmtpEmail,
         openfga::openfga_adapter::OpenFgaAdapter,
@@ -48,12 +47,8 @@ use crate::{
     },
 };
 
-// ── Use-case bundles ──────────────────────────────────────────────────────────
-
 #[derive(Clone)]
 pub struct AuthUseCases {
-    pub login: Arc<LoginUseCase>,
-    pub register: Arc<RegisterUseCase>,
     pub refresh: Arc<RefreshTokenUseCase>,
 }
 
@@ -85,22 +80,27 @@ pub struct AgencyUseCases {
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
-    pub tenant_pools: Arc<TenantPoolManager>,
+    pub started_at: time::OffsetDateTime,
+    pub started_instant: Instant,
+    pub tenant_pools: Arc<AgencyPoolManager>,
     pub redis_cache: Arc<RedisCache>,
     pub auth_port: Arc<dyn AuthPort>,
-    pub auth: Arc<AuthUseCases>,
+    pub auth_repo: Arc<dyn AuthRepository>,
+    pub auth: Arc<AuthUseCases>, // only refresh token
     pub subscription: Arc<SubscriptionUseCases>,
-    pub agency: Arc<AgencyUseCases>, // ← NEW
+    pub agency: Arc<AgencyUseCases>,
     pub mpesa: Arc<MpesaAdapter>,
     pub email: Arc<dyn EmailPort>,
     pub sms: Arc<dyn SmsPort>,
     pub websocket_channels: Arc<DashMap<Uuid, broadcast::Sender<String>>>,
-    /// Shared OpenFGA adapter — use in handlers for runtime permission checks.
     pub openfga: Arc<dyn OpenFgaPort>,
 }
 
 impl AppState {
     pub async fn build(cfg: Arc<Config>) -> Result<Self> {
+        let started_at = time::OffsetDateTime::now_utc();
+        let started_instant = Instant::now();
+
         // ── Platform DB ───────────────────────────────────────────────────────
         let platform_pool = PgPoolOptions::new()
             .max_connections(cfg.db_max_connections)
@@ -110,10 +110,13 @@ impl AppState {
             .context("failed to connect to platform postgres")?;
 
         // ── Tenant pool manager ───────────────────────────────────────────────
-        let tenant_pools = Arc::new(TenantPoolManager::new(
+        let tenant_pools = Arc::new(AgencyPoolManager::new(
             platform_pool.clone(),
             cfg.tenant_database_url.clone(),
         ));
+
+        // ── Auth repository (new identity layer) ──────────────────────────────
+        let auth_repo: Arc<dyn AuthRepository> = Arc::new(PgAuthRepo::new(platform_pool.clone()));
 
         // ── Redis ─────────────────────────────────────────────────────────────
         let redis = RedisPool::new(
@@ -165,15 +168,10 @@ impl AppState {
             cfg.mpesa_base_url.clone(),
         ));
 
-        // The concrete adapter is constructed first so we can use it both as
-        // `Arc<dyn OpenFgaPort>` (for the AppState field) and pass it directly
-        // into ProvisionAgencyUseCase without downcasting.
         let openfga_adapter = Arc::new(OpenFgaAdapter::new(cfg.openfga_url.clone()));
         let openfga: Arc<dyn OpenFgaPort> = Arc::clone(&openfga_adapter) as Arc<dyn OpenFgaPort>;
 
         // ── Platform repositories ─────────────────────────────────────────────
-        let auth_repo: Arc<dyn AuthRepository> = Arc::new(PgAuthRepo::new(platform_pool.clone()));
-
         let agency_repo: Arc<dyn AgencyRepository> =
             Arc::new(PgAgencyRepo::new(platform_pool.clone()));
 
@@ -204,16 +202,8 @@ impl AppState {
             },
         ));
 
-        // ── Auth use-cases ────────────────────────────────────────────────────
+        // ── Auth use-cases (only refresh token remains) ───────────────────────
         let auth = Arc::new(AuthUseCases {
-            login: Arc::new(LoginUseCase::new(
-                Arc::clone(&auth_repo),
-                Arc::clone(&auth_port),
-            )),
-            register: Arc::new(RegisterUseCase::new(
-                Arc::clone(&auth_repo),
-                Arc::clone(&auth_port),
-            )),
             refresh: Arc::new(RefreshTokenUseCase::new(Arc::clone(&auth_port))),
         });
 
@@ -266,9 +256,12 @@ impl AppState {
 
         Ok(Self {
             config: cfg,
+            started_at,
+            started_instant,
             tenant_pools,
             redis_cache,
             auth_port,
+            auth_repo,
             auth,
             subscription,
             agency,

@@ -9,7 +9,7 @@ use crate::{
         },
     },
     domain::agency::Agency,
-    infrastructure::db::pool::TenantPoolManager,
+    infrastructure::db::pool::AgencyPoolManager,
 };
 
 pub struct ProvisionAgencyInput {
@@ -23,7 +23,7 @@ pub struct ProvisionAgencyInput {
 pub struct ProvisionAgencyUseCase {
     pub agency_repo: Arc<dyn AgencyRepository>,
     pub openfga: Arc<dyn OpenFgaPort>,
-    pub pool_manager: Arc<TenantPoolManager>,
+    pub pool_manager: Arc<AgencyPoolManager>,
     /// Loaded once at startup from `resources/fga/default_model.json`.
     pub default_model: serde_json::Value,
 }

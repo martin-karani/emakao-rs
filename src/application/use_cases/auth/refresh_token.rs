@@ -28,21 +28,20 @@ impl RefreshTokenUseCase {
     }
 
     pub async fn execute(&self, input: RefreshInput) -> Result<RefreshOutput, AppError> {
-        // Uses: AuthPort::verify_token
         let old = self.auth.verify_token(&input.refresh_token)?;
 
-        let exp = OffsetDateTime::now_utc().unix_timestamp() as usize
-            + input.expiry_seconds as usize;
+        let exp =
+            OffsetDateTime::now_utc().unix_timestamp() as usize + input.expiry_seconds as usize;
 
         let new_claims = JwtClaims {
             sub: old.sub,
             agency_id: old.agency_id,
             role: old.role,
+            portal: old.portal,
             jti: Uuid::new_v4().to_string(),
             exp,
         };
 
-        // Uses: AuthPort::sign_token
         let access_token = self.auth.sign_token(&new_claims)?;
 
         Ok(RefreshOutput {

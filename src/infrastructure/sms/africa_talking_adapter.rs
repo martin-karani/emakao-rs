@@ -71,7 +71,12 @@ impl SmsPort for AfricasTalkingSms {
             ));
         }
 
-        tracing::debug!(to, "SMS sent via Africa's Talking");
+        let body: AtResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::ExternalService(format!("AT SMS response parse error: {e}")))?;
+
+        tracing::debug!(to, provider_message = %body.sms_message_data.message, "SMS sent via Africa's Talking");
         Ok(())
     }
 }

@@ -19,9 +19,10 @@ use crate::{
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
-        extractors::TenantContext,
+        extractors::AgencyContext,
         http::{
             dto::agreement::{CreateAgreementDto, ListAgreementsParams},
+            helpers::permission::require_permissions,
             responses::agreement::AgreementResponse,
         },
     },
@@ -40,8 +41,7 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_agreements(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Query(params): Query<ListAgreementsParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
@@ -76,8 +76,7 @@ pub async fn list_agreements(
     security(("bearer_token" = []))
 )]
 pub async fn get_agreement(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
@@ -101,11 +100,25 @@ pub async fn get_agreement(
 )]
 pub async fn create_agreement(
     State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Json(dto): Json<CreateAgreementDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
+
+    if let Some(store_id) = ctx.agency.fga_store_id.clone() {
+        require_permissions(
+            state.openfga.clone(),
+            store_id,
+            user.user_id,
+            vec![
+                ("can_edit", format!("property:{}", dto.property_id)),
+                ("manager", format!("unit:{}", dto.unit_id)),
+            ],
+        )
+        .await?;
+    }
+
     let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
     let usecase = CreateAgreementUseCase::new(repo);
     let agreement = usecase
@@ -140,8 +153,7 @@ pub async fn create_agreement(
     security(("bearer_token" = []))
 )]
 pub async fn terminate_agreement(
-    State(state): State<AppState>,
-    ctx: TenantContext,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {

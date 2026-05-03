@@ -1,101 +1,149 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension, Json};
 use garde::Validate;
 
 use crate::{
     application::{
         errors::AppError,
         use_cases::auth::{
-            login::LoginInput, refresh_token::RefreshInput, register::RegisterInput,
+            accept_invite::{
+                AcceptInviteInput, AcceptInviteUseCase, ChangePasswordInput, ChangePasswordUseCase,
+            },
+            login::{PortalLoginInput, PortalLoginUseCase, StaffLoginInput, StaffLoginUseCase},
+            refresh_token::RefreshInput,
         },
     },
-    domain::agency::ResolvedAgency,
+    domain::auth::{AuthenticatedUser, PortalType},
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
         http::{
-            dto::auth::{LoginDto, RefreshDto, RegisterDto},
-            responses::auth::TokenResponse,
+            dto::auth::{
+                AcceptInviteDto, ChangePasswordDto, PortalLoginDto, RefreshDto, StaffLoginDto,
+            },
+            responses::auth::{LoginResponse, TokenResponse},
         },
     },
 };
 
+/// Staff login — POST app.emakao.co.ke/api/v1/auth/login
 #[utoipa::path(
     post,
     path = "/api/v1/auth/login",
-    request_body = LoginDto,
+    request_body = StaffLoginDto,
     responses(
-        (status = 200, description = "Login successful",        body = TokenResponse),
-        (status = 401, description = "Bad credentials",         body = ErrorResponse),
-        (status = 422, description = "Validation error",        body = ErrorResponse),
+        (status = 200, description = "Login successful",    body = LoginResponse),
+        (status = 401, description = "Bad credentials",     body = ErrorResponse),
+        (status = 422, description = "Validation error",    body = ErrorResponse),
     ),
     tag = "Auth"
 )]
-pub async fn login(
+pub async fn staff_login(
     State(state): State<AppState>,
-    axum::Extension(agency): axum::Extension<ResolvedAgency>,
-    Json(dto): Json<LoginDto>,
+    Json(dto): Json<StaffLoginDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    let out = state
-        .auth
-        .login
-        .execute(LoginInput {
-            agency_id: agency.id,
-            email: dto.email,
+    let out = StaffLoginUseCase::new(state.auth_repo.clone(), state.auth_port.clone())
+        .execute(StaffLoginInput {
+            agency_slug: dto.agency_slug,
+            contact: dto.contact,
             password: dto.password,
             expiry_seconds: state.config.jwt_expiry_seconds,
         })
         .await?;
 
-    Ok(Json(TokenResponse {
-        access_token: out.access_token,
-        token_type: out.token_type,
-        expires_in: out.expires_in,
-    }))
+    Ok(Json(LoginResponse::from(out)))
 }
 
-/// Register a new staff user under the current agency tenant
-#[utoipa::path(
-    post,
-    path = "/api/v1/auth/register",
-    request_body = RegisterDto,
-    responses(
-        (status = 201, description = "User registered"),
-        (status = 409, description = "Email already exists",    body = ErrorResponse),
-        (status = 422, description = "Validation error",        body = ErrorResponse),
-    ),
-    tag = "Auth"
-)]
-pub async fn register(
-    State(state): State<AppState>,
-    axum::Extension(agency): axum::Extension<ResolvedAgency>,
-    Json(dto): Json<RegisterDto>,
+/// Resident portal login — POST residents.emakao.co.ke/api/v1/auth/login
+/// Owner portal login   — POST owners.emakao.co.ke/api/v1/auth/login
+/// Vendor portal login  — POST vendors.emakao.co.ke/api/v1/auth/login
+///
+/// Each portal's router passes `portal` as a closure-captured constant.
+pub async fn portal_login(
+    portal: PortalType,
+    state: AppState,
+    dto: PortalLoginDto,
 ) -> Result<impl IntoResponse, AppError> {
-    dto.validate()?;
-
-    state
-        .auth
-        .register
-        .execute(RegisterInput {
-            agency_id: agency.id,
-            email: dto.email,
+    let out = PortalLoginUseCase::new(state.auth_repo.clone(), state.auth_port.clone())
+        .execute(PortalLoginInput {
+            portal,
+            contact: dto.contact,
             password: dto.password,
-            role: dto.role,
+            expiry_seconds: state.config.jwt_expiry_seconds,
         })
         .await?;
 
-    Ok(StatusCode::CREATED)
+    Ok(Json(LoginResponse::from(out)))
 }
 
-/// Exchange a refresh token for a new access token
+/// Accept invite and set permanent password.
+/// POST {portal}.emakao.co.ke/api/v1/auth/accept-invite
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/accept-invite",
+    request_body = AcceptInviteDto,
+    responses(
+        (status = 204, description = "Account activated"),
+        (status = 404, description = "Token invalid or expired", body = ErrorResponse),
+        (status = 422, description = "Validation error",         body = ErrorResponse),
+    ),
+    tag = "Auth"
+)]
+pub async fn accept_invite(
+    State(state): State<AppState>,
+    Json(dto): Json<AcceptInviteDto>,
+) -> Result<impl IntoResponse, AppError> {
+    dto.validate()?;
+
+    AcceptInviteUseCase::new(state.auth_repo.clone(), state.auth_port.clone())
+        .execute(AcceptInviteInput {
+            token: dto.token,
+            new_password: dto.new_password,
+        })
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Change password — used after first login with a temp password.
+/// Requires a valid JWT (user must already be logged in).
+/// POST /api/v1/auth/change-password
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/change-password",
+    request_body = ChangePasswordDto,
+    responses(
+        (status = 204, description = "Password changed"),
+        (status = 401, description = "Old password incorrect", body = ErrorResponse),
+    ),
+    tag = "Auth",
+    security(("bearer_token" = []))
+)]
+pub async fn change_password(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(dto): Json<ChangePasswordDto>,
+) -> Result<impl IntoResponse, AppError> {
+    ChangePasswordUseCase::new(state.auth_repo.clone(), state.auth_port.clone())
+        .execute(ChangePasswordInput {
+            user_id: user.user_id,
+            old_password: dto.old_password,
+            new_password: dto.new_password,
+        })
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Refresh access token.
 #[utoipa::path(
     post,
     path = "/api/v1/auth/refresh",
     request_body = RefreshDto,
     responses(
-        (status = 200, description = "Token refreshed",         body = TokenResponse),
-        (status = 401, description = "Invalid refresh token",   body = ErrorResponse),
+        (status = 200, description = "Token refreshed", body = TokenResponse),
+        (status = 401, description = "Invalid refresh token", body = ErrorResponse),
     ),
     tag = "Auth"
 )]
@@ -112,9 +160,9 @@ pub async fn refresh(
         })
         .await?;
 
-    Ok(Json(TokenResponse {
-        access_token: out.access_token,
-        token_type: out.token_type,
-        expires_in: out.expires_in,
-    }))
+    Ok(Json(serde_json::json!({
+        "access_token": out.access_token,
+        "token_type":   out.token_type,
+        "expires_in":   out.expires_in,
+    })))
 }

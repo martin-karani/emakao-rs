@@ -15,9 +15,9 @@
 //! Authorization: Bearer <token>
 //! ```
 //!
-//! Admin routes do **not** go through `tenant_resolver` — they are
+//! Admin routes do **not** go through `resolve_agency_context` — they are
 //! platform-level operations that address agencies by UUID (path param), not
-//! by slug.  Do not add `tenant_resolver` or `subscription_middleware` to any
+//! by slug.  Do not add `resolve_agency_context` or `subscription_middleware` to any
 //! router that uses `require_admin`.
 
 use axum::{

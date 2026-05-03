@@ -1,7 +1,5 @@
 use anyhow::{Context, Result};
 
-/// All runtime configuration loaded from environment variables.
-/// Never add business logic here — use `domain/` or `application/` layers.
 #[derive(Debug, Clone)]
 pub struct Config {
     // ── Server ─────────────────────────────────────────────────────────────
@@ -9,9 +7,7 @@ pub struct Config {
     pub rust_log: String,
 
     // ── Database ───────────────────────────────────────────────────────────
-    /// Platform DB: agencies, users, subscriptions, plans.
     pub platform_database_url: String,
-    /// Tenant DB: per-agency schemas — properties, residents, agreements, etc.
     pub tenant_database_url: String,
     pub db_max_connections: u32,
     pub db_min_connections: u32,
@@ -65,7 +61,6 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            // Server
             port: env_parse("PORT", 3000),
             rust_log: std::env::var("RUST_LOG").unwrap_or_else(|_| "emakao=debug".into()),
 

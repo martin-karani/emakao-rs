@@ -8,11 +8,11 @@ use crate::domain::resident::{PortalStatus, Resident};
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ResidentResponse {
     pub id: Uuid,
-    pub user_id: Uuid,
+    pub user_id: Option<Uuid>,
     pub first_name: String,
     pub last_name: String,
     pub full_name: String,
-    pub email: String,
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub national_id: Option<String>,
     pub portal_status: PortalStatus,

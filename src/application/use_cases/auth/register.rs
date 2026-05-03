@@ -4,7 +4,10 @@ use uuid::Uuid;
 use crate::{
     application::{
         errors::AppError,
-        ports::{auth_port::AuthPort, auth_repository::{AuthRepository, CreateUserCommand}},
+        ports::{
+            auth_port::AuthPort,
+            auth_repository::{AuthRepository, CreateMembershipCommand, CreateUserCommand},
+        },
     },
     domain::auth::StoredUser,
 };
@@ -28,33 +31,50 @@ impl RegisterUseCase {
 
     pub async fn execute(&self, input: RegisterInput) -> Result<StoredUser, AppError> {
         if input.password.len() < 8 {
-            return Err(AppError::Validation("password must be at least 8 characters".into()));
+            return Err(AppError::Validation(
+                "password must be at least 8 characters".into(),
+            ));
         }
 
-        // Uses: AuthRepository::email_exists — guard duplicate
-        if self.repo.email_exists(input.agency_id, &input.email).await? {
-            return Err(AppError::Validation(
-                format!("email '{}' is already registered", input.email),
-            ));
+        // Uses: AuthRepository::contact_exists_for_agency — guard duplicate
+        if self
+            .repo
+            .contact_exists_for_agency(input.agency_id, &input.email, "email", &input.role)
+            .await?
+        {
+            return Err(AppError::Validation(format!(
+                "email '{}' is already registered for this role",
+                input.email
+            )));
         }
 
         // Uses: AuthPort::hash_password
         let password_hash = self.auth.hash_password(&input.password).await?;
         let user_id = Uuid::new_v4();
 
-        // Uses: AuthRepository::create
+        // Uses: AuthRepository::create_user
         let user = self
             .repo
-            .create(CreateUserCommand {
+            .create_user(CreateUserCommand {
                 id: user_id,
-                agency_id: input.agency_id,
-                email: input.email.clone(),
+                email: Some(input.email.clone()),
+                phone: None,
                 password_hash,
+                is_active: true,
+                must_change_password: false,
+            })
+            .await?;
+
+        // 2. Create membership for the agency
+        self.repo
+            .create_membership(CreateMembershipCommand {
+                user_id: user.id,
+                agency_id: input.agency_id,
                 role: input.role,
             })
             .await?;
 
-        tracing::info!(user_id = %user.id, email = %user.email, "user registered");
+        tracing::info!(user_id = %user.id, email = %user.email.as_deref().unwrap_or(""), "user registered");
         Ok(user)
     }
 }

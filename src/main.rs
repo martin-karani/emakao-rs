@@ -1,12 +1,8 @@
 use std::sync::Arc;
-use anyhow::Result;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod config;
-mod domain;
-mod application;
-mod infrastructure;
-mod presentation;
+use anyhow::Result;
+use emakao::{config, presentation};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {

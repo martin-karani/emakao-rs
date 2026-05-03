@@ -35,7 +35,7 @@ pub async fn subscription_middleware(
     mut request: Request,
     next: Next,
 ) -> Response {
-    // Extract agency_id — set by tenant_resolver middleware before this runs
+    // Extract agency_id — set by resolve_agency_context middleware before this runs
     let agency_id: Option<Uuid> = request.extensions().get::<ResolvedAgency>().map(|a| a.id);
 
     // No agency context (platform-admin route) → pass through

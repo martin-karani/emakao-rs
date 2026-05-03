@@ -29,7 +29,6 @@ struct FeatureRow {
 struct LimitRow {
     limit_key: String,
     max_value: i32,
-    soft_limit: Option<i32>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -40,7 +39,6 @@ struct StateRow {
     trial_ends_at: Option<OffsetDateTime>,
     current_period_end: Option<OffsetDateTime>,
     grace_period_ends_at: Option<OffsetDateTime>,
-    started_at: OffsetDateTime,
 }
 
 #[derive(sqlx::FromRow)]
@@ -215,8 +213,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             LimitRow,
             r#"
             SELECT pl.limit_key  AS "limit_key!",
-                   pl.max_value  AS "max_value!",
-                   pl.soft_limit
+                   pl.max_value  AS "max_value!"
             FROM subscriptions s
             JOIN subscription_plans sp ON sp.id = s.plan_id
             JOIN plan_limits        pl ON pl.plan_id = sp.id
@@ -269,8 +266,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
                    sp.name              AS "plan_name!",
                    s.trial_ends_at,
                    s.current_period_end,
-                   s.grace_period_ends_at,
-                   s.started_at         AS "started_at!"
+                   s.grace_period_ends_at
             FROM subscriptions s
             JOIN subscription_plans sp ON sp.id = s.plan_id
             WHERE s.agency_id = $1

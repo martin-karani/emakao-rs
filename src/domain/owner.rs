@@ -14,10 +14,12 @@ pub enum OwnerPortalStatus {
 #[derive(Clone, Debug, Serialize)]
 pub struct Owner {
     pub id: Uuid,
+    /// None until invite is accepted.
     pub user_id: Option<Uuid>,
     pub first_name: String,
     pub last_name: String,
-    pub email: String,
+    /// May be None for phone-only owners.
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub company_name: Option<String>,
     pub kra_pin: Option<String>,
@@ -35,13 +37,18 @@ impl Owner {
             .clone()
             .unwrap_or_else(|| format!("{} {}", self.first_name, self.last_name))
     }
+
+    pub fn primary_contact(&self) -> Option<&str> {
+        self.email.as_deref().or(self.phone.as_deref())
+    }
 }
 
 pub struct CreateOwnerCommand {
+    pub user_id: Option<Uuid>,
     pub agency_id: Uuid,
     pub first_name: String,
     pub last_name: String,
-    pub email: String,
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub company_name: Option<String>,
     pub kra_pin: Option<String>,

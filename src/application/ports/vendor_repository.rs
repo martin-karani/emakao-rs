@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     application::errors::AppError,
+    domain::maintenance::WorkOrder,
     domain::vendor::{CreateVendorCommand, UpdateVendorCommand, Vendor},
 };
 
@@ -14,14 +15,14 @@ pub trait VendorRepository: Send + Sync + 'static {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Vendor>, AppError>;
-
-    async fn find_by_id(
-        &self,
-        agency_id: Uuid,
-        id: Uuid,
-    ) -> Result<Option<Vendor>, AppError>;
-
+    async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Vendor>, AppError>;
+    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Vendor>, AppError>;
     async fn create(&self, cmd: CreateVendorCommand) -> Result<Vendor, AppError>;
-
     async fn update(&self, cmd: UpdateVendorCommand) -> Result<Vendor, AppError>;
+    async fn find_work_orders_by_vendor_id(
+        &self,
+        vendor_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WorkOrder>, AppError>;
 }

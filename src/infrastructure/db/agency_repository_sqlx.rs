@@ -46,6 +46,8 @@ impl AgencyRepository for PgAgencyRepo {
             schema_name: row.schema_name,
             fga_store_id: row.fga_store_id,
             status: row.status,
+            country_code: cmd.country_code,
+            currency_code: cmd.currency_code,
         })
     }
 
@@ -63,7 +65,7 @@ impl AgencyRepository for PgAgencyRepo {
     async fn find_by_slug(&self, slug: &str) -> Result<Option<Agency>, AppError> {
         let row = sqlx::query!(
             r#"
-            SELECT id, name, slug, schema_name, fga_store_id, status
+            SELECT id, name, slug, schema_name, fga_store_id, status, country_code, currency_code
             FROM   agencies
             WHERE  slug = $1
             "#,
@@ -79,6 +81,8 @@ impl AgencyRepository for PgAgencyRepo {
             schema_name: r.schema_name,
             fga_store_id: r.fga_store_id,
             status: r.status,
+            country_code: r.country_code,
+            currency_code: r.currency_code,
         }))
     }
 }

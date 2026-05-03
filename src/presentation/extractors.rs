@@ -5,15 +5,15 @@ use axum::{
 };
 use sqlx::PgPool;
 
-use crate::{domain::agency::ResolvedAgency, infrastructure::db::pool::TenantPool};
+use crate::{domain::agency::ResolvedAgency, infrastructure::db::pool::AgencyPool};
 
 #[derive(Clone)]
-pub struct TenantContext {
+pub struct AgencyContext {
     pub agency: ResolvedAgency,
     pub pool: PgPool,
 }
 
-impl<S> FromRequestParts<S> for TenantContext
+impl<S> FromRequestParts<S> for AgencyContext
 where
     S: Send + Sync,
 {
@@ -26,7 +26,7 @@ where
             .get::<ResolvedAgency>()
             .cloned()
             .ok_or_else(|| {
-                tracing::error!("TenantContext: missing ResolvedAgency extension");
+                tracing::error!("AgencyContext: missing ResolvedAgency extension");
                 (
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                     "Internal server error: missing agency context",
@@ -37,10 +37,10 @@ where
         // 2. Resolve tenant pool from extensions
         let pool = parts
             .extensions
-            .get::<TenantPool>()
+            .get::<AgencyPool>()
             .map(|tp| tp.0.clone())
             .ok_or_else(|| {
-                tracing::error!("TenantContext: missing TenantPool extension");
+                tracing::error!("AgencyContext: missing TenantPool extension");
                 (
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                     "Internal server error: missing tenant pool",
@@ -48,6 +48,6 @@ where
                     .into_response()
             })?;
 
-        Ok(TenantContext { agency, pool })
+        Ok(AgencyContext { agency, pool })
     }
 }
