@@ -4,9 +4,9 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::disbursement::{Disbursement, DisbursementMethod, DisbursementStatus};
-use crate::domain::owner::{Owner, OwnerPortalStatus};
-
+use crate::domain::disbursement::Disbursement;
+use crate::domain::enums::{DisbursementMethod, DisbursementStatus, PortalStatus};
+use crate::domain::owner::Owner;
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OwnerResponse {
     pub id: Uuid,
@@ -21,7 +21,7 @@ pub struct OwnerResponse {
     pub bank_name: Option<String>,
     pub bank_account: Option<String>,
     pub mpesa_number: Option<String>,
-    pub portal_status: OwnerPortalStatus,
+    pub portal_status: PortalStatus,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }

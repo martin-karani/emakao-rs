@@ -18,11 +18,11 @@ impl GetEntitlementsUseCase {
     }
 
     pub async fn execute(&self, agency_id: Uuid) -> Result<AgencyEntitlements, AppError> {
-        // 1. Try cache (300 s TTL — matches NestJS)
+        // Try cache (300 s TTL — matches NestJS)
         if let Some(cached) = self.cache.get_entitlements(agency_id).await {
             return Ok(cached);
         }
-        // 2. DB load
+        // DB load
         let entitlements = self
             .repo
             .get_entitlements(agency_id)
@@ -30,7 +30,7 @@ impl GetEntitlementsUseCase {
             .ok_or_else(|| {
                 AppError::Forbidden("No active subscription found. Please contact support.".into())
             })?;
-        // 3. Store in cache
+        // Store in cache
         self.cache.set_entitlements(agency_id, &entitlements).await;
         Ok(entitlements)
     }

@@ -1,47 +1,9 @@
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::{Date, OffsetDateTime};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum LedgerEntryType {
-    Rent,
-    Deposit,
-    HoaDues,
-    CamCharge,
-    Utility,
-    MaintenanceCharge,
-    LateFee,
-    LegalFee,
-    Penalty,
-    PaymentMpesa,
-    PaymentBank,
-    PaymentCash,
-    DepositRefund,
-    CreditNote,
-    Waiver,
-    Disbursement,
-    JournalAdjustment,
-}
-
-impl LedgerEntryType {
-    pub fn is_payment(&self) -> bool {
-        matches!(
-            self,
-            Self::PaymentMpesa | Self::PaymentBank | Self::PaymentCash
-        )
-    }
-
-    pub fn from_method_str(method_type: &str) -> Self {
-        match method_type {
-            "mpesa_paybill" | "mpesa_till" => Self::PaymentMpesa,
-            "bank_transfer" => Self::PaymentBank,
-            _ => Self::PaymentCash,
-        }
-    }
-}
+use crate::domain::enums::LedgerEntryType;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct LedgerEntry {

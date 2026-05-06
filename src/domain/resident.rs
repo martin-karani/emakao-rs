@@ -1,15 +1,7 @@
+use crate::domain::enums::PortalStatus;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use utoipa::ToSchema;
 use uuid::Uuid;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PortalStatus {
-    Invited,
-    Active,
-    Suspended,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Resident {

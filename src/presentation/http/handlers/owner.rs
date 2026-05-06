@@ -157,7 +157,7 @@ pub async fn create_owner(
     Ok((StatusCode::CREATED, Json(OwnerResponse::from(owner))))
 }
 
-/// Invite/Onboard a new property owner (staff)
+/// Invite / onboard a new property owner (staff)
 #[utoipa::path(
     post,
     path = "/api/v1/owners/invite",
@@ -188,15 +188,15 @@ pub async fn invite_owner(
 
     let uc = OnboardOwnerUseCase {
         owner_repo: Arc::new(PgOwnerRepo::from(ctx.pool)),
-        auth_repo: state.auth_repo.clone(),
-        auth_port: state.auth_port.clone(),
-        email: state.email.clone(),
-        sms: state.sms.clone(),
+        auth_repo: state.identity.auth_repo.clone(),
+        auth_port: state.identity.auth_port.clone(),
+        notifications: state.notifications.clone(),
     };
 
     let owner = uc
         .execute(OnboardOwnerInput {
             agency_id: ctx.agency.id,
+            agency_name: Some(ctx.agency.name),
             first_name: dto.first_name,
             last_name: dto.last_name,
             email: Some(dto.email),
@@ -206,12 +206,13 @@ pub async fn invite_owner(
             bank_name: dto.bank_name,
             bank_account: dto.bank_account,
             mpesa_number: dto.mpesa_number,
-            portal_base_url: "https://owners.emakao.co.ke".to_string(), // TODO: from config
+            portal_base_url: "https://owners.emakao.co.ke".to_string(),
         })
         .await?;
 
     Ok((StatusCode::CREATED, Json(OwnerResponse::from(owner))))
 }
+
 /// Update owner details (staff)
 #[utoipa::path(
     patch,
@@ -328,7 +329,6 @@ pub async fn list_my_properties(
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let repo = Arc::new(PgOwnerRepo::from(ctx.pool));
-    // First, get the owner internal id from user_id
     let owner = repo
         .find_by_user_id(user.user_id)
         .await?
@@ -340,11 +340,7 @@ pub async fn list_my_properties(
         .await?;
     let responses: Vec<PropertyWithPercentResponse> = properties
         .into_iter()
-        .map(|(prop, percent)| {
-            crate::presentation::http::responses::property::PropertyWithPercentResponse::from(
-                prop, percent,
-            )
-        })
+        .map(|(prop, percent)| PropertyWithPercentResponse::from(prop, percent))
         .collect();
     Ok(Json(responses))
 }

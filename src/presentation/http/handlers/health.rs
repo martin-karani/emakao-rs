@@ -73,6 +73,8 @@ pub async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     )
 }
 
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
 struct HealthReport {
     timestamp: OffsetDateTime,
     dependencies: DependencyStatus,
@@ -100,7 +102,7 @@ async fn probe_database(state: &AppState) -> ComponentStatus {
     let started = Instant::now();
     let result = timeout(
         PROBE_TIMEOUT,
-        sqlx::query("SELECT 1").execute(state.tenant_pools.platform()),
+        sqlx::query("SELECT 1").execute(state.infra.tenant_pools.platform()),
     )
     .await;
 
@@ -128,7 +130,7 @@ async fn probe_database(state: &AppState) -> ComponentStatus {
 
 async fn probe_redis(state: &AppState) -> ComponentStatus {
     let started = Instant::now();
-    let result = timeout(PROBE_TIMEOUT, state.redis_cache.ping()).await;
+    let result = timeout(PROBE_TIMEOUT, state.infra.redis_cache.ping()).await;
 
     match result {
         Ok(Ok(response)) => ComponentStatus {
@@ -199,21 +201,21 @@ fn service_info(state: &AppState) -> ServiceInfo {
 
 fn runtime_status(state: &AppState, timestamp: OffsetDateTime) -> RuntimeStatus {
     RuntimeStatus {
-        started_at: state.started_at,
+        started_at: state.runtime.started_at,
         timestamp,
-        uptime_seconds: state.started_instant.elapsed().as_secs() as i64,
-        websocket_channels: state.websocket_channels.len(),
+        uptime_seconds: state.runtime.started_instant.elapsed().as_secs() as i64,
+        websocket_channels: state.runtime.websocket_channels.len(),
     }
 }
 
 fn database_pool_status(state: &AppState) -> DatabasePoolStatus {
-    let pool = state.tenant_pools.platform();
+    let pool = state.infra.tenant_pools.platform();
 
     DatabasePoolStatus {
         size: pool.size(),
         idle: pool.num_idle(),
         closed: pool.is_closed(),
-        cached_tenant_pools: state.tenant_pools.cached_agency_pools(),
+        cached_tenant_pools: state.infra.tenant_pools.cached_agency_pools(),
     }
 }
 

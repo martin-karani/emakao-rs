@@ -2,11 +2,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    application::{
-        errors::AppError,
-        ports::maintenance_repository::MaintenanceRepository,
+    application::{errors::AppError, ports::maintenance_repository::MaintenanceRepository},
+    domain::{
+        enums::WorkOrderPriority,
+        maintenance::{CreateWorkOrderCommand, WorkOrder},
     },
-    domain::maintenance::{CreateWorkOrderCommand, WorkOrder, WorkOrderPriority},
 };
 
 pub struct CreateWorkOrderUseCase {
@@ -30,19 +30,24 @@ impl CreateWorkOrderUseCase {
 
     pub async fn execute(&self, input: CreateWorkOrderInput) -> Result<WorkOrder, AppError> {
         if input.title.trim().is_empty() {
-            return Err(AppError::Validation("work order title must not be empty".into()));
+            return Err(AppError::Validation(
+                "work order title must not be empty".into(),
+            ));
         }
 
         // Uses: MaintenanceRepository::create
-        let order = self.repo.create(CreateWorkOrderCommand {
-            property_id: input.property_id,
-            unit_id: input.unit_id,
-            reported_by: input.reported_by,
-            title: input.title,
-            description: input.description,
-            priority: input.priority,
-            vendor_id: input.vendor_id,
-        }).await?;
+        let order = self
+            .repo
+            .create(CreateWorkOrderCommand {
+                property_id: input.property_id,
+                unit_id: input.unit_id,
+                reported_by: input.reported_by,
+                title: input.title,
+                description: input.description,
+                priority: input.priority,
+                vendor_id: input.vendor_id,
+            })
+            .await?;
 
         tracing::info!(work_order_id = %order.id, "work order created");
         Ok(order)

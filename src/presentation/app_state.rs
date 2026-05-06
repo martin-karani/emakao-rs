@@ -1,3 +1,21 @@
+//! Application state — the composition root for the Axum server.
+//!
+//! ## Structure
+//!
+//! Rather than one flat bag of every adapter and use-case, `AppState` groups
+//! its fields into four focused sub-structs:
+//!
+//! | Sub-struct           | Responsibility                                    |
+//! |----------------------|---------------------------------------------------|
+//! | `RuntimeState`       | Observability — start time, uptime, WS channels   |
+//! | `InfraState`         | Data layer — DB pool manager, Redis cache          |
+//! | `IdentityState`      | Auth — JWT port, user/invite repo, auth use-cases  |
+//! | `IntegrationState`   | External services — email, SMS, M-Pesa             |
+//!
+//! Domain use-case groups (`subscription`, `agency`) stay as top-level
+//! `Arc<T>` fields because they are accessed by many middleware layers and
+//! keeping them flat avoids boilerplate with no structural gain.
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -11,6 +29,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{
+        notifications::NotificationService,
         ports::{
             agency_repository::AgencyRepository, auth_port::AuthPort,
             auth_repository::AuthRepository, email_port::EmailPort, openfga_port::OpenFgaPort,
@@ -41,11 +60,48 @@ use crate::{
             pool::AgencyPoolManager, subscription_repository_sqlx::PgSubscriptionRepo,
         },
         email::smtp_adapter::SmtpEmail,
+        notifications::{build_notification_components, start_notification_workers},
         openfga::openfga_adapter::OpenFgaAdapter,
         payments::mpesa_adapter::MpesaAdapter,
         sms::africa_talking_adapter::AfricasTalkingSms,
     },
 };
+
+// ── Sub-structs ───────────────────────────────────────────────────────────────
+
+/// Observability / runtime metadata.
+#[derive(Clone)]
+pub struct RuntimeState {
+    pub started_at: time::OffsetDateTime,
+    pub started_instant: Instant,
+    pub websocket_channels: Arc<DashMap<Uuid, broadcast::Sender<String>>>,
+}
+
+/// Database and cache layer.
+#[derive(Clone)]
+pub struct InfraState {
+    pub tenant_pools: Arc<AgencyPoolManager>,
+    pub redis_cache: Arc<RedisCache>,
+}
+
+/// Authentication — JWT verification, user/invite repository, auth use-cases.
+#[derive(Clone)]
+pub struct IdentityState {
+    pub auth_port: Arc<dyn AuthPort>,
+    pub auth_repo: Arc<dyn AuthRepository>,
+    /// Stateless use-cases (refresh token, etc.).  Previously `state.auth`.
+    pub auth_uc: Arc<AuthUseCases>,
+}
+
+/// External service adapters.
+#[derive(Clone)]
+pub struct IntegrationState {
+    pub email: Arc<dyn EmailPort>,
+    pub sms: Arc<dyn SmsPort>,
+    pub mpesa: Arc<MpesaAdapter>,
+}
+
+// ── Domain use-case bundles (kept flat on AppState) ───────────────────────────
 
 #[derive(Clone)]
 pub struct AuthUseCases {
@@ -75,32 +131,31 @@ pub struct AgencyUseCases {
     pub provision: Arc<ProvisionAgencyUseCase>,
 }
 
-// ── AppState ──────────────────────────────────────────────────────────────────
+// ── Top-level state ───────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
-    pub started_at: time::OffsetDateTime,
-    pub started_instant: Instant,
-    pub tenant_pools: Arc<AgencyPoolManager>,
-    pub redis_cache: Arc<RedisCache>,
-    pub auth_port: Arc<dyn AuthPort>,
-    pub auth_repo: Arc<dyn AuthRepository>,
-    pub auth: Arc<AuthUseCases>, // only refresh token
+    /// Observability, start time, WS channels.
+    pub runtime: Arc<RuntimeState>,
+    /// DB pool manager + Redis cache.
+    pub infra: Arc<InfraState>,
+    /// Auth JWT port, auth repo, auth use-cases.
+    pub identity: Arc<IdentityState>,
+    /// Subscription use-cases (accessed by middleware & many handlers).
     pub subscription: Arc<SubscriptionUseCases>,
+    /// Agency provisioning use-cases (admin only).
     pub agency: Arc<AgencyUseCases>,
-    pub mpesa: Arc<MpesaAdapter>,
-    pub email: Arc<dyn EmailPort>,
-    pub sms: Arc<dyn SmsPort>,
-    pub websocket_channels: Arc<DashMap<Uuid, broadcast::Sender<String>>>,
+    /// Email, SMS, M-Pesa adapters.
+    pub integrations: Arc<IntegrationState>,
+    /// Async notification queue service.
+    pub notifications: NotificationService,
+    /// OpenFGA authorisation port.
     pub openfga: Arc<dyn OpenFgaPort>,
 }
 
 impl AppState {
     pub async fn build(cfg: Arc<Config>) -> Result<Self> {
-        let started_at = time::OffsetDateTime::now_utc();
-        let started_instant = Instant::now();
-
         // ── Platform DB ───────────────────────────────────────────────────────
         let platform_pool = PgPoolOptions::new()
             .max_connections(cfg.db_max_connections)
@@ -109,14 +164,10 @@ impl AppState {
             .await
             .context("failed to connect to platform postgres")?;
 
-        // ── Tenant pool manager ───────────────────────────────────────────────
-        let tenant_pools = Arc::new(AgencyPoolManager::new(
+        let agency_pools = Arc::new(AgencyPoolManager::new(
             platform_pool.clone(),
             cfg.tenant_database_url.clone(),
         ));
-
-        // ── Auth repository (new identity layer) ──────────────────────────────
-        let auth_repo: Arc<dyn AuthRepository> = Arc::new(PgAuthRepo::new(platform_pool.clone()));
 
         // ── Redis ─────────────────────────────────────────────────────────────
         let redis = RedisPool::new(
@@ -136,12 +187,30 @@ impl AppState {
         let sub_cache = Arc::new(SubscriptionCache::new(redis.clone()));
         let redis_cache = Arc::new(RedisCache::new(redis.clone()));
 
-        // ── Adapters ──────────────────────────────────────────────────────────
+        // ── InfraState ────────────────────────────────────────────────────────
+        let infra = Arc::new(InfraState {
+            tenant_pools: Arc::clone(&agency_pools),
+            redis_cache,
+        });
+
+        // ── IdentityState ─────────────────────────────────────────────────────
         let auth_port: Arc<dyn AuthPort> = Arc::new(JwtAuth {
             secret: cfg.jwt_secret.clone(),
             expiry_seconds: cfg.jwt_expiry_seconds,
         });
+        let auth_repo: Arc<dyn AuthRepository> = Arc::new(PgAuthRepo::new(platform_pool.clone()));
 
+        let auth_uc = Arc::new(AuthUseCases {
+            refresh: Arc::new(RefreshTokenUseCase::new(Arc::clone(&auth_port))),
+        });
+
+        let identity = Arc::new(IdentityState {
+            auth_port,
+            auth_repo,
+            auth_uc,
+        });
+
+        // ── IntegrationState ──────────────────────────────────────────────────
         let email: Arc<dyn EmailPort> = Arc::new(
             SmtpEmail::new(
                 &cfg.smtp_host,
@@ -168,32 +237,63 @@ impl AppState {
             cfg.mpesa_base_url.clone(),
         ));
 
+        let integrations = Arc::new(IntegrationState {
+            email: Arc::clone(&email),
+            sms: Arc::clone(&sms),
+            mpesa,
+        });
+
+        // ── Notifications ─────────────────────────────────────────────────────
+        // templates_dir is a real directory root — NOT a glob pattern.
+        let templates_dir = std::env::current_dir()
+            .context("cannot determine cwd")?
+            .join("templates");
+
+        let notification_components = build_notification_components(
+            templates_dir
+                .to_str()
+                .context("templates dir is not valid UTF-8")?,
+            &cfg.redis_url,
+        )
+        .await
+        .context("notification service init failed")?;
+
+        let notifications = notification_components.service.clone();
+
+        // Workers are spawned in a background task — they stay alive for the
+        // lifetime of the process.
+        start_notification_workers(
+            notification_components,
+            Arc::clone(&email),
+            Arc::clone(&sms),
+            cfg.notification_worker_concurrency.unwrap_or(4),
+        );
+
+        // ── OpenFGA ───────────────────────────────────────────────────────────
         let openfga_adapter = Arc::new(OpenFgaAdapter::new(cfg.openfga_url.clone()));
         let openfga: Arc<dyn OpenFgaPort> = Arc::clone(&openfga_adapter) as Arc<dyn OpenFgaPort>;
 
-        // ── Platform repositories ─────────────────────────────────────────────
+        // ── Agency use-cases ──────────────────────────────────────────────────
         let agency_repo: Arc<dyn AgencyRepository> =
             Arc::new(PgAgencyRepo::new(platform_pool.clone()));
 
-        // ── Load default OpenFGA authorization model ──────────────────────────
         let default_model: serde_json::Value =
             serde_json::from_str(include_str!("../../resources/fga/default_model.json"))
                 .context("resources/fga/default_model.json is not valid JSON")?;
 
-        // ── Agency use-cases ──────────────────────────────────────────────────
         let agency = Arc::new(AgencyUseCases {
             provision: Arc::new(ProvisionAgencyUseCase {
                 agency_repo: Arc::clone(&agency_repo),
                 openfga: Arc::clone(&openfga),
-                pool_manager: Arc::clone(&tenant_pools),
+                pool_manager: Arc::clone(&agency_pools),
                 default_model,
             }),
         });
 
-        // ── Subscription repo ─────────────────────────────────────────────────
+        // ── Subscription use-cases ────────────────────────────────────────────
         let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<SubscriptionEvent>(256);
 
-        let tenant_pools_clone = Arc::clone(&tenant_pools);
+        let tenant_pools_clone = Arc::clone(&agency_pools);
         let sub_repo: Arc<dyn SubscriptionRepository> = Arc::new(PgSubscriptionRepo::new(
             platform_pool.clone(),
             move |agency_id| {
@@ -202,12 +302,6 @@ impl AppState {
             },
         ));
 
-        // ── Auth use-cases (only refresh token remains) ───────────────────────
-        let auth = Arc::new(AuthUseCases {
-            refresh: Arc::new(RefreshTokenUseCase::new(Arc::clone(&auth_port))),
-        });
-
-        // ── Subscription use-cases ────────────────────────────────────────────
         let subscription = Arc::new(SubscriptionUseCases {
             get_state: Arc::new(GetSubscriptionStateUseCase::new(
                 sub_repo.clone(),
@@ -246,29 +340,30 @@ impl AppState {
             }),
             initiate_payment: Arc::new(InitiateSubscriptionPaymentUseCase {
                 repo: sub_repo.clone(),
-                mpesa: Arc::clone(&mpesa),
+                mpesa: Arc::clone(&integrations.mpesa),
             }),
             repo: sub_repo,
             cache: sub_cache,
+        });
+
+        // ── RuntimeState ──────────────────────────────────────────────────────
+        let runtime = Arc::new(RuntimeState {
+            started_at: time::OffsetDateTime::now_utc(),
+            started_instant: Instant::now(),
+            websocket_channels: Arc::new(DashMap::new()),
         });
 
         tracing::info!("AppState built successfully ✓");
 
         Ok(Self {
             config: cfg,
-            started_at,
-            started_instant,
-            tenant_pools,
-            redis_cache,
-            auth_port,
-            auth_repo,
-            auth,
+            runtime,
+            infra,
+            identity,
             subscription,
             agency,
-            mpesa,
-            email,
-            sms,
-            websocket_channels: Arc::new(DashMap::new()),
+            integrations,
+            notifications,
             openfga,
         })
     }

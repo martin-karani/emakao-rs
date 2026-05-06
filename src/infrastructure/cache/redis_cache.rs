@@ -4,7 +4,7 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct RedisCache {
-    pool: RedisPool, // ← borrows from AppState's pool, no new connection
+    pool: RedisPool,
 }
 
 impl RedisCache {

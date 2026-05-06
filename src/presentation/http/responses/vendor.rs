@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::vendor::{Vendor, VendorStatus};
+use crate::domain::{enums::VendorStatus, vendor::Vendor};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct VendorResponse {

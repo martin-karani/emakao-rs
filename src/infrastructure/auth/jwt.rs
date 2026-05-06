@@ -49,12 +49,8 @@ impl AuthPort for JwtAuth {
     fn verify_token(&self, token: &str) -> Result<JwtClaims, AppError> {
         let mut v = Validation::new(Algorithm::HS256);
         v.validate_exp = true;
-        decode::<JwtClaims>(
-            token,
-            &DecodingKey::from_secret(self.secret.as_bytes()),
-            &v,
-        )
-        .map(|d| d.claims)
-        .map_err(|_| AppError::Unauthorised)
+        decode::<JwtClaims>(token, &DecodingKey::from_secret(self.secret.as_bytes()), &v)
+            .map(|d| d.claims)
+            .map_err(|_| AppError::Unauthorised)
     }
 }

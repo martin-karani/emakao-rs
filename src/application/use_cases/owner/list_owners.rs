@@ -21,7 +21,6 @@ impl ListOwnersUseCase {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Owner>, AppError> {
-        // Uses: OwnerRepository::find_all
         self.repo.find_all(agency_id, limit, offset).await
     }
 }

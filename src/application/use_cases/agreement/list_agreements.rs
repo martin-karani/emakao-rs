@@ -22,7 +22,8 @@ impl ListAgreementsUseCase {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Agreement>, AppError> {
-        // Uses: AgreementRepository::find_all
-        self.repo.find_all(agency_id, property_id, limit, offset).await
+        self.repo
+            .find_all(agency_id, property_id, limit, offset)
+            .await
     }
 }

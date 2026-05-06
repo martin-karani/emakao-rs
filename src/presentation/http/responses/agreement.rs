@@ -4,8 +4,10 @@ use time::{Date, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::agreement::{Agreement, AgreementStatus, BillingFrequency};
-
+use crate::domain::{
+    agreement::Agreement,
+    enums::{AgreementStatus, BillingFrequency},
+};
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AgreementResponse {
     pub id: Uuid,

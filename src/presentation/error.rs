@@ -11,30 +11,28 @@ use crate::{application::errors::AppError, domain::errors::DomainError};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
-    /// Machine-readable error code (e.g. `"VALIDATION_ERROR"`, `"NOT_FOUND"`)
     pub error: String,
-    /// Human-readable explanation
     pub message: String,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
-            // ── 400 ───────────────────────────────────────────────────────────
+            // 400
             AppError::Validation(msg) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "VALIDATION_ERROR",
                 msg.clone(),
             ),
 
-            // ── 401 ───────────────────────────────────────────────────────────
+            // 401
             AppError::Unauthorised => (
                 StatusCode::UNAUTHORIZED,
                 "UNAUTHORISED",
                 "authentication required".into(),
             ),
 
-            // ── 402 ───────────────────────────────────────────────────────────
+            // 402
             AppError::PlanUpgradeRequired
             | AppError::Domain(DomainError::PropertyLimitExceeded) => (
                 StatusCode::PAYMENT_REQUIRED,
@@ -42,15 +40,15 @@ impl IntoResponse for AppError {
                 self.to_string(),
             ),
 
-            // ── 403 ───────────────────────────────────────────────────────────
+            // 403
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
 
-            // ── 404 ───────────────────────────────────────────────────────────
+            // 404
             AppError::NotFound(msg) | AppError::Domain(DomainError::NotFound(msg)) => {
                 (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone())
             }
 
-            // ── 422 domain rules ──────────────────────────────────────────────
+            //  422 domain rules
             AppError::Domain(DomainError::PropertyNameEmpty)
             | AppError::Domain(DomainError::InvalidInput(_))
             | AppError::Domain(DomainError::AgreementNotActive(_))
@@ -61,7 +59,7 @@ impl IntoResponse for AppError {
                 self.to_string(),
             ),
 
-            // ── 500 ───────────────────────────────────────────────────────────
+            // 500
             AppError::Database(e) => {
                 tracing::error!(error = %e, "database error");
                 (

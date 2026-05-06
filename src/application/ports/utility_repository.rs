@@ -3,9 +3,11 @@ use uuid::Uuid;
 
 use crate::{
     application::errors::AppError,
-    domain::utility::{
-        CreateMeterCommand, CreateMeterReadingCommand, MeterReading, UtilityBill,
-        UtilityBillStatus, UtilityMeter,
+    domain::{
+        enums::UtilityBillStatus,
+        utility::{
+            CreateMeterCommand, CreateMeterReadingCommand, MeterReading, UtilityBill, UtilityMeter,
+        },
     },
 };
 

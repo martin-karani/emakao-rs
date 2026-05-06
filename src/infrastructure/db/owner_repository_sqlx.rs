@@ -7,8 +7,9 @@ use crate::{
     application::{errors::AppError, ports::owner_repository::OwnerRepository},
     domain::{
         disbursement::Disbursement,
-        owner::{CreateOwnerCommand, Owner, OwnerPortalStatus, UpdateOwnerCommand},
-        property::{Property, PropertyConfig, PropertyType},
+        enums::{DisbursementMethod, DisbursementStatus, PortalStatus, PropertyType},
+        owner::{CreateOwnerCommand, Owner, UpdateOwnerCommand},
+        property::{Property, PropertyConfig},
     },
 };
 
@@ -46,11 +47,11 @@ struct OwnerRow {
     updated_at: time::OffsetDateTime,
 }
 
-fn parse_portal_status(s: &str) -> OwnerPortalStatus {
+fn parse_portal_status(s: &str) -> PortalStatus {
     match s {
-        "active" => OwnerPortalStatus::Active,
-        "suspended" => OwnerPortalStatus::Suspended,
-        _ => OwnerPortalStatus::Invited,
+        "active" => PortalStatus::Active,
+        "suspended" => PortalStatus::Suspended,
+        _ => PortalStatus::Invited,
     }
 }
 
@@ -367,20 +368,20 @@ impl OwnerRepository for PgOwnerRepo {
         .fetch_all(&self.pool)
         .await?;
 
-        fn parse_method(s: &str) -> crate::domain::disbursement::DisbursementMethod {
+        fn parse_method(s: &str) -> DisbursementMethod {
             match s {
-                "bank_transfer" => crate::domain::disbursement::DisbursementMethod::BankTransfer,
-                "mpesa_b2c" => crate::domain::disbursement::DisbursementMethod::MpesaB2C,
-                _ => crate::domain::disbursement::DisbursementMethod::Cheque,
+                "bank_transfer" => DisbursementMethod::BankTransfer,
+                "mpesa_b2c" => DisbursementMethod::MpesaB2c,
+                _ => DisbursementMethod::Cheque,
             }
         }
 
-        fn parse_status(s: &str) -> crate::domain::disbursement::DisbursementStatus {
+        fn parse_status(s: &str) -> DisbursementStatus {
             match s {
-                "processing" => crate::domain::disbursement::DisbursementStatus::Processing,
-                "completed" => crate::domain::disbursement::DisbursementStatus::Completed,
-                "failed" => crate::domain::disbursement::DisbursementStatus::Failed,
-                _ => crate::domain::disbursement::DisbursementStatus::Pending,
+                "processing" => DisbursementStatus::Processing,
+                "completed" => DisbursementStatus::Completed,
+                "failed" => DisbursementStatus::Failed,
+                _ => DisbursementStatus::Pending,
             }
         }
 

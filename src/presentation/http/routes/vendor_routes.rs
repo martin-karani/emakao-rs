@@ -7,14 +7,12 @@ use crate::presentation::{
     },
 };
 
-/// Staff‑facing vendor directory management
 pub fn staff_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/vendors", get(list_vendors).post(create_vendor))
         .route("/api/v1/vendors/{id}", get(get_vendor).put(update_vendor))
 }
 
-/// Vendor portal – own profile, work orders, bids
 pub fn vendor_portal_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/vendors/me", get(get_my_profile))

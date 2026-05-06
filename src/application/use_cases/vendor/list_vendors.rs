@@ -21,7 +21,6 @@ impl ListVendorsUseCase {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Vendor>, AppError> {
-        // Uses: VendorRepository::find_all
         self.repo.find_all(agency_id, limit, offset).await
     }
 }

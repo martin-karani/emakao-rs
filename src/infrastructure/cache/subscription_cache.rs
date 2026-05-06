@@ -28,7 +28,7 @@ impl SubscriptionCache {
         Self { redis }
     }
 
-    // ── State ────────────────────────────────────────────────────────────────
+    //  State ─
 
     pub async fn get_state(&self, agency_id: Uuid) -> Option<SubscriptionState> {
         let key = format!("subscription:state:{agency_id}");
@@ -52,7 +52,7 @@ impl SubscriptionCache {
         }
     }
 
-    // ── Entitlements ─────────────────────────────────────────────────────────
+    //  Entitlements
 
     pub async fn get_entitlements(&self, agency_id: Uuid) -> Option<AgencyEntitlements> {
         let key = format!("entitlements:{agency_id}");
@@ -76,7 +76,7 @@ impl SubscriptionCache {
         }
     }
 
-    // ── Invalidation (call on plan change / cancellation) ────────────────────
+    //  Invalidation (call on plan change / cancellation)
 
     pub async fn invalidate(&self, agency_id: Uuid) {
         let state_key = format!("subscription:state:{agency_id}");
@@ -84,7 +84,7 @@ impl SubscriptionCache {
         let _: Result<(), _> = self.redis.del::<(), _>(&[state_key, entitle_key]).await;
     }
 
-    // ── Usage counters (monthly SMS / WhatsApp, daily API calls) ─────────────
+    //  Usage counters (monthly SMS / WhatsApp, daily API calls)
 
     /// Increment a monthly usage counter (e.g. SMS sent this month).
     /// Key: usage:{agency_id}:sms:2025-06
@@ -137,7 +137,7 @@ impl SubscriptionCache {
     }
 }
 
-// ── Time helpers ──────────────────────────────────────────────────────────────
+//  Time helpers
 
 fn current_month() -> String {
     let now = OffsetDateTime::now_utc();

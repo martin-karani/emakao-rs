@@ -11,7 +11,6 @@ use crate::presentation::{
     },
 };
 
-/// Staff‑facing owner management
 pub fn staff_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/owners", get(list_owners).post(create_owner)) // POST uses directory-only version
@@ -20,11 +19,9 @@ pub fn staff_routes() -> Router<AppState> {
             "/api/v1/properties/{id}/owners",
             post(assign_owner_to_property),
         )
-        // Invite endpoint (separate)
         .route("/api/v1/owners/invite", post(invite_owner))
 }
 
-/// Owner portal – own profile and actions
 pub fn owner_portal_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/owners/me", get(get_my_profile))

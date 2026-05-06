@@ -4,8 +4,10 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::payment::{ClaimStatus, PaymentClaim, PaymentMethodType};
-
+use crate::domain::{
+    enums::{PaymentClaimStatus, PaymentMethodType},
+    payment::PaymentClaim,
+};
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PaymentClaimResponse {
     pub id: Uuid,
@@ -17,7 +19,7 @@ pub struct PaymentClaimResponse {
     pub reference_code: Option<String>,
     pub proof_url: Option<String>,
     pub notes: Option<String>,
-    pub status: ClaimStatus,
+    pub status: PaymentClaimStatus,
     pub reviewed_by: Option<Uuid>,
     pub reviewed_at: Option<OffsetDateTime>,
     pub review_notes: Option<String>,

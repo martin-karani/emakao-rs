@@ -4,10 +4,10 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::utility::{
-    BillingMode, MeterReading, MeterType, UtilityBill, UtilityBillStatus, UtilityMeter,
+use crate::domain::{
+    enums::{BillingMode, MeterType, UtilityBillStatus},
+    utility::{MeterReading, UtilityBill, UtilityMeter},
 };
-
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UtilityMeterResponse {
     pub id: Uuid,

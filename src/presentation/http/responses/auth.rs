@@ -1,9 +1,9 @@
+use crate::domain::enums::PortalType;
 use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::application::use_cases::auth::login::LoginOutput;
-use crate::domain::auth::PortalType;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TokenResponse {

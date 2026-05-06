@@ -1,11 +1,8 @@
-// src/presentation/http/dto/maintenance.rs
-
+use crate::domain::enums::{WorkOrderPriority, WorkOrderStatus};
 use garde::Validate;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
-
-use crate::domain::maintenance::{WorkOrderPriority, WorkOrderStatus};
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateWorkOrderDto {

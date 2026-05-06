@@ -1,5 +1,3 @@
-// src/infrastructure/openfga/openfga_adapter.rs
-
 use async_trait::async_trait;
 use dashmap::DashMap;
 use reqwest::Client;
@@ -24,7 +22,6 @@ pub struct OpenFgaAdapter {
 }
 
 impl OpenFgaAdapter {
-    /// `base_url` — e.g. `http://localhost:8080` (no trailing slash).
     pub fn new(base_url: String) -> Self {
         Self {
             base_url,

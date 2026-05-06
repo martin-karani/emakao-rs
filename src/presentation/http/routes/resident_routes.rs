@@ -7,7 +7,6 @@ use crate::presentation::{
     },
 };
 
-/// Staff‑facing resident management
 pub fn staff_routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -17,7 +16,6 @@ pub fn staff_routes() -> Router<AppState> {
         .route("/api/v1/residents/{id}", get(get_resident))
 }
 
-/// Resident portal – own profile and actions
 pub fn resident_portal_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/residents/me", get(get_my_profile))

@@ -29,15 +29,12 @@ use crate::presentation::{
     middleware::subscription::subscription_middleware,
 };
 
-/// No auth, no tenant — anyone can browse plans (e.g. marketing pages).
 pub fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/subscription/plans", get(list_plans))
         .route("/api/v1/subscription/plans/{slug}", get(get_plan))
 }
 
-/// Requires auth + tenant but NOT an active subscription.
-/// Used for payment initiation (which is how you get an active subscription).
 pub fn billing_routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -47,7 +44,6 @@ pub fn billing_routes() -> Router<AppState> {
         .route("/api/v1/subscription/subscribe", post(subscribe))
 }
 
-/// Requires auth + tenant + active subscription.
 pub fn agency_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/subscription", get(get_status))
@@ -62,7 +58,6 @@ pub fn agency_routes(state: AppState) -> Router<AppState> {
         ))
 }
 
-/// Platform admin only — no subscription check (admins always have access).
 pub fn admin_routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route(

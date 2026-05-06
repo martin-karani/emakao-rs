@@ -4,7 +4,8 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::property::{Property, PropertyConfig, PropertyType};
+use crate::domain::enums::PropertyType;
+use crate::domain::property::{Property, PropertyConfig};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PropertyResponse {

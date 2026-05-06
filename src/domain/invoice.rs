@@ -1,17 +1,9 @@
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InvoiceStatus {
-    Draft,
-    Sent,
-    Paid,
-    Overdue,
-    Void,
-}
+use crate::domain::enums::InvoiceStatus;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct InvoiceLineItem {

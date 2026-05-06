@@ -1,15 +1,5 @@
-// src/presentation/middleware/portal_guard.rs
-//
 // Rejects any request whose JWT portal does not match the route group it is
 // hitting. Applied per route group at router build time, not globally.
-//
-// Usage in router.rs:
-//
-//   let resident_api = Router::new()
-//       .merge(resident_routes())
-//       .layer(from_fn(|req, next| portal_guard(PortalType::Resident, req, next)))
-//       .layer(from_fn_with_state(state.clone(), resolve_agency_context))
-//       .layer(from_fn_with_state(state.clone(), require_auth));
 
 use axum::{
     body::Body,
@@ -19,13 +9,9 @@ use axum::{
 };
 use serde_json::json;
 
-use crate::domain::auth::{AuthenticatedUser, PortalType};
+use crate::domain::{auth::AuthenticatedUser, enums::PortalType};
 
-pub async fn portal_guard(
-    required: PortalType,
-    req: Request<Body>,
-    next: Next,
-) -> Response {
+pub async fn portal_guard(required: PortalType, req: Request<Body>, next: Next) -> Response {
     let actual = req
         .extensions()
         .get::<AuthenticatedUser>()

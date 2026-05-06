@@ -1,32 +1,9 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use time::{Date, OffsetDateTime};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AgreementStatus {
-    Draft,
-    PendingSignature,
-    Active,
-    Expired,
-    Terminated,
-    PendingRenewal,
-    Renewed,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum BillingFrequency {
-    Daily,
-    Weekly,
-    Monthly,
-    Quarterly,
-    SemiAnnual,
-    Annual,
-    OneTime,
-}
+use crate::domain::enums::{AgreementStatus, BillingFrequency};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Agreement {

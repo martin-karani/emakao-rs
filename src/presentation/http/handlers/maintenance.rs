@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
@@ -9,19 +9,19 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    application::use_cases::maintenance::{
-        create_work_order::CreateWorkOrderUseCase, get_work_order::GetWorkOrderUseCase,
-        list_work_orders::ListWorkOrdersUseCase, update_work_order::UpdateWorkOrderUseCase,
-    },
     application::{
         errors::AppError,
         use_cases::maintenance::{
-            create_work_order::CreateWorkOrderInput, update_work_order::UpdateWorkOrderInput,
+            create_work_order::{CreateWorkOrderInput, CreateWorkOrderUseCase},
+            get_work_order::GetWorkOrderUseCase,
+            list_work_orders::ListWorkOrdersUseCase,
+            update_work_order::{UpdateWorkOrderInput, UpdateWorkOrderUseCase},
         },
     },
     domain::{auth::AuthenticatedUser, subscription::FeatureKey},
     infrastructure::db::maintenance_repository_sqlx::PgMaintenanceRepo,
     presentation::{
+        app_state::AppState,
         error::ErrorResponse,
         extractors::AgencyContext,
         http::{
@@ -157,6 +157,7 @@ pub async fn create_work_order(
     security(("bearer_token" = []))
 )]
 pub async fn update_work_order(
+    State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
@@ -169,7 +170,8 @@ pub async fn update_work_order(
     }
 
     let repo = Arc::new(PgMaintenanceRepo::from(ctx.pool));
-    let usecase = UpdateWorkOrderUseCase::new(repo);
+    // notifications is kept flat on AppState — no sub-struct needed
+    let usecase = UpdateWorkOrderUseCase::new(repo, state.notifications.clone());
 
     let order = usecase
         .execute(UpdateWorkOrderInput {

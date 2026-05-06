@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::utility_repository::UtilityRepository},
-    domain::utility::{UtilityBill, UtilityBillStatus},
+    domain::{enums::UtilityBillStatus, utility::UtilityBill},
 };
 
 pub struct GenerateBillUseCase {
@@ -18,7 +18,8 @@ impl GenerateBillUseCase {
     /// Derives consumption from the two most recent readings, then writes a bill.
     pub async fn execute(&self, meter_id: Uuid) -> Result<UtilityBill, AppError> {
         // Uses: UtilityRepository::find_meter_by_id
-        let meter = self.repo
+        let meter = self
+            .repo
             .find_meter_by_id(meter_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("meter {meter_id}")))?;

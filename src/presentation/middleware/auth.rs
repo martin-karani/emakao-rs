@@ -1,4 +1,3 @@
-
 use axum::{
     body::Body,
     extract::State,
@@ -10,8 +9,9 @@ use serde_json::json;
 
 use crate::{domain::auth::AuthenticatedUser, presentation::app_state::AppState};
 
-/// Validates the Bearer JWT and inserts `AuthenticatedUser` into request extensions.
-/// Must run before `resolve_agency_context` on every authenticated route.
+/// Validates the Bearer JWT and inserts `AuthenticatedUser` into request
+/// extensions.  Must run before `resolve_agency_context` on every
+/// authenticated route.
 pub async fn require_auth(
     State(state): State<AppState>,
     mut req: Request<Body>,
@@ -23,7 +23,7 @@ pub async fn require_auth(
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
-                    "error": "MISSING_TOKEN",
+                    "error":   "MISSING_TOKEN",
                     "message": "Authorization header is missing or not a Bearer token"
                 })),
             )
@@ -31,13 +31,13 @@ pub async fn require_auth(
         }
     };
 
-    let claims = match state.auth_port.verify_token(&token) {
+    let claims = match state.identity.auth_port.verify_token(&token) {
         Ok(c) => c,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
-                    "error": "INVALID_TOKEN",
+                    "error":   "INVALID_TOKEN",
                     "message": "Token is invalid or has expired"
                 })),
             )
@@ -46,10 +46,10 @@ pub async fn require_auth(
     };
 
     req.extensions_mut().insert(AuthenticatedUser {
-        user_id:   claims.sub,
+        user_id: claims.sub,
         agency_id: claims.agency_id,
-        role:      claims.role,
-        portal:    claims.portal,   // ← now always present in the token
+        role: claims.role,
+        portal: claims.portal,
     });
 
     next.run(req).await

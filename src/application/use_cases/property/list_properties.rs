@@ -25,7 +25,13 @@ impl ListPropertiesUseCase {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Property>, AppError> {
-        // Uses: PropertyRepository::find_all
-        self.repo.find_all(PropertyFilter { agency_id, property_type, limit, offset }).await
+        self.repo
+            .find_all(PropertyFilter {
+                agency_id,
+                property_type,
+                limit,
+                offset,
+            })
+            .await
     }
 }

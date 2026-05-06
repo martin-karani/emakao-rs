@@ -21,7 +21,8 @@ impl ListLedgerEntriesUseCase {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<LedgerEntry>, AppError> {
-        // Uses: LedgerRepository::find_by_agreement
-        self.repo.find_by_agreement(agreement_id, limit, offset).await
+        self.repo
+            .find_by_agreement(agreement_id, limit, offset)
+            .await
     }
 }

@@ -34,7 +34,7 @@ where
                     .into_response()
             })?;
 
-        // 2. Resolve tenant pool from extensions
+        // 2. Resolve agency pool from extensions
         let pool = parts
             .extensions
             .get::<AgencyPool>()
@@ -43,7 +43,7 @@ where
                 tracing::error!("AgencyContext: missing TenantPool extension");
                 (
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error: missing tenant pool",
+                    "Internal server error: missing agency pool",
                 )
                     .into_response()
             })?;

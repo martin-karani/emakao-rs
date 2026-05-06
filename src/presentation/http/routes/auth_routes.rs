@@ -1,7 +1,7 @@
 use axum::{extract::State, middleware, routing::post, Json, Router};
 
 use crate::{
-    domain::auth::PortalType,
+    domain::enums::PortalType,
     presentation::{
         app_state::AppState,
         http::{
@@ -12,7 +12,6 @@ use crate::{
     },
 };
 
-/// Staff login (app.emakao.co.ke)
 pub fn staff_login_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/auth/login", post(staff_login))
@@ -20,7 +19,6 @@ pub fn staff_login_routes() -> Router<AppState> {
         .route("/api/v1/auth/accept-invite", post(accept_invite))
 }
 
-/// Resident portal login (residents.emakao.co.ke)
 pub fn resident_login_routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -35,7 +33,6 @@ pub fn resident_login_routes() -> Router<AppState> {
         .route("/api/v1/auth/accept-invite", post(accept_invite))
 }
 
-/// Owner portal login (owners.emakao.co.ke)
 pub fn owner_login_routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -50,7 +47,6 @@ pub fn owner_login_routes() -> Router<AppState> {
         .route("/api/v1/auth/accept-invite", post(accept_invite))
 }
 
-/// Vendor portal login (vendors.emakao.co.ke)
 pub fn vendor_login_routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -65,9 +61,6 @@ pub fn vendor_login_routes() -> Router<AppState> {
         .route("/api/v1/auth/accept-invite", post(accept_invite))
 }
 
-/// Change-password route is shared across all portals.
-/// Requires auth — user must already be logged in with a valid (possibly
-/// must_change_password=true) JWT.
 pub fn change_password_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/auth/change-password", post(change_password))

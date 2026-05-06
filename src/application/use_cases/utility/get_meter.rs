@@ -16,7 +16,6 @@ impl GetMeterUseCase {
     }
 
     pub async fn execute(&self, meter_id: Uuid) -> Result<UtilityMeter, AppError> {
-        // Uses: UtilityRepository::find_meter_by_id
         self.repo
             .find_meter_by_id(meter_id)
             .await?

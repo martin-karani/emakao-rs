@@ -1,14 +1,18 @@
-use std::sync::Arc;
-use uuid::Uuid;
 use crate::{
     application::{errors::AppError, ports::utility_repository::UtilityRepository},
-    domain::utility::{UtilityBill, UtilityBillStatus},
+    domain::{enums::UtilityBillStatus, utility::UtilityBill},
 };
+use std::sync::Arc;
+use uuid::Uuid;
 
-pub struct ListBillsUseCase { pub repo: Arc<dyn UtilityRepository> }
+pub struct ListBillsUseCase {
+    pub repo: Arc<dyn UtilityRepository>,
+}
 
 impl ListBillsUseCase {
-    pub fn new(repo: Arc<dyn UtilityRepository>) -> Self { Self { repo } }
+    pub fn new(repo: Arc<dyn UtilityRepository>) -> Self {
+        Self { repo }
+    }
 
     pub async fn execute(
         &self,
@@ -17,6 +21,8 @@ impl ListBillsUseCase {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<UtilityBill>, AppError> {
-        self.repo.find_bills_by_unit(unit_id, status, limit, offset).await
+        self.repo
+            .find_bills_by_unit(unit_id, status, limit, offset)
+            .await
     }
 }

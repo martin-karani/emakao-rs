@@ -2,6 +2,7 @@ pub mod auth;
 pub mod cache;
 pub mod db;
 pub mod email;
+pub mod notifications;
 pub mod openfga;
 pub mod payments;
 pub mod sms;

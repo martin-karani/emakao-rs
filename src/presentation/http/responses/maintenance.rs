@@ -3,8 +3,10 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::maintenance::{WorkOrder, WorkOrderPriority, WorkOrderStatus};
-
+use crate::domain::{
+    enums::{WorkOrderPriority, WorkOrderStatus},
+    maintenance::WorkOrder,
+};
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkOrderResponse {
     pub id: Uuid,

@@ -6,15 +6,17 @@ use crate::{
     application::{
         errors::AppError,
         helpers::auth_helpers::{generate_temp_password, generate_token},
+        notifications::{
+            service::NotificationService,
+            templates::{EmailTemplate, SmsTemplate},
+        },
         ports::{
             auth_port::AuthPort,
             auth_repository::{
                 AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand,
                 CreateUserCommand, UpsertPortalIndexCommand,
             },
-            email_port::EmailPort,
             owner_repository::OwnerRepository,
-            sms_port::SmsPort,
         },
     },
     domain::{
@@ -35,14 +37,15 @@ pub struct OnboardOwnerInput {
     pub bank_account: Option<String>,
     pub mpesa_number: Option<String>,
     pub portal_base_url: String,
+    /// Shown in the email greeting. Optional.
+    pub agency_name: Option<String>,
 }
 
 pub struct OnboardOwnerUseCase {
     pub owner_repo: Arc<dyn OwnerRepository>,
     pub auth_repo: Arc<dyn AuthRepository>,
     pub auth_port: Arc<dyn AuthPort>,
-    pub email: Arc<dyn EmailPort>,
-    pub sms: Arc<dyn SmsPort>,
+    pub notifications: NotificationService,
 }
 
 impl OnboardOwnerUseCase {
@@ -75,14 +78,13 @@ impl OnboardOwnerUseCase {
                 contact.value()
             )));
         }
-        let user_id = Uuid::new_v4();
 
         // 1. Tenant profile
         let owner = self
             .owner_repo
             .create(CreateOwnerCommand {
                 agency_id: input.agency_id,
-                user_id: Some(user_id),
+                user_id: Some(Uuid::new_v4()), // placeholder — real user_id set below
                 first_name: input.first_name.clone(),
                 last_name: input.last_name.clone(),
                 email: input.email.clone(),
@@ -158,34 +160,34 @@ impl OnboardOwnerUseCase {
             })
             .await?;
 
-        // 6. Notify
+        // 6. Notify via NotificationService
         match &contact {
             ContactMethod::Email(email) => {
-                let url = format!("{}/invite/{}", input.portal_base_url, token);
+                let invite_url = format!("{}/invite/{}", input.portal_base_url, token);
                 let _ = self
-                    .email
-                    .send(
-                        email,
-                        "Welcome to Emakao — activate your Owner Portal",
-                        &format!(
-                            "<p>Hi {},</p><p>You have been onboarded as a property owner. \
-                         <a href='{}'>Activate your account</a>. Link expires in 48 hours.</p>",
-                            input.first_name, url
-                        ),
+                    .notifications
+                    .email(
+                        email.clone(),
+                        EmailTemplate::OwnerInvite,
+                        serde_json::json!({
+                            "first_name":  input.first_name,
+                            "invite_url":  invite_url,
+                            "agency_name": input.agency_name,
+                        }),
                     )
                     .await;
             }
             ContactMethod::Phone(phone) => {
-                let temp = temp_plain.as_deref().unwrap_or("");
                 let _ = self
-                    .sms
-                    .send(
-                        phone,
-                        &format!(
-                            "Hi {}, welcome to the Emakao owner portal at {}. \
-                         Temporary password: {}. Change it on first login.",
-                            input.first_name, input.portal_base_url, temp
-                        ),
+                    .notifications
+                    .sms(
+                        phone.clone(),
+                        SmsTemplate::OwnerInvite,
+                        serde_json::json!({
+                            "first_name":    input.first_name,
+                            "portal_url":    input.portal_base_url,
+                            "temp_password": temp_plain.as_deref().unwrap_or(""),
+                        }),
                     )
                     .await;
             }

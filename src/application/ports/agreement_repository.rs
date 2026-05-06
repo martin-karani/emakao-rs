@@ -3,7 +3,10 @@ use uuid::Uuid;
 
 use crate::{
     application::errors::AppError,
-    domain::agreement::{Agreement, AgreementStatus},
+    domain::{
+        agreement::Agreement,
+        enums::{AgreementStatus, BillingFrequency},
+    },
 };
 
 pub struct CreateAgreementCommand {
@@ -14,7 +17,7 @@ pub struct CreateAgreementCommand {
     pub end_date: Option<time::Date>,
     pub rent_amount_kes: rust_decimal::Decimal,
     pub deposit_kes: rust_decimal::Decimal,
-    pub billing_frequency: crate::domain::agreement::BillingFrequency,
+    pub billing_frequency: BillingFrequency,
 }
 
 #[async_trait]
@@ -27,16 +30,9 @@ pub trait AgreementRepository: Send + Sync + 'static {
         offset: i64,
     ) -> Result<Vec<Agreement>, AppError>;
 
-    async fn find_by_id(
-        &self,
-        agency_id: Uuid,
-        id: Uuid,
-    ) -> Result<Option<Agreement>, AppError>;
+    async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Agreement>, AppError>;
 
-    async fn create(
-        &self,
-        cmd: CreateAgreementCommand,
-    ) -> Result<Agreement, AppError>;
+    async fn create(&self, cmd: CreateAgreementCommand) -> Result<Agreement, AppError>;
 
     async fn update_status(
         &self,
@@ -45,8 +41,5 @@ pub trait AgreementRepository: Send + Sync + 'static {
         updated_by: Uuid,
     ) -> Result<(), AppError>;
 
-    async fn has_active_agreement(
-        &self,
-        unit_id: Uuid,
-    ) -> Result<bool, AppError>;
+    async fn has_active_agreement(&self, unit_id: Uuid) -> Result<bool, AppError>;
 }

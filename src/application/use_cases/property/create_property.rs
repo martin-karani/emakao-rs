@@ -4,8 +4,9 @@ use uuid::Uuid;
 use crate::{
     application::{errors::AppError, ports::property_repository::PropertyRepository},
     domain::{
+        enums::PropertyType,
         errors::DomainError,
-        property::{CreatePropertyCommand, Property, PropertyConfig, PropertyType},
+        property::{CreatePropertyCommand, Property, PropertyConfig},
     },
 };
 

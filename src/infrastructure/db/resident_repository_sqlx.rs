@@ -8,8 +8,9 @@ use crate::{
         ports::resident_repository::{CreateResidentCommand, ResidentRepository},
     },
     domain::{
-        payment::{ClaimStatus, PaymentClaim, PaymentMethodType},
-        resident::{PortalStatus, Resident},
+        enums::{PaymentClaimStatus, PaymentMethodType, PortalStatus},
+        payment::PaymentClaim,
+        resident::Resident,
     },
 };
 
@@ -241,11 +242,11 @@ impl ResidentRepository for PgResidentRepo {
             }
         }
 
-        fn parse_status(s: &str) -> ClaimStatus {
+        fn parse_status(s: &str) -> PaymentClaimStatus {
             match s {
-                "approved" => ClaimStatus::Approved,
-                "rejected" => ClaimStatus::Rejected,
-                _ => ClaimStatus::PendingReview,
+                "approved" => PaymentClaimStatus::Approved,
+                "rejected" => PaymentClaimStatus::Rejected,
+                _ => PaymentClaimStatus::PendingReview,
             }
         }
 

@@ -1,0 +1,47 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}Work Order Status Update{% endblock %}
+
+{% block content %}
+<h2>Work Order Update</h2>
+<p>Hi {{ resident_name | default("there") }},</p>
+<p>
+  There has been an update to your maintenance request.
+</p>
+<div class="highlight-box">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="padding:4px 0;color:#555;">Work Order</td>
+      <td style="padding:4px 0;font-weight:600;">#{{ work_order_ref }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Category</td>
+      <td style="padding:4px 0;">{{ category }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Status</td>
+      <td style="padding:4px 0;font-weight:600;text-transform:capitalize;">{{ status }}</td>
+    </tr>
+    {% if scheduled_at %}
+    <tr>
+      <td style="padding:4px 0;color:#555;">Scheduled</td>
+      <td style="padding:4px 0;">{{ scheduled_at }}</td>
+    </tr>
+    {% endif %}
+    {% if vendor_name %}
+    <tr>
+      <td style="padding:4px 0;color:#555;">Assigned To</td>
+      <td style="padding:4px 0;">{{ vendor_name }}</td>
+    </tr>
+    {% endif %}
+  </table>
+</div>
+{% if description %}
+<p style="font-size:14px;color:#555;">
+  <strong>Notes:</strong> {{ description }}
+</p>
+{% endif %}
+<p style="font-size:13px;color:#888888;">
+  If you have questions about this work order, please contact your property manager.
+</p>
+{% endblock %}

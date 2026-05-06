@@ -29,7 +29,7 @@ pub async fn resolve_agency_context(
         }
     };
 
-    let platform = state.tenant_pools.platform();
+    let platform = state.infra.tenant_pools.platform();
 
     let row = sqlx::query!(
         r#"
@@ -50,7 +50,7 @@ pub async fn resolve_agency_context(
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({
-                    "error": "AGENCY_NOT_FOUND",
+                    "error":   "AGENCY_NOT_FOUND",
                     "message": "The agency associated with this token no longer exists."
                 })),
             )
@@ -62,10 +62,10 @@ pub async fn resolve_agency_context(
         }
     };
 
-    let tenant_pool = match state.tenant_pools.for_tenant(&row.schema_name).await {
+    let tenant_pool = match state.infra.tenant_pools.for_tenant(&row.schema_name).await {
         Ok(p) => p,
         Err(e) => {
-            tracing::error!(error = %e, schema = %row.schema_name, "failed to build tenant pool");
+            tracing::error!(error = %e, schema = %row.schema_name, "failed to build agency pool");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };

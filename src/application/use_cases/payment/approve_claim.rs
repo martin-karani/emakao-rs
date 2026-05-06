@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::payment_repository::PaymentRepository},
-    domain::payment::{ClaimStatus, PaymentClaim},
+    domain::{enums::PaymentClaimStatus, payment::PaymentClaim},
 };
 
 pub struct ApproveClaimUseCase {
@@ -26,13 +26,16 @@ impl ApproveClaimUseCase {
 
     pub async fn execute(&self, input: ApproveClaimInput) -> Result<PaymentClaim, AppError> {
         // Uses: PaymentRepository::find_by_id
-        let claim = self.repo
+        let claim = self
+            .repo
             .find_by_id(input.agency_id, input.claim_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("claim {}", input.claim_id)))?;
 
-        if claim.status != ClaimStatus::PendingReview {
-            return Err(AppError::Validation("only pending claims can be reviewed".into()));
+        if claim.status != PaymentClaimStatus::PendingReview {
+            return Err(AppError::Validation(
+                "only pending claims can be reviewed".into(),
+            ));
         }
 
         if !input.approve && input.rejection_reason.is_none() {
@@ -40,13 +43,14 @@ impl ApproveClaimUseCase {
         }
 
         let new_status = if input.approve {
-            ClaimStatus::Approved
+            PaymentClaimStatus::Approved
         } else {
-            ClaimStatus::Rejected
+            PaymentClaimStatus::Rejected
         };
 
         // Uses: PaymentRepository::update_status
-        let updated = self.repo
+        let updated = self
+            .repo
             .update_status(
                 input.claim_id,
                 new_status,

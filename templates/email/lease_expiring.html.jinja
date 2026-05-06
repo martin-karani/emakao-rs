@@ -1,0 +1,35 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}Your Lease Is Expiring Soon{% endblock %}
+
+{% block content %}
+<h2>Your Lease Is Expiring Soon</h2>
+<p>Hi {{ resident_name }},</p>
+<p>
+  We want to give you advance notice that your lease for
+  <strong>{{ unit_ref }}</strong> is expiring soon.
+</p>
+<div class="highlight-box">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="padding:4px 0;color:#555;">Unit</td>
+      <td style="padding:4px 0;font-weight:600;">{{ unit_ref }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Expiry Date</td>
+      <td style="padding:4px 0;font-weight:600;color:#c62828;">{{ expiry_date }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Days Remaining</td>
+      <td style="padding:4px 0;font-weight:600;">{{ days_remaining }} days</td>
+    </tr>
+  </table>
+</div>
+<p>
+  Please contact your property manager as soon as possible if you wish to renew your lease
+  or make alternative arrangements.
+</p>
+<p style="font-size:13px;color:#888888;">
+  If you have already discussed your renewal, please disregard this notice.
+</p>
+{% endblock %}

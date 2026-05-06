@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use rust_decimal::Decimal;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    application::{
-        errors::AppError,
-        ports::payment_repository::PaymentRepository,
+    application::{errors::AppError, ports::payment_repository::PaymentRepository},
+    domain::{
+        enums::PaymentMethodType,
+        payment::{CreatePaymentClaimCommand, PaymentClaim},
     },
-    domain::payment::{CreatePaymentClaimCommand, PaymentClaim, PaymentMethodType},
 };
 
 pub struct SubmitClaimUseCase {
@@ -33,21 +33,25 @@ impl SubmitClaimUseCase {
 
     pub async fn execute(&self, input: SubmitClaimInput) -> Result<PaymentClaim, AppError> {
         if input.amount_kes <= Decimal::ZERO {
-            return Err(AppError::Validation("payment amount must be positive".into()));
+            return Err(AppError::Validation(
+                "payment amount must be positive".into(),
+            ));
         }
 
-        // Uses: PaymentRepository::create
-        let claim = self.repo.create(CreatePaymentClaimCommand {
-            property_id: input.property_id,
-            agreement_id: input.agreement_id,
-            resident_id: input.resident_id,
-            submitted_by: input.submitted_by,
-            method_type: input.method_type,
-            amount_kes: input.amount_kes,
-            reference_code: input.reference_code,
-            proof_url: input.proof_url,
-            notes: input.notes,
-        }).await?;
+        let claim = self
+            .repo
+            .create(CreatePaymentClaimCommand {
+                property_id: input.property_id,
+                agreement_id: input.agreement_id,
+                resident_id: input.resident_id,
+                submitted_by: input.submitted_by,
+                method_type: input.method_type,
+                amount_kes: input.amount_kes,
+                reference_code: input.reference_code,
+                proof_url: input.proof_url,
+                notes: input.notes,
+            })
+            .await?;
 
         tracing::info!(claim_id = %claim.id, amount = %input.amount_kes, "payment claim submitted");
         Ok(claim)

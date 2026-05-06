@@ -1,10 +1,9 @@
+use crate::domain::enums::{BillingMode, MeterType};
 use garde::Validate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
-
-use crate::domain::utility::{BillingMode, MeterType};
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateMeterDto {

@@ -16,7 +16,6 @@ impl GetResidentUseCase {
     }
 
     pub async fn execute(&self, agency_id: Uuid, id: Uuid) -> Result<Resident, AppError> {
-        // Uses: ResidentRepository::find_by_id
         self.repo
             .find_by_id(agency_id, id)
             .await?

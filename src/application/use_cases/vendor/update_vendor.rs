@@ -15,7 +15,6 @@ impl UpdateVendorUseCase {
     }
 
     pub async fn execute(&self, cmd: UpdateVendorCommand) -> Result<Vendor, AppError> {
-        // Uses: VendorRepository::update
         self.repo.update(cmd).await
     }
 }

@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::payment_repository::PaymentRepository},
-    domain::payment::{ClaimStatus, PaymentClaim},
+    domain::{enums::PaymentClaimStatus, payment::PaymentClaim},
 };
 
 pub struct ListClaimsUseCase {
@@ -19,11 +19,13 @@ impl ListClaimsUseCase {
         &self,
         agency_id: Uuid,
         property_id: Option<Uuid>,
-        status: Option<ClaimStatus>,
+        status: Option<PaymentClaimStatus>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<PaymentClaim>, AppError> {
         // Uses: PaymentRepository::find_all
-        self.repo.find_all(agency_id, property_id, status, limit, offset).await
+        self.repo
+            .find_all(agency_id, property_id, status, limit, offset)
+            .await
     }
 }

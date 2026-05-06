@@ -50,7 +50,7 @@ pub trait SubscriptionRepository: Send + Sync + 'static {
 
     // ── Usage counting (DB side) ─────────────────────────────────────────────
 
-    /// Count rows in a tenant-schema table (properties, units, etc.).
+    /// Count rows in a agency-schema table (properties, units, etc.).
     async fn count_tenant_rows(&self, agency_id: Uuid, table_name: &str) -> Result<i32, AppError>;
 
     /// Count rows in the platform schema filtered by agency_id.

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 /// Port for the OpenFGA authorisation service.
 ///
 /// Every method is `store_id`-scoped so a single adapter instance can serve
-/// the entire multi-tenant fleet — one store per agency.
+/// the entire multi-agency fleet — one store per agency.
 ///
 /// ## Model lifecycle
 /// 1. `create_store`     — called once at agency provisioning time

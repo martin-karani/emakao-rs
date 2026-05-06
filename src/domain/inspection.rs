@@ -1,25 +1,7 @@
-use serde::{Deserialize, Serialize};
+use crate::domain::enums::{InspectionStatus, InspectionType};
+use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InspectionType {
-    MoveIn,
-    MoveOut,
-    Routine,
-    Emergency,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InspectionStatus {
-    Scheduled,
-    InProgress,
-    Completed,
-    Cancelled,
-}
-
 #[derive(Clone, Debug, Serialize)]
 pub struct InspectionItem {
     pub area: String,

@@ -16,7 +16,6 @@ impl GetOwnerUseCase {
     }
 
     pub async fn execute(&self, agency_id: Uuid, id: Uuid) -> Result<Owner, AppError> {
-        // Uses: OwnerRepository::find_by_id
         self.repo
             .find_by_id(agency_id, id)
             .await?

@@ -1,25 +1,52 @@
+use crate::application::{
+    errors::AppError,
+    ports::{auth_port::AuthPort, auth_repository::AuthRepository},
+};
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::application::{errors::AppError, ports::auth_port::AuthPort};
 
-pub struct ChangePasswordUseCase { pub auth: Arc<dyn AuthPort> }
+pub struct ChangePasswordInput {
+    pub user_id: Uuid,
+    pub old_password: String,
+    pub new_password: String,
+}
+
+pub struct ChangePasswordUseCase {
+    pub repo: Arc<dyn AuthRepository>,
+    pub auth: Arc<dyn AuthPort>,
+}
 
 impl ChangePasswordUseCase {
-    pub fn new(auth: Arc<dyn AuthPort>) -> Self { Self { auth } }
+    pub fn new(repo: Arc<dyn AuthRepository>, auth: Arc<dyn AuthPort>) -> Self {
+        Self { repo, auth }
+    }
 
-    pub async fn execute(
-        &self,
-        user_id: Uuid,
-        stored_hash: &str,
-        old_password: &str,
-        new_password: &str,
-    ) -> Result<String, AppError> {
-        let _ = user_id;
-        let valid = self.auth.verify_password(old_password, stored_hash).await?;
-        if !valid { return Err(AppError::Unauthorised); }
-        if new_password.len() < 8 {
-            return Err(AppError::Validation("password must be at least 8 characters".into()));
+    pub async fn execute(&self, input: ChangePasswordInput) -> Result<(), AppError> {
+        if input.new_password.len() < 8 {
+            return Err(AppError::Validation(
+                "Password must be at least 8 characters.".into(),
+            ));
         }
-        self.auth.hash_password(new_password).await
+
+        // Load the current hash
+        let user = self
+            .repo
+            .find_user_by_id(input.user_id)
+            .await?
+            .ok_or(AppError::Unauthorised)?;
+
+        if !self
+            .auth
+            .verify_password(&input.old_password, &user.password_hash)
+            .await?
+        {
+            return Err(AppError::Unauthorised);
+        }
+
+        let new_hash = self.auth.hash_password(&input.new_password).await?;
+        self.repo.activate_user(input.user_id, &new_hash).await?;
+
+        tracing::info!(user_id = %input.user_id, "password changed");
+        Ok(())
     }
 }

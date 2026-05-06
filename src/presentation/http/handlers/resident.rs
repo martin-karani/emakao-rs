@@ -34,7 +34,7 @@ use crate::{
     },
 };
 
-// ── Staff handlers ──────────────────────────────────────────────────────────
+// ── Staff handlers ────────────────────────────────────────────────────────────
 
 /// List residents (staff)
 #[utoipa::path(
@@ -113,21 +113,21 @@ pub async fn invite_resident(
 
     let uc = InviteResidentUseCase {
         resident_repo: Arc::new(PgResidentRepo::from(ctx.pool)),
-        auth_repo: state.auth_repo.clone(),
-        auth_port: state.auth_port.clone(),
-        email: state.email.clone(),
-        sms: state.sms.clone(),
+        auth_repo: state.identity.auth_repo.clone(),
+        auth_port: state.identity.auth_port.clone(),
+        notifications: state.notifications.clone(),
     };
 
     let output = uc
         .execute(InviteResidentInput {
             agency_id: ctx.agency.id,
+            agency_name: Some(ctx.agency.name),
             first_name: dto.first_name,
             last_name: dto.last_name,
             email: Some(dto.email),
             phone: dto.phone,
             national_id: dto.national_id,
-            portal_base_url: "https://residents.emakao.co.ke".to_string(), // from config? make configurable
+            portal_base_url: "https://residents.emakao.co.ke".to_string(),
         })
         .await?;
 
@@ -136,6 +136,8 @@ pub async fn invite_resident(
         Json(ResidentResponse::from(output.resident)),
     ))
 }
+
+// ── Portal handlers ───────────────────────────────────────────────────────────
 
 /// Get own profile (using JWT user_id)
 #[utoipa::path(
@@ -151,9 +153,9 @@ pub async fn invite_resident(
 )]
 pub async fn get_my_profile(
     Extension(user): Extension<AuthenticatedUser>,
-    _ctx: AgencyContext,
+    ctx: AgencyContext,
 ) -> Result<impl IntoResponse, AppError> {
-    let repo = Arc::new(PgResidentRepo::from(_ctx.pool));
+    let repo = Arc::new(PgResidentRepo::from(ctx.pool));
     let resident = ResidentRepository::find_by_user_id(repo.as_ref(), user.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Resident profile not found".into()))?;

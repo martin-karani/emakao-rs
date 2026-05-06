@@ -1,20 +1,8 @@
+use crate::domain::enums::{PropertyType, UnitStatus};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
-
-// ── Property type / config discriminated union ──────────────────────────────
-
-#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PropertyType {
-    SingleFamily,
-    Multifamily,
-    Commercial,
-    CommunityAssociation,
-    StudentHousing,
-    AffordableHousing,
-}
 
 /// The `type` field discriminates the variant (e.g. `"single_family"`).
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
@@ -74,18 +62,6 @@ pub struct Property {
     pub created_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
-}
-
-// ── Unit ────────────────────────────────────────────────────────────────
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UnitStatus {
-    Vacant,
-    Occupied,
-    Maintenance,
-    Reserved,
-    Inactive,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -1,0 +1,29 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}Welcome to the Emakao Vendor Directory{% endblock %}
+
+{% block content %}
+<h2>You've been added to the Vendor Directory</h2>
+<p>Hi {{ contact_name | default("there") }},</p>
+<p>
+  <strong>{{ agency_name | default("A property management agency") }}</strong> has added
+  <strong>{{ vendor_name }}</strong> to their vendor directory on Emakao.
+  Activate your portal access to view assigned work orders and update job statuses.
+</p>
+<div class="highlight-box">
+  <strong>What you can do in the Vendor Portal:</strong><br>
+  View and update assigned work orders, upload completion photos, and track job history.
+</div>
+<p>
+  <a href="{{ invite_url }}" class="cta">Activate Portal Access</a>
+</p>
+<p style="font-size:13px;color:#888888;">
+  This link expires in <strong>48 hours</strong>. If you did not expect this invitation,
+  you can safely ignore this email.
+</p>
+<hr class="divider">
+<p style="font-size:13px;color:#555555;">
+  Having trouble with the button? Copy and paste this link into your browser:<br>
+  <a href="{{ invite_url }}" style="color:#1a3c5e;">{{ invite_url }}</a>
+</p>
+{% endblock %}

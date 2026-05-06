@@ -3,10 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::agreement_repository::AgreementRepository},
-    domain::{
-        agreement::AgreementStatus,
-        errors::DomainError,
-    },
+    domain::{enums::AgreementStatus, errors::DomainError},
 };
 
 pub struct TerminateAgreementUseCase {
@@ -24,8 +21,8 @@ impl TerminateAgreementUseCase {
         agreement_id: Uuid,
         terminated_by: Uuid,
     ) -> Result<(), AppError> {
-        // Uses: AgreementRepository::find_by_id
-        let agreement = self.repo
+        let agreement = self
+            .repo
             .find_by_id(agency_id, agreement_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("agreement {agreement_id}")))?;
@@ -34,7 +31,6 @@ impl TerminateAgreementUseCase {
             return Err(DomainError::AgreementNotActive(agreement_id).into());
         }
 
-        // Uses: AgreementRepository::update_status
         self.repo
             .update_status(agreement_id, AgreementStatus::Terminated, terminated_by)
             .await?;

@@ -1,8 +1,7 @@
+use crate::domain::{enums::PropertyType, property::PropertyConfig};
 use garde::Validate;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
-
-use crate::domain::property::{PropertyConfig, PropertyType};
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreatePropertyDto {

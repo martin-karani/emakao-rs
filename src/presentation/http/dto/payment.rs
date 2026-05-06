@@ -4,7 +4,7 @@ use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::domain::payment::{ClaimStatus, PaymentMethodType};
+use crate::domain::enums::{PaymentClaimStatus, PaymentMethodType};
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct SubmitClaimDto {
@@ -38,7 +38,7 @@ pub struct ReviewClaimDto {
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListClaimsParams {
     pub property_id: Option<Uuid>,
-    pub status: Option<ClaimStatus>,
+    pub status: Option<PaymentClaimStatus>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }

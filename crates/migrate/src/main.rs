@@ -1,16 +1,18 @@
 use anyhow::{Context, Result};
 use sqlx::{postgres::PgPoolOptions, Executor, PgPool};
 
+mod seed; // <-- new: reference data seeder
+
 static PLATFORM_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations/platform");
 
-static TENANT_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations/tenant");
+static AGENCY_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations/agency");
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let platform_url =
         std::env::var("PLATFORM_DATABASE_URL").context("PLATFORM_DATABASE_URL must be set")?;
     let tenant_url =
-        std::env::var("TENANT_DATABASE_URL").context("TENANT_DATABASE_URL must be set")?;
+        std::env::var("AGENCY_DATABASE_URL").context("AGENCY_DATABASE_URL must be set")?;
 
     // ----------------------------------------------------------------
     // 1. Platform migrations (agencies, users, subscriptions, plans…)
@@ -30,14 +32,23 @@ async fn main() -> Result<()> {
     println!("✓ Platform migrations complete");
 
     // ----------------------------------------------------------------
-    // 2. Tenant migrations — one schema per agency, on the tenant DB
+    // 1b. Seed platform reference data (plans, features, limits)
+    // Must happen before any agency is created – the
+    // `create_default_subscription` trigger depends on the starter plan.
     // ----------------------------------------------------------------
-    println!("→ Connecting to tenant database…");
+    println!("→ Seeding platform reference data…");
+    seed::run_platform_seeds(&platform_pool).await?;
+    println!("✓ Reference data seeded");
+
+    // ----------------------------------------------------------------
+    // 2. Tenant migrations — one schema per agency, on the agency DB
+    // ----------------------------------------------------------------
+    println!("→ Connecting to agency database…");
     let tenant_base_pool = PgPoolOptions::new()
         .max_connections(2)
         .connect(&tenant_url)
         .await
-        .context("Failed to connect to tenant database")?;
+        .context("Failed to connect to agency database")?;
 
     // Fetch all agency schemas from the platform DB
     let agencies: Vec<(String,)> =
@@ -47,7 +58,7 @@ async fn main() -> Result<()> {
             .context("Failed to fetch agencies")?;
 
     if agencies.is_empty() {
-        println!("→ No agencies found — seeding dev tenant schema for sqlx prepare…");
+        println!("→ No agencies found — seeding dev agency schema for sqlx prepare…");
         seed_dev_agency(
             &platform_pool,
             &platform_url,
@@ -57,20 +68,20 @@ async fn main() -> Result<()> {
         .await?;
     } else {
         for (schema_name,) in &agencies {
-            migrate_tenant_schema(&tenant_url, schema_name).await?;
+            migrate_agency_schema(&tenant_url, schema_name).await?;
         }
     }
 
-    println!("✓ All tenant migrations complete");
+    println!("✓ All agency migrations complete");
 
     platform_pool.close().await;
     tenant_base_pool.close().await;
     Ok(())
 }
 
-/// Runs tenant migrations for a single schema on the tenant database.
-async fn migrate_tenant_schema(tenant_url: &str, schema_name: &str) -> Result<()> {
-    println!("  → Migrating tenant schema '{schema_name}'…");
+/// Runs agency migrations for a single schema on the agency database.
+async fn migrate_agency_schema(tenant_url: &str, schema_name: &str) -> Result<()> {
+    println!("  → Migrating agency schema '{schema_name}'…");
 
     let schema = schema_name.to_owned();
     let pool = PgPoolOptions::new()
@@ -90,10 +101,10 @@ async fn migrate_tenant_schema(tenant_url: &str, schema_name: &str) -> Result<()
     pool.execute(format!("CREATE SCHEMA IF NOT EXISTS {schema_name}").as_str())
         .await?;
 
-    TENANT_MIGRATOR
+    AGENCY_MIGRATOR
         .run(&pool)
         .await
-        .with_context(|| format!("Tenant migrations failed for schema '{schema_name}'"))?;
+        .with_context(|| format!("Agency migrations failed for schema '{schema_name}'"))?;
 
     pool.close().await;
     println!("  ✓ Schema '{schema_name}' done");
@@ -102,7 +113,7 @@ async fn migrate_tenant_schema(tenant_url: &str, schema_name: &str) -> Result<()
 
 async fn seed_dev_agency(
     platform_pool: &PgPool,
-    platform_url: &str, // ← add this parameter
+    platform_url: &str,
     tenant_url: &str,
     tenant_pool: &PgPool,
 ) -> Result<()> {
@@ -124,17 +135,16 @@ async fn seed_dev_agency(
     .await
     .context("Failed to seed dev agency")?;
 
-    // Migrate tenant schema on the TENANT database (for runtime)
+    // Migrate agency schema on the TENANT database (for runtime)
     tenant_pool
         .execute(format!("CREATE SCHEMA IF NOT EXISTS {dev_schema}").as_str())
         .await?;
-    migrate_tenant_schema(tenant_url, &dev_schema).await?;
+    migrate_agency_schema(tenant_url, &dev_schema).await?;
 
-    // ALSO migrate tenant schema on the PLATFORM database (for cargo sqlx prepare)
-    // This lets a single DATABASE_URL see all tables via search_path.
-    println!("  → Seeding tenant schema '{dev_schema}' on platform DB for sqlx prepare…");
-    migrate_tenant_schema(platform_url, &dev_schema).await?;
+    // ALSO migrate agency schema on the PLATFORM database (for cargo sqlx prepare)
+    println!("  → Seeding agency schema '{dev_schema}' on platform DB for sqlx prepare…");
+    migrate_agency_schema(platform_url, &dev_schema).await?;
 
-    println!("  ✓ Dev tenant schema '{dev_schema}' seeded on both databases");
+    println!("  ✓ Dev agency schema '{dev_schema}' seeded on both databases");
     Ok(())
 }

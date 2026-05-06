@@ -3,8 +3,8 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::resident::{PortalStatus, Resident};
-
+use crate::domain::enums::PortalStatus;
+use crate::domain::resident::Resident;
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ResidentResponse {
     pub id: Uuid,

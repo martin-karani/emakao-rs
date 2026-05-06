@@ -1,0 +1,14 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}Welcome to Emakao{% endblock %}
+
+{% block content %}
+<h2>Welcome to Emakao, {{ first_name }}!</h2>
+<p>Your account is ready. Log in any time to manage your profile and activity.</p>
+<p>
+  <a href="{{ login_url }}" class="cta">Log In to Your Account</a>
+</p>
+<p style="font-size:13px;color:#888888;">
+  If you did not create this account, please contact support immediately.
+</p>
+{% endblock %}

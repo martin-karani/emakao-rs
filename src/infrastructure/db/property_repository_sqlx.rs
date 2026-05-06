@@ -7,8 +7,9 @@ use crate::{
         errors::AppError,
         ports::property_repository::{PropertyFilter, PropertyRepository},
     },
-    domain::property::{
-        CreatePropertyCommand, Property, PropertyConfig, PropertyType, UpdatePropertyCommand,
+    domain::{
+        enums::PropertyType,
+        property::{CreatePropertyCommand, Property, PropertyConfig, UpdatePropertyCommand},
     },
 };
 
@@ -22,14 +23,11 @@ impl PgPropertyRepo {
     }
 }
 
-// ── Per‑request convenience ─────────────────────────────────────────────
 impl From<PgPool> for PgPropertyRepo {
     fn from(pool: PgPool) -> Self {
         Self { pool }
     }
 }
-
-// ── DB row ───────────────────────────────────────────────────────────────
 
 #[derive(sqlx::FromRow)]
 struct PropertyRow {

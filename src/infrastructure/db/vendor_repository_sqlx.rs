@@ -5,10 +5,9 @@ use uuid::Uuid;
 use crate::{
     application::{errors::AppError, ports::vendor_repository::VendorRepository},
     domain::{
-        maintenance::{WorkOrder, WorkOrderPriority, WorkOrderStatus},
-        vendor::{
-            CreateVendorCommand, UpdateVendorCommand, Vendor, VendorPortalStatus, VendorStatus,
-        },
+        enums::{PortalStatus, VendorStatus, WorkOrderPriority, WorkOrderStatus},
+        maintenance::WorkOrder,
+        vendor::{CreateVendorCommand, UpdateVendorCommand, Vendor},
     },
 };
 
@@ -61,11 +60,11 @@ fn status_str(s: &VendorStatus) -> &'static str {
     }
 }
 
-fn parse_portal_status(s: &str) -> VendorPortalStatus {
+fn parse_portal_status(s: &str) -> PortalStatus {
     match s {
-        "active" => VendorPortalStatus::Active,
-        "suspended" => VendorPortalStatus::Suspended,
-        _ => VendorPortalStatus::Invited,
+        "active" => PortalStatus::Active,
+        "suspended" => PortalStatus::Suspended,
+        _ => PortalStatus::Invited,
     }
 }
 

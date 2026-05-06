@@ -6,14 +6,16 @@ use crate::{
     application::{
         errors::AppError,
         helpers::auth_helpers::{generate_temp_password, generate_token},
+        notifications::{
+            service::NotificationService,
+            templates::{EmailTemplate, SmsTemplate},
+        },
         ports::{
             auth_port::AuthPort,
             auth_repository::{
                 AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand,
                 CreateUserCommand, UpsertPortalIndexCommand,
             },
-            email_port::EmailPort,
-            sms_port::SmsPort,
             vendor_repository::VendorRepository,
         },
     },
@@ -32,14 +34,15 @@ pub struct InviteVendorInput {
     pub speciality: Option<String>,
     pub notes: Option<String>,
     pub portal_base_url: String,
+    /// Shown in the email, e.g. "Acme Realty". Optional.
+    pub agency_name: Option<String>,
 }
 
 pub struct InviteVendorUseCase {
     pub vendor_repo: Arc<dyn VendorRepository>,
     pub auth_repo: Arc<dyn AuthRepository>,
     pub auth_port: Arc<dyn AuthPort>,
-    pub email: Arc<dyn EmailPort>,
-    pub sms: Arc<dyn SmsPort>,
+    pub notifications: NotificationService,
 }
 
 impl InviteVendorUseCase {
@@ -47,15 +50,13 @@ impl InviteVendorUseCase {
         vendor_repo: Arc<dyn VendorRepository>,
         auth_repo: Arc<dyn AuthRepository>,
         auth_port: Arc<dyn AuthPort>,
-        email: Arc<dyn EmailPort>,
-        sms: Arc<dyn SmsPort>,
+        notifications: NotificationService,
     ) -> Self {
         Self {
             vendor_repo,
             auth_repo,
             auth_port,
-            email,
-            sms,
+            notifications,
         }
     }
 
@@ -91,7 +92,7 @@ impl InviteVendorUseCase {
 
         let user_id = Uuid::new_v4();
 
-        // 2. Tenant profile
+        // 1. Tenant profile
         let vendor = self
             .vendor_repo
             .create(CreateVendorCommand {
@@ -106,7 +107,7 @@ impl InviteVendorUseCase {
             })
             .await?;
 
-        // 3. Auth credentials
+        // 2. Auth credentials
         let (password_hash, temp_plain, must_change, is_active) = match &contact {
             ContactMethod::Phone(_) => {
                 let p = generate_temp_password();
@@ -165,34 +166,34 @@ impl InviteVendorUseCase {
             })
             .await?;
 
+        // 3. Notify via NotificationService
         match &contact {
             ContactMethod::Email(email) => {
-                let url = format!("{}/invite/{}", input.portal_base_url, token);
+                let invite_url = format!("{}/invite/{}", input.portal_base_url, token);
                 let _ = self
-                    .email
-                    .send(
-                        email,
-                        "You've been added to the Emakao Vendor Directory",
-                        &format!(
-                            "<p>Hi {},</p><p>You have been added as a vendor. \
-                             <a href='{}'>Activate your portal access</a>.</p>",
-                            input.contact_name.as_deref().unwrap_or("there"),
-                            url
-                        ),
+                    .notifications
+                    .email(
+                        email.clone(),
+                        EmailTemplate::VendorInvite,
+                        serde_json::json!({
+                            "contact_name": input.contact_name,
+                            "vendor_name":  input.name,
+                            "invite_url":   invite_url,
+                            "agency_name":  input.agency_name,
+                        }),
                     )
                     .await;
             }
             ContactMethod::Phone(phone) => {
-                let temp = temp_plain.as_deref().unwrap_or("");
                 let _ = self
-                    .sms
-                    .send(
-                        phone,
-                        &format!(
-                            "You have been added to the Emakao vendor portal at {}. \
-                             Temporary password: {}. Change it on first login.",
-                            input.portal_base_url, temp
-                        ),
+                    .notifications
+                    .sms(
+                        phone.clone(),
+                        SmsTemplate::VendorInvite,
+                        serde_json::json!({
+                            "portal_url":    input.portal_base_url,
+                            "temp_password": temp_plain.as_deref().unwrap_or(""),
+                        }),
                     )
                     .await;
             }

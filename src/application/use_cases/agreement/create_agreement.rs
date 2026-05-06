@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use rust_decimal::Decimal;
+use std::sync::Arc;
 use time::Date;
 use uuid::Uuid;
 
@@ -8,10 +8,7 @@ use crate::{
         errors::AppError,
         ports::agreement_repository::{AgreementRepository, CreateAgreementCommand},
     },
-    domain::{
-        agreement::{Agreement, BillingFrequency},
-        errors::DomainError,
-    },
+    domain::{agreement::Agreement, enums::BillingFrequency, errors::DomainError},
 };
 
 pub struct CreateAgreementUseCase {
@@ -45,16 +42,19 @@ impl CreateAgreementUseCase {
         }
 
         // Uses: AgreementRepository::create
-        let agreement = self.repo.create(CreateAgreementCommand {
-            property_id: input.property_id,
-            unit_id: input.unit_id,
-            resident_id: input.resident_id,
-            start_date: input.start_date,
-            end_date: input.end_date,
-            rent_amount_kes: input.rent_amount_kes,
-            deposit_kes: input.deposit_kes,
-            billing_frequency: input.billing_frequency,
-        }).await?;
+        let agreement = self
+            .repo
+            .create(CreateAgreementCommand {
+                property_id: input.property_id,
+                unit_id: input.unit_id,
+                resident_id: input.resident_id,
+                start_date: input.start_date,
+                end_date: input.end_date,
+                rent_amount_kes: input.rent_amount_kes,
+                deposit_kes: input.deposit_kes,
+                billing_frequency: input.billing_frequency,
+            })
+            .await?;
 
         tracing::info!(agreement_id = %agreement.id, unit_id = %input.unit_id, "agreement created");
         Ok(agreement)

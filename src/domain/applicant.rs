@@ -1,16 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ApplicationStatus {
-    Submitted,
-    UnderReview,
-    Approved,
-    Rejected,
-    Withdrawn,
-}
+use crate::domain::enums::ApplicantStatus;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Applicant {
@@ -25,7 +17,7 @@ pub struct Applicant {
     pub national_id: Option<String>,
     pub monthly_income_kes: Option<rust_decimal::Decimal>,
     pub employer: Option<String>,
-    pub status: ApplicationStatus,
+    pub status: ApplicantStatus,
     pub notes: Option<String>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,

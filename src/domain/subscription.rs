@@ -4,6 +4,8 @@ use std::fmt;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::domain::enums::{BillingInterval, SubscriptionInvoiceStatus};
+
 // ── Feature keys ──────────────────────────────────────────────────────────────
 
 /// Every capability in the platform. Naming convention: DOMAIN_CAPABILITY.
@@ -271,7 +273,7 @@ pub struct SubscriptionPlan {
     pub description: Option<String>,
     pub price_kes: i32,
     pub yearly_price_kes: Option<i32>,
-    pub interval: PlanInterval,
+    pub interval: BillingInterval,
     pub is_active: bool,
     pub is_public: bool,
     pub sort_order: i32,
@@ -279,13 +281,6 @@ pub struct SubscriptionPlan {
     pub metadata: Option<serde_json::Value>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum PlanInterval {
-    Monthly,
-    Yearly,
 }
 
 /// A single resolved feature — either from the plan or an agency override.
@@ -376,14 +371,13 @@ pub struct LimitCheckResult {
     pub soft_limit_reached: bool,
 }
 
-/// Subscription invoice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionInvoice {
     pub id: Uuid,
     pub agency_subscription_id: Uuid,
     pub agency_id: Uuid,
     pub amount_kes: i32,
-    pub status: InvoiceStatus,
+    pub status: SubscriptionInvoiceStatus,
     pub due_date: OffsetDateTime,
     pub paid_at: Option<OffsetDateTime>,
     pub mpesa_ref: Option<String>,
@@ -391,16 +385,6 @@ pub struct SubscriptionInvoice {
     pub receipt_url: Option<String>,
     pub notes: Option<String>,
     pub created_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum InvoiceStatus {
-    Draft,
-    Open,
-    Paid,
-    Void,
-    Uncollectible,
 }
 
 // ── Subscription events (broadcast to other subsystems) ───────────────────────
@@ -422,4 +406,15 @@ pub enum SubscriptionEvent {
     PastDue {
         agency_id: Uuid,
     },
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct UsageSummary {
+    pub properties: LimitCheckResult,
+    pub units: LimitCheckResult,
+    pub users: LimitCheckResult,
+    pub storage: LimitCheckResult,
+    pub sms: LimitCheckResult,
+    pub whatsapp: LimitCheckResult,
+    pub api_calls: LimitCheckResult,
 }

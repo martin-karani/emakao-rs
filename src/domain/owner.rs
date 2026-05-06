@@ -1,15 +1,7 @@
-use serde::{Deserialize, Serialize};
+use crate::domain::enums::PortalStatus;
+use serde::Serialize;
 use time::OffsetDateTime;
-use utoipa::ToSchema;
 use uuid::Uuid;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum OwnerPortalStatus {
-    Invited,
-    Active,
-    Suspended,
-}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Owner {
@@ -26,7 +18,7 @@ pub struct Owner {
     pub bank_name: Option<String>,
     pub bank_account: Option<String>,
     pub mpesa_number: Option<String>,
-    pub portal_status: OwnerPortalStatus,
+    pub portal_status: PortalStatus,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }

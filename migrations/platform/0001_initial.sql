@@ -1,0 +1,421 @@
+-- =============================================================================
+-- migrations/platform/0001_initial.sql
+--
+-- Clean baseline — platform database (emakao_platform / public schema).
+-- Designed from scratch; replaces all prior platform migrations.
+--
+-- Tables (in FK-safe order):
+--   1.  agencies
+--   2.  users
+--   3.  user_agency_roles
+--   4.  portal_user_index
+--   5.  invite_tokens
+--   6.  refresh_tokens
+--   7.  subscription_plans
+--   8.  plan_features
+--   9.  plan_limits
+--  10.  subscriptions
+--  11.  feature_overrides
+--  12.  subscription_invoices
+--  13.  agency_usage_counters
+-- =============================================================================
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ENUMS
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TYPE agency_status AS ENUM (
+    'active',
+    'suspended',
+    'deprovisioned'
+);
+
+CREATE TYPE user_role AS ENUM (
+    'platform_admin',
+    'admin',
+    'manager',
+    'agent',
+    'resident',
+    'owner',
+    'vendor'
+);
+
+CREATE TYPE portal_type AS ENUM (
+    'staff',
+    'resident',
+    'owner',
+    'vendor'
+);
+
+CREATE TYPE contact_type AS ENUM (
+    'email',
+    'phone'
+);
+
+CREATE TYPE subscription_status AS ENUM (
+    'trialing',
+    'active',
+    'past_due',
+    'cancelled'
+);
+
+CREATE TYPE invoice_status AS ENUM (
+    'draft',
+    'open',
+    'paid',
+    'void',
+    'uncollectible'
+);
+
+CREATE TYPE billing_interval AS ENUM (
+    'monthly',
+    'yearly'
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 1. agencies
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE agencies (
+    id            UUID          NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    name          TEXT          NOT NULL CHECK (char_length(trim(name)) > 0),
+    slug          TEXT          NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9\-]+$'),
+    schema_name   TEXT          NOT NULL UNIQUE CHECK (schema_name ~ '^[a-z0-9_]+$'),
+    country_code  CHAR(2)       NOT NULL DEFAULT 'KE',
+    currency_code CHAR(3)       NOT NULL DEFAULT 'KES',
+    status        agency_status NOT NULL DEFAULT 'active',
+    fga_store_id  TEXT,
+    created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_agencies_slug   ON agencies (slug);
+CREATE INDEX idx_agencies_status ON agencies (status);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2. users  (pure identity — no agency coupling)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE users (
+    id                   UUID        NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    -- At least one of email/phone must be non-null.
+    email                TEXT        UNIQUE CHECK (email = lower(trim(email))),
+    phone                TEXT        UNIQUE,            -- E.164 format: +254712345678
+    password_hash        TEXT        NOT NULL DEFAULT '',
+    is_active            BOOLEAN     NOT NULL DEFAULT true,
+    -- Frontend must redirect to /change-password when this is true.
+    must_change_password BOOLEAN     NOT NULL DEFAULT false,
+    last_login_at        TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT users_must_have_contact
+        CHECK (email IS NOT NULL OR phone IS NOT NULL)
+);
+
+CREATE INDEX idx_users_email ON users (email) WHERE email IS NOT NULL;
+CREATE INDEX idx_users_phone ON users (phone) WHERE phone IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3. user_agency_roles  (one row per person × agency × role)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE user_agency_roles (
+    id         UUID      NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    user_id    UUID      NOT NULL REFERENCES users    (id) ON DELETE CASCADE,
+    agency_id  UUID      NOT NULL REFERENCES agencies (id) ON DELETE CASCADE,
+    role       user_role NOT NULL,
+    is_active  BOOLEAN   NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (user_id, agency_id, role)
+);
+
+CREATE INDEX idx_uar_user_id   ON user_agency_roles (user_id);
+CREATE INDEX idx_uar_agency_id ON user_agency_roles (agency_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 4. portal_user_index  (O(1) login lookup: contact + portal → agency + user)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE portal_user_index (
+    contact       TEXT         NOT NULL,
+    contact_type  contact_type NOT NULL,
+    portal        portal_type  NOT NULL,
+    agency_id     UUID         NOT NULL REFERENCES agencies        (id) ON DELETE CASCADE,
+    user_id       UUID         NOT NULL REFERENCES users           (id) ON DELETE CASCADE,
+    membership_id UUID         NOT NULL REFERENCES user_agency_roles(id) ON DELETE CASCADE,
+
+    PRIMARY KEY (contact, contact_type, portal)
+);
+
+CREATE INDEX idx_pui_contact ON portal_user_index (contact, portal);
+CREATE INDEX idx_pui_user_id ON portal_user_index (user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 5. invite_tokens
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE invite_tokens (
+    token          TEXT          NOT NULL PRIMARY KEY,   -- 32-char hex
+    user_id        UUID          NOT NULL REFERENCES users    (id) ON DELETE CASCADE,
+    agency_id      UUID          NOT NULL REFERENCES agencies (id) ON DELETE CASCADE,
+    role           user_role     NOT NULL,
+    portal         portal_type   NOT NULL,
+    contact        TEXT          NOT NULL,
+    contact_type   contact_type  NOT NULL,
+    -- Plain-text temp password for phone invites; cleared after acceptance.
+    temp_password  TEXT,
+    expires_at     TIMESTAMPTZ   NOT NULL DEFAULT now() + INTERVAL '48 hours',
+    created_at     TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_invite_user_id   ON invite_tokens (user_id);
+CREATE INDEX idx_invite_expires   ON invite_tokens (expires_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 6. refresh_tokens
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE refresh_tokens (
+    jti        TEXT         NOT NULL PRIMARY KEY,   -- UUID v4, no dashes
+    user_id    UUID         NOT NULL REFERENCES users    (id) ON DELETE CASCADE,
+    agency_id  UUID         NOT NULL REFERENCES agencies (id) ON DELETE CASCADE,
+    role       user_role    NOT NULL,
+    portal     portal_type  NOT NULL,
+    expires_at TIMESTAMPTZ  NOT NULL,
+    revoked_at TIMESTAMPTZ,                         -- NULL = still valid
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_rt_user_id  ON refresh_tokens (user_id);
+CREATE INDEX idx_rt_expires  ON refresh_tokens (expires_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 7. subscription_plans
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE subscription_plans (
+    id               UUID             NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    slug             TEXT             NOT NULL UNIQUE CHECK (slug ~ '^[a-z0-9\-]+$'),
+    name             TEXT             NOT NULL CHECK (char_length(trim(name)) > 0),
+    description      TEXT,
+    price_kes        INTEGER          NOT NULL CHECK (price_kes >= 0),
+    yearly_price_kes INTEGER          CHECK (yearly_price_kes IS NULL OR yearly_price_kes >= 0),
+    billing_interval billing_interval NOT NULL DEFAULT 'monthly',
+    trial_days       INTEGER          NOT NULL DEFAULT 14 CHECK (trial_days >= 0),
+    is_active        BOOLEAN          NOT NULL DEFAULT true,
+    is_public        BOOLEAN          NOT NULL DEFAULT true,
+    sort_order       INTEGER          NOT NULL DEFAULT 0,
+    metadata         JSONB            NOT NULL DEFAULT '{}',
+    created_at       TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ      NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_plans_active_public
+    ON subscription_plans (sort_order)
+    WHERE is_active = true AND is_public = true;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8. plan_features
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE plan_features (
+    id          UUID    NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    plan_id     UUID    NOT NULL REFERENCES subscription_plans (id) ON DELETE CASCADE,
+    feature_key TEXT    NOT NULL CHECK (char_length(trim(feature_key)) > 0),
+    value       TEXT    NOT NULL DEFAULT 'false',
+    enabled     BOOLEAN NOT NULL DEFAULT false,
+
+    UNIQUE (plan_id, feature_key)
+);
+
+CREATE INDEX idx_plan_features_plan_id ON plan_features (plan_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 9. plan_limits
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE plan_limits (
+    id          UUID    NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    plan_id     UUID    NOT NULL REFERENCES subscription_plans (id) ON DELETE CASCADE,
+    limit_key   TEXT    NOT NULL CHECK (char_length(trim(limit_key)) > 0),
+    -- -1 means unlimited
+    max_value   INTEGER NOT NULL CHECK (max_value >= -1),
+    soft_limit  INTEGER CHECK (soft_limit IS NULL OR soft_limit >= -1),
+
+    UNIQUE (plan_id, limit_key)
+);
+
+CREATE INDEX idx_plan_limits_plan_id ON plan_limits (plan_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 10. subscriptions
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE subscriptions (
+    id                   UUID                NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    agency_id            UUID                NOT NULL REFERENCES agencies          (id) ON DELETE CASCADE,
+    plan_id              UUID                NOT NULL REFERENCES subscription_plans (id),
+    status               subscription_status NOT NULL DEFAULT 'trialing',
+
+    started_at           TIMESTAMPTZ         NOT NULL DEFAULT now(),
+    ends_at              TIMESTAMPTZ,
+    trial_ends_at        TIMESTAMPTZ,
+    current_period_start TIMESTAMPTZ,
+    current_period_end   TIMESTAMPTZ,
+
+    cancelled_at         TIMESTAMPTZ,
+    cancel_reason        TEXT,
+    grace_period_ends_at TIMESTAMPTZ,
+
+    custom_price_kes     INTEGER             CHECK (custom_price_kes IS NULL OR custom_price_kes >= 0),
+    last_payment_ref     TEXT,
+    last_payment_at      TIMESTAMPTZ,
+    payment_failure_count INTEGER            NOT NULL DEFAULT 0 CHECK (payment_failure_count >= 0),
+
+    created_at           TIMESTAMPTZ         NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ         NOT NULL DEFAULT now(),
+
+    -- One active subscription per agency
+    UNIQUE (agency_id)
+);
+
+CREATE INDEX idx_subscriptions_agency_status ON subscriptions (agency_id, status);
+CREATE INDEX idx_subscriptions_plan_id       ON subscriptions (plan_id);
+CREATE INDEX idx_subscriptions_trial_ends    ON subscriptions (trial_ends_at)
+    WHERE status = 'trialing';
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 11. feature_overrides  (per-agency overrides on top of plan defaults)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE feature_overrides (
+    id          UUID        NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    agency_id   UUID        NOT NULL REFERENCES agencies (id) ON DELETE CASCADE,
+    feature_key TEXT        NOT NULL CHECK (char_length(trim(feature_key)) > 0),
+    value       TEXT        NOT NULL,
+    expires_at  TIMESTAMPTZ,
+    reason      TEXT,
+    created_by  UUID        REFERENCES users (id) ON DELETE SET NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (agency_id, feature_key)
+);
+
+CREATE INDEX idx_feature_overrides_agency_id ON feature_overrides (agency_id);
+CREATE INDEX idx_feature_overrides_expiry
+    ON feature_overrides (expires_at)
+    WHERE expires_at IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 12. subscription_invoices
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE subscription_invoices (
+    id              UUID           NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    subscription_id UUID           NOT NULL REFERENCES subscriptions (id) ON DELETE CASCADE,
+    agency_id       UUID           NOT NULL REFERENCES agencies       (id) ON DELETE CASCADE,
+    amount_kes      INTEGER        NOT NULL CHECK (amount_kes > 0),
+    status          invoice_status NOT NULL DEFAULT 'draft',
+    due_date        TIMESTAMPTZ    NOT NULL,
+    paid_at         TIMESTAMPTZ,
+    mpesa_ref       TEXT,
+    mpesa_phone     TEXT,
+    receipt_url     TEXT,
+    notes           TEXT,
+    created_at      TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_invoices_agency_id ON subscription_invoices (agency_id);
+CREATE INDEX idx_invoices_status    ON subscription_invoices (status);
+CREATE INDEX idx_invoices_due
+    ON subscription_invoices (due_date)
+    WHERE status = 'open';
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 13. agency_usage_counters
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE agency_usage_counters (
+    agency_id   UUID        NOT NULL REFERENCES agencies (id) ON DELETE CASCADE,
+    counter_key TEXT        NOT NULL CHECK (char_length(trim(counter_key)) > 0),
+    value       BIGINT      NOT NULL DEFAULT 0 CHECK (value >= 0),
+    period      TEXT        NOT NULL DEFAULT 'total',
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (agency_id, counter_key, period)
+);
+
+CREATE INDEX idx_usage_agency_id ON agency_usage_counters (agency_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- FUNCTIONS & TRIGGERS
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Generic updated_at trigger
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$;
+
+DO $$
+DECLARE tbl TEXT;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY[
+        'agencies', 'users', 'subscription_plans', 'subscriptions'
+    ]
+    LOOP
+        EXECUTE format(
+            'CREATE TRIGGER trg_%s_updated_at
+             BEFORE UPDATE ON %s
+             FOR EACH ROW EXECUTE FUNCTION set_updated_at();',
+            tbl, tbl
+        );
+    END LOOP;
+END;
+$$;
+
+-- Auto-provision a trialing subscription when a new agency is created.
+-- Requires the 'starter' plan to be seeded before any agency is inserted.
+CREATE OR REPLACE FUNCTION create_default_subscription()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    starter_plan_id UUID;
+BEGIN
+    SELECT id INTO starter_plan_id
+    FROM   subscription_plans
+    WHERE  slug = 'starter' AND is_active = true
+    LIMIT  1;
+
+    IF starter_plan_id IS NULL THEN
+        RAISE EXCEPTION 'Starter plan not found — seed subscription_plans before creating agencies';
+    END IF;
+
+    INSERT INTO subscriptions (
+        agency_id,
+        plan_id,
+        status,
+        trial_ends_at,
+        current_period_start,
+        current_period_end
+    ) VALUES (
+        NEW.id,
+        starter_plan_id,
+        'trialing',
+        now() + INTERVAL '14 days',
+        now(),
+        now() + INTERVAL '14 days'
+    );
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_agency_create_subscription
+    AFTER INSERT ON agencies
+    FOR EACH ROW EXECUTE FUNCTION create_default_subscription();

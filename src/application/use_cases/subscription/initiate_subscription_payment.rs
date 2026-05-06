@@ -14,7 +14,6 @@ pub struct InitiateSubscriptionPaymentUseCase {
 
 pub struct InitiatePaymentInput {
     pub agency_id: Uuid,
-    /// Must match a slug in `subscription_plans`.
     pub plan_slug: String,
     /// Safaricom-formatted phone number, e.g. "254712345678".
     pub phone_number: String,

@@ -1,27 +1,8 @@
+use crate::domain::enums::{PaymentClaimStatus, PaymentMethodType};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
-use utoipa::ToSchema;
 use uuid::Uuid;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
-#[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "claim_status", rename_all = "snake_case")]
-pub enum ClaimStatus {
-    PendingReview,
-    Approved,
-    Rejected,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
-#[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "payment_method_type", rename_all = "snake_case")]
-pub enum PaymentMethodType {
-    MpesaPaybill,
-    MpesaTill,
-    BankTransfer,
-    Cash,
-}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct PaymentClaim {
@@ -34,7 +15,7 @@ pub struct PaymentClaim {
     pub reference_code: Option<String>,
     pub proof_url: Option<String>,
     pub notes: Option<String>,
-    pub status: ClaimStatus,
+    pub status: PaymentClaimStatus,
     pub reviewed_by: Option<Uuid>,
     pub reviewed_at: Option<OffsetDateTime>,
     pub review_notes: Option<String>,

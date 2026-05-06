@@ -7,7 +7,10 @@ use crate::{
         errors::AppError,
         ports::agreement_repository::{AgreementRepository, CreateAgreementCommand},
     },
-    domain::agreement::{Agreement, AgreementStatus, BillingFrequency},
+    domain::{
+        agreement::Agreement,
+        enums::{AgreementStatus, BillingFrequency},
+    },
 };
 
 pub struct PgAgreementRepo {

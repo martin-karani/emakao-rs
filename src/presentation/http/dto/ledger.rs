@@ -1,11 +1,10 @@
+use crate::domain::enums::LedgerEntryType;
 use garde::Validate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use time::Date;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
-
-use crate::domain::ledger::LedgerEntryType;
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct PostChargeDto {

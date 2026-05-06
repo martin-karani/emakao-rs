@@ -23,7 +23,8 @@ use crate::{
     presentation::app_state::AppState,
 };
 
-/// Available in every handler after the subscription middleware runs.
+/// Resolved subscription state injected into request extensions by this
+/// middleware. Available in every handler after the middleware runs.
 #[derive(Clone)]
 pub struct ResolvedSubscription {
     pub state: SubscriptionState,
@@ -35,7 +36,7 @@ pub async fn subscription_middleware(
     mut request: Request,
     next: Next,
 ) -> Response {
-    // Extract agency_id — set by resolve_agency_context middleware before this runs
+    // agency_id is set by resolve_agency_context (must run before this)
     let agency_id: Option<Uuid> = request.extensions().get::<ResolvedAgency>().map(|a| a.id);
 
     // No agency context (platform-admin route) → pass through
@@ -43,7 +44,7 @@ pub async fn subscription_middleware(
         return next.run(request).await;
     };
 
-    // ── Load state (cheap path: cache hit most of the time) ──────────────────
+    // ── Load subscription state (cache hit most of the time) ─────────────────
     let sub_state = match state.subscription.get_state.execute(agency_id).await {
         Ok(s) => s,
         Err(AppError::Forbidden(msg)) => return payment_required_response(&msg),
@@ -53,7 +54,7 @@ pub async fn subscription_middleware(
         }
     };
 
-    // ── Check active ─────────────────────────────────────────────────────────
+    // ── Guard: subscription must be active ────────────────────────────────────
     if !sub_state.is_active {
         return if sub_state.is_trial_expired {
             payment_required_response(
@@ -64,9 +65,9 @@ pub async fn subscription_middleware(
                 "Your subscription payment is past due. Please update your payment method.",
             )
         } else if sub_state.status == "cancelled" && sub_state.in_grace_period {
-            // Within cancellation grace — still let them in (read-only ideally)
             payment_required_response(
-                "Your subscription has been cancelled. You can still access your data until the end of the billing period.",
+                "Your subscription has been cancelled. \
+                 You can still access your data until the end of the billing period.",
             )
         } else {
             payment_required_response("An active subscription is required to access this resource.")
@@ -91,7 +92,7 @@ pub async fn subscription_middleware(
 
 fn payment_required_response(message: &str) -> Response {
     (
-        StatusCode::PAYMENT_REQUIRED, // 402
+        StatusCode::PAYMENT_REQUIRED,
         Json(json!({ "error": message, "code": "subscription_inactive" })),
     )
         .into_response()
@@ -105,21 +106,12 @@ fn internal_error_response() -> Response {
         .into_response()
 }
 
-/// Returns 403 if the resolved subscription does not include the feature.
-///
-/// ```rust
-/// pub async fn my_handler(
-///     Extension(sub): Extension<ResolvedSubscription>,
-/// ) -> Result<impl IntoResponse, AppError> {
-///     require_feature(&sub.entitlements, FeatureKey::CommWhatsapp)?;
-///     // ...
-/// }
-/// ```
+/// Returns `AppError::Forbidden` if the subscription does not include the feature.
 pub fn require_feature(entitlements: &AgencyEntitlements, key: FeatureKey) -> Result<(), AppError> {
     uc_check_feature(entitlements, key)
 }
 
-/// Returns 403 if `current` has reached or exceeded the plan limit.
+/// Returns `AppError::Forbidden` if `current` has reached or exceeded the plan limit.
 pub fn require_limit(
     entitlements: &AgencyEntitlements,
     key: &LimitKey,

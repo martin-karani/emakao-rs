@@ -5,7 +5,10 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::ledger_repository::LedgerRepository},
-    domain::ledger::{BalanceSummary, CreateLedgerEntryCommand, LedgerEntry, LedgerEntryType},
+    domain::{
+        enums::LedgerEntryType,
+        ledger::{BalanceSummary, CreateLedgerEntryCommand, LedgerEntry},
+    },
 };
 
 pub struct PgLedgerRepo {

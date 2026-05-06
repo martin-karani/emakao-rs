@@ -9,6 +9,8 @@ use sqlx::{
 use tracing::log::LevelFilter;
 use uuid::Uuid;
 
+static AGENCY_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/agency");
+
 const POOL_IDLE_TIMEOUT_SECS: u64 = 300;
 
 /// Injected into every authenticated request by `resolve_agency_context` middleware.
@@ -43,7 +45,7 @@ impl AgencyPoolManager {
         self.agency_pools.len()
     }
 
-    /// Returns (or lazily creates) a schema-scoped tenant pool.
+    /// Returns (or lazily creates) a schema-scoped agency pool.
     /// Called by `resolve_agency_context` on every authenticated request.
     pub async fn for_tenant(&self, schema_name: &str) -> Result<PgPool> {
         if let Some(pool) = self.agency_pools.get(schema_name) {
@@ -57,7 +59,7 @@ impl AgencyPoolManager {
 
         self.agency_pools
             .insert(schema_name.to_owned(), pool.clone());
-        tracing::debug!(schema = schema_name, "tenant pool created");
+        tracing::debug!(schema = schema_name, "agency pool created");
         Ok(pool)
     }
 
@@ -84,7 +86,7 @@ impl AgencyPoolManager {
         let opts: PgConnectOptions = self
             .agency_database_url
             .parse()
-            .context("invalid TENANT_DATABASE_URL")?;
+            .context("invalid AGENCY_DATABASE_URL")?;
 
         let provision_pool = PgPoolOptions::new()
             .max_connections(2)
@@ -108,13 +110,13 @@ impl AgencyPoolManager {
             .await
             .with_context(|| format!("could not open provisioning pool for schema '{schema}'"))?;
 
-        sqlx::migrate!("./migrations/tenant")
+        AGENCY_MIGRATOR
             .run(&provision_pool)
             .await
-            .with_context(|| format!("tenant migration failed for schema '{schema}'"))?;
+            .with_context(|| format!("agency migration failed for schema '{schema}'"))?;
 
         provision_pool.close().await;
-        tracing::info!(schema = schema_name, "tenant schema provisioned ✓");
+        tracing::info!(schema = schema_name, "agency schema provisioned ✓");
         Ok(())
     }
 
@@ -124,7 +126,7 @@ impl AgencyPoolManager {
         let opts: PgConnectOptions = self
             .agency_database_url
             .parse()
-            .context("invalid TENANT_DATABASE_URL")?;
+            .context("invalid AGENCY_DATABASE_URL")?;
 
         let opts = opts
             .log_statements(LevelFilter::Debug)

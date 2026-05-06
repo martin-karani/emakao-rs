@@ -1,14 +1,14 @@
-use std::sync::Arc;
 use rust_decimal::Decimal;
+use std::sync::Arc;
 use time::Date;
 use uuid::Uuid;
 
 use crate::{
-    application::{
-        errors::AppError,
-        ports::ledger_repository::LedgerRepository,
+    application::{errors::AppError, ports::ledger_repository::LedgerRepository},
+    domain::{
+        enums::LedgerEntryType,
+        ledger::{CreateLedgerEntryCommand, LedgerEntry},
     },
-    domain::ledger::{CreateLedgerEntryCommand, LedgerEntry, LedgerEntryType},
 };
 
 pub struct PostChargeUseCase {
@@ -38,24 +38,28 @@ impl PostChargeUseCase {
 
     pub async fn execute(&self, input: PostChargeInput) -> Result<LedgerEntry, AppError> {
         if input.amount_kes <= Decimal::ZERO {
-            return Err(AppError::Validation("ledger amount must be positive".into()));
+            return Err(AppError::Validation(
+                "ledger amount must be positive".into(),
+            ));
         }
 
         // Uses: LedgerRepository::create
-        self.repo.create(CreateLedgerEntryCommand {
-            agreement_id: input.agreement_id,
-            unit_id: input.unit_id,
-            resident_id: input.resident_id,
-            owner_id: input.owner_id,
-            entry_type: input.entry_type,
-            amount_kes: input.amount_kes,
-            description: input.description,
-            external_ref: input.external_ref,
-            mpesa_receipt: input.mpesa_receipt,
-            period_start: input.period_start,
-            period_end: input.period_end,
-            posted_by: input.posted_by,
-            metadata: input.metadata,
-        }).await
+        self.repo
+            .create(CreateLedgerEntryCommand {
+                agreement_id: input.agreement_id,
+                unit_id: input.unit_id,
+                resident_id: input.resident_id,
+                owner_id: input.owner_id,
+                entry_type: input.entry_type,
+                amount_kes: input.amount_kes,
+                description: input.description,
+                external_ref: input.external_ref,
+                mpesa_receipt: input.mpesa_receipt,
+                period_start: input.period_start,
+                period_end: input.period_end,
+                posted_by: input.posted_by,
+                metadata: input.metadata,
+            })
+            .await
     }
 }

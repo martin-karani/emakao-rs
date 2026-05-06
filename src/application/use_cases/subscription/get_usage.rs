@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::subscription_repository::SubscriptionRepository},
-    domain::subscription::{AgencyEntitlements, LimitCheckResult, LimitKey},
+    domain::subscription::{AgencyEntitlements, LimitKey, UsageSummary},
     infrastructure::cache::subscription_cache::SubscriptionCache,
 };
 
@@ -77,15 +77,4 @@ impl GetUsageUseCase {
         let bytes = self.cache.get_usage_bytes(agency_id).await;
         Ok((bytes as f64 / 1_048_576.0).ceil() as i32)
     }
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct UsageSummary {
-    pub properties: LimitCheckResult,
-    pub units: LimitCheckResult,
-    pub users: LimitCheckResult,
-    pub storage: LimitCheckResult,
-    pub sms: LimitCheckResult,
-    pub whatsapp: LimitCheckResult,
-    pub api_calls: LimitCheckResult,
 }

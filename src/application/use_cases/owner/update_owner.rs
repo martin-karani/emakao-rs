@@ -15,7 +15,6 @@ impl UpdateOwnerUseCase {
     }
 
     pub async fn execute(&self, cmd: UpdateOwnerCommand) -> Result<Owner, AppError> {
-        // Uses: OwnerRepository::update
         self.repo.update(cmd).await
     }
 }

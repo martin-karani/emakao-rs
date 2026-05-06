@@ -20,7 +20,7 @@ Emakao is a multi-tenant property management SaaS backend built for the Kenyan m
 - [Building for production](#building-for-production)
 - [CI without a live database](#ci-without-a-live-database)
 - [Adding a migration](#adding-a-migration)
-- [Adding a new tenant (agency)](#adding-a-new-tenant-agency)
+- [Adding a new agency (agency)](#adding-a-new-agency-agency)
 
 ---
 
@@ -106,11 +106,11 @@ emakao/
 ├── Dockerfile                    Multi-stage production image
 ├── docker-compose.yml            Local dev services
 ├── docker/
-│   └── init-db.sql               Creates emakao_tenant database on first run
+│   └── init-db.sql               Creates emakao_agency database on first run
 │
 ├── migrations/
 │   ├── platform/                 Platform DB migrations (agencies, users, plans…)
-│   └── tenant/                   Tenant DB migrations (properties, residents…)
+│   └── agency/                   Tenant DB migrations (properties, residents…)
 │
 ├── crates/
 │   └── migrate/                  Standalone migration binary (no compile-time macros)
@@ -153,7 +153,7 @@ emakao/
 │   │   ├── auth/                 JWT issue + verify
 │   │   ├── cache/                Redis pool + helpers
 │   │   ├── db/                   sqlx repository implementations
-│   │   │   ├── pool.rs           Platform + tenant pool management
+│   │   │   ├── pool.rs           Platform + agency pool management
 │   │   │   ├── agency_repository_sqlx.rs
 │   │   │   ├── agreement_repository_sqlx.rs
 │   │   │   ├── auth_repository_sqlx.rs
@@ -189,7 +189,7 @@ emakao/
 
 ## Database design
 
-Emakao uses **two separate PostgreSQL databases** to cleanly separate platform concerns from tenant data:
+Emakao uses **two separate PostgreSQL databases** to cleanly separate platform concerns from agency data:
 
 ### `emakao_platform` — shared infrastructure
 
@@ -207,9 +207,9 @@ The `public` schema holds everything that is global to the SaaS platform:
 | `subscription_invoices` | Payment history for subscription billing. |
 | `pending_mpesa_subscription_requests` | STK push intent tracking. |
 
-### `emakao_tenant` — per-agency data
+### `emakao_agency` — per-agency data
 
-Each agency gets its **own Postgres schema** (e.g. `acme_realty`) inside the tenant database. Every tenant schema gets the full set of tables from `migrations/tenant/`:
+Each agency gets its **own Postgres schema** (e.g. `acme_realty`) inside the agency database. Every agency schema gets the full set of tables from `migrations/agency/`:
 
 | Table | Purpose |
 |---|---|
@@ -301,7 +301,7 @@ cp .env.example .env
 make setup
 ```
 
-`make setup` does the following in order: starts Docker services, waits for Postgres to be healthy, runs all platform and tenant migrations, prints the local service URLs.
+`make setup` does the following in order: starts Docker services, waits for Postgres to be healthy, runs all platform and agency migrations, prints the local service URLs.
 
 Then start the dev server with hot-reload:
 
@@ -325,7 +325,7 @@ RUST_LOG=emakao=debug,tower_http=debug,sqlx=warn
 
 # Databases *
 PLATFORM_DATABASE_URL=postgres://emakao:password@localhost:5432/emakao_platform
-TENANT_DATABASE_URL=postgres://emakao:password@localhost:5432/emakao_tenant
+AGENCY_DATABASE_URL=postgres://emakao:password@localhost:5432/emakao_agency
 DB_MAX_CONNECTIONS=20
 DB_MIN_CONNECTIONS=2
 
@@ -374,9 +374,9 @@ SMTP_FROM=noreply@emakao.co.ke
 ```bash
 make setup           # First-time: docker up + migrate + build
 make dev             # Start dev server with hot-reload (cargo-watch)
-make migrate         # Run all platform + tenant migrations
-make migrate-tenant  # Re-run tenant migrations only (all schemas)
-make migrate-schema  # Run tenant migrations for a single schema (prompts for name)
+make migrate         # Run all platform + agency migrations
+make migrate-agency  # Re-run agency migrations only (all schemas)
+make migrate-schema  # Run agency migrations for a single schema (prompts for name)
 make build           # cargo build (uses .sqlx offline cache — no DB needed)
 make check           # cargo check
 make fmt             # cargo fmt
@@ -385,7 +385,7 @@ make test            # cargo test
 make docker-up       # Start: postgres, redis, minio, mailhog, openfga
 make docker-down     # Stop all containers
 make db-reset        # ⚠ DESTROYS ALL DATA — drops and re-migrates both DBs
-make db-create-agency # Create a new agency row + provision its tenant schema
+make db-create-agency # Create a new agency row + provision its agency schema
 make sqlx-prepare    # Regenerate .sqlx offline cache (needs live DB)
 ```
 
@@ -405,7 +405,7 @@ The solution is a **two-stage setup**:
 
 ### The single-URL trick for `cargo sqlx prepare`
 
-The main crate's `query!` macros don't know about two databases. `cargo sqlx prepare` accepts only one `DATABASE_URL`. The fix: point it at the platform DB but set `search_path = dev_agency, public` so Postgres can resolve all tenant-schema tables too through a single connection:
+The main crate's `query!` macros don't know about two databases. `cargo sqlx prepare` accepts only one `DATABASE_URL`. The fix: point it at the platform DB but set `search_path = dev_agency, public` so Postgres can resolve all agency-schema tables too through a single connection:
 
 ```bash
 DATABASE_URL="postgres://emakao:password@localhost:5432/emakao_platform?options=-c%20search_path%3Ddev_agency,public" \
@@ -486,7 +486,7 @@ Only regenerate the cache when migrations change. A separate CI job can do this 
       - run: ./target/debug/migrate
         env:
           PLATFORM_DATABASE_URL: postgres://emakao:password@localhost/emakao_platform
-          TENANT_DATABASE_URL: postgres://emakao:password@localhost/emakao_tenant
+          AGENCY_DATABASE_URL: postgres://emakao:password@localhost/emakao_agency
       - run: |
           DATABASE_URL="postgres://emakao:password@localhost/emakao_platform?options=-c%20search_path%3Ddev_agency,public" \
           cargo sqlx prepare --workspace
@@ -506,7 +506,7 @@ Only regenerate the cache when migrations change. A separate CI job can do this 
    touch migrations/platform/0010_add_something.sql
 
    # Tenant migration (properties, residents, agreements…)
-   touch migrations/tenant/0010_add_something.sql
+   touch migrations/agency/0010_add_something.sql
    ```
    sqlx runs migrations in filename-sorted order. Use leading zeros to maintain ordering.
 
@@ -522,14 +522,14 @@ Only regenerate the cache when migrations change. A separate CI job can do this 
 
 ---
 
-## Adding a new tenant (agency)
+## Adding a new agency (agency)
 
 In development:
 
 ```bash
 make db-create-agency
 # Prompts: Agency name, Slug
-# Creates the agencies row on the platform DB and runs tenant migrations for the new schema
+# Creates the agencies row on the platform DB and runs agency migrations for the new schema
 ```
 
 In code (at registration time), the `AgencyRepository` handles the INSERT, and the migration binary is called to provision the schema:
@@ -551,7 +551,7 @@ After `make setup`:
 | Emakao API | `http://localhost:3000` |
 | Swagger UI | `http://localhost:3000/docs` |
 | Postgres (platform) | `postgres://emakao:password@localhost:5432/emakao_platform` |
-| Postgres (tenant) | `postgres://emakao:password@localhost:5432/emakao_tenant` |
+| Postgres (agency) | `postgres://emakao:password@localhost:5432/emakao_agency` |
 | Redis | `localhost:6379` |
 | MinIO console | `http://localhost:9001` — `minioadmin` / `minioadmin` |
 | MailHog (SMTP UI) | `http://localhost:8025` |

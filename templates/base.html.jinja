@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Emakao{% endblock %}</title>
+  <style>
+    body { margin:0; padding:0; background:#f4f4f4; font-family: 'Helvetica Neue', Arial, sans-serif; }
+    .wrapper { max-width:600px; margin:40px auto; background:#ffffff; border-radius:8px; overflow:hidden;
+               box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .header  { background:#1a3c5e; padding:28px 40px; }
+    .header-title { color:#ffffff; font-size:20px; font-weight:600; margin-top:8px; }
+    .body    { padding:32px 40px; color:#333333; line-height:1.6; }
+    .body h2 { color:#1a3c5e; margin-top:0; }
+    .cta     { display:inline-block; margin:24px 0; padding:14px 28px; background:#e07b3c;
+               color:#ffffff; text-decoration:none; border-radius:6px; font-weight:600; font-size:15px; }
+    .footer  { background:#f4f4f4; padding:20px 40px; text-align:center;
+               color:#888888; font-size:12px; border-top:1px solid #e0e0e0; }
+    .divider { border:none; border-top:1px solid #eeeeee; margin:24px 0; }
+    .highlight-box { background:#f0f5fb; border-left:4px solid #1a3c5e; padding:16px 20px;
+                     border-radius:4px; margin:20px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <div class="header-title">Emakao Property Management</div>
+    </div>
+    <div class="body">
+      {% block content %}{% endblock %}
+    </div>
+    <div class="footer">
+      <p>&copy; {{ current_year }} Emakao. All rights reserved.</p>
+      <p>You are receiving this email because you have an account with Emakao.</p>
+      {% if unsubscribe_url %}
+      <p><a href="{{ unsubscribe_url }}" style="color:#888888;">Unsubscribe</a></p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

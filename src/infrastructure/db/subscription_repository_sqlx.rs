@@ -8,9 +8,12 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::subscription_repository::SubscriptionRepository},
-    domain::subscription::{
-        AgencyEntitlements, FeatureSource, FeatureValueType, InvoiceStatus, LimitCheckResult,
-        PlanFeature, PlanInterval, SubscriptionInvoice, SubscriptionPlan, SubscriptionState,
+    domain::{
+        enums::{BillingInterval, SubscriptionInvoiceStatus},
+        subscription::{
+            AgencyEntitlements, FeatureSource, FeatureValueType, LimitCheckResult, PlanFeature,
+            SubscriptionInvoice, SubscriptionPlan, SubscriptionState,
+        },
     },
 };
 
@@ -77,10 +80,10 @@ struct InvoiceRow {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn parse_interval(s: &str) -> PlanInterval {
+fn parse_interval(s: &str) -> BillingInterval {
     match s {
-        "yearly" => PlanInterval::Yearly,
-        _ => PlanInterval::Monthly,
+        "yearly" => BillingInterval::Yearly,
+        _ => BillingInterval::Monthly,
     }
 }
 
@@ -92,13 +95,13 @@ fn parse_value_type(s: &str) -> FeatureValueType {
     }
 }
 
-fn parse_invoice_status(s: &str) -> InvoiceStatus {
+fn parse_invoice_status(s: &str) -> SubscriptionInvoiceStatus {
     match s {
-        "open" => InvoiceStatus::Open,
-        "paid" => InvoiceStatus::Paid,
-        "void" => InvoiceStatus::Void,
-        "uncollectible" => InvoiceStatus::Uncollectible,
-        _ => InvoiceStatus::Draft,
+        "open" => SubscriptionInvoiceStatus::Open,
+        "paid" => SubscriptionInvoiceStatus::Paid,
+        "void" => SubscriptionInvoiceStatus::Void,
+        "uncollectible" => SubscriptionInvoiceStatus::Uncollectible,
+        _ => SubscriptionInvoiceStatus::Draft,
     }
 }
 
@@ -140,7 +143,7 @@ pub struct PgSubscriptionRepo {
 impl PgSubscriptionRepo {
     /// * `platform`       — platform (public schema) pool.
     /// * `tenant_pool_fn` — async closure: given an agency UUID returns the
-    ///   schema-scoped pool for that tenant.
+    ///   schema-scoped pool for that agency.
     ///
     /// Typical wiring in `AppState::build`:
     /// ```rust
@@ -163,7 +166,7 @@ impl PgSubscriptionRepo {
         }
     }
 
-    /// Resolves the tenant pool for `agency_id` asynchronously.
+    /// Resolves the agency pool for `agency_id` asynchronously.
     async fn tenant_pool(&self, agency_id: Uuid) -> Result<PgPool, AppError> {
         (self.tenant_pool_fn)(agency_id)
             .await
@@ -203,7 +206,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_all(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         if feature_rows.is_empty() {
             return Ok(None);
@@ -224,7 +227,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_all(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let features = feature_rows
             .into_iter()
@@ -277,7 +280,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_optional(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let Some(r) = row else { return Ok(None) };
 
@@ -330,7 +333,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_all(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(SubscriptionPlan::from).collect())
     }
@@ -348,7 +351,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_optional(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(SubscriptionPlan::from))
     }
@@ -390,7 +393,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .execute(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         sqlx::query!(
             r#"
@@ -408,7 +411,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .execute(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
@@ -434,14 +437,14 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .execute(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
 
     // ── Usage counting ───────────────────────────────────────────────────────
 
-    /// Counts rows in a **tenant-schema** table.
+    /// Counts rows in a **agency-schema** table.
     /// `tenant_pool()` is async: on the first call for a given agency it
     /// resolves agency_id → schema_name via a single platform DB query, then
     /// caches the pool in `TenantPoolManager`'s DashMap for all future calls.
@@ -450,7 +453,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         let row = sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM {table_name}"))
             .fetch_one(&pool)
             .await
-            .map_err(|e| AppError::InternalServer(e.to_string()))?;
+            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row as i32)
     }
@@ -466,7 +469,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         .bind(agency_id)
         .fetch_one(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row as i32)
     }
@@ -492,12 +495,12 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_optional(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let (max, soft) = row
             .map(|r| (r.max_value, r.soft_limit))
             .unwrap_or((0, None));
-        let threshold = soft.unwrap_or_else(|| (max as f64 * 0.9) as i32);
+        let threshold = soft.unwrap_or_else(|| -> i32 { (max as f64 * 0.9) as i32 });
 
         Ok(LimitCheckResult {
             allowed: max == -1 || current_count < max,
@@ -538,7 +541,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .execute(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
         Ok(())
     }
 
@@ -554,7 +557,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .execute(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
         Ok(())
     }
 
@@ -583,7 +586,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_all(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows
             .into_iter()
@@ -617,7 +620,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_one(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let invoice_id: Uuid = sqlx::query_scalar!(
             r#"
@@ -635,7 +638,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_one(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         sqlx::query!(
             r#"
@@ -654,7 +657,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .execute(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(invoice_id)
     }
@@ -684,7 +687,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .execute(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
@@ -704,7 +707,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .fetch_optional(&self.platform)
         .await
-        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(|r| (r.agency_id, r.plan_slug)))
     }

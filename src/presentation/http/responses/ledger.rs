@@ -4,8 +4,10 @@ use time::{Date, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::ledger::{BalanceSummary, LedgerEntry, LedgerEntryType};
-
+use crate::domain::{
+    enums::LedgerEntryType,
+    ledger::{BalanceSummary, LedgerEntry},
+};
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LedgerEntryResponse {
     pub id: Uuid,

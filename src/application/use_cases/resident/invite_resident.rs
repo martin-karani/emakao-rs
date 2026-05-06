@@ -6,15 +6,17 @@ use crate::{
     application::{
         errors::AppError,
         helpers::auth_helpers::{generate_temp_password, generate_token},
+        notifications::{
+            service::NotificationService,
+            templates::{EmailTemplate, SmsTemplate},
+        },
         ports::{
             auth_port::AuthPort,
             auth_repository::{
                 AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand,
                 CreateUserCommand, UpsertPortalIndexCommand,
             },
-            email_port::EmailPort,
             resident_repository::{CreateResidentCommand, ResidentRepository},
-            sms_port::SmsPort,
         },
     },
     domain::{auth::ContactMethod, resident::Resident},
@@ -28,6 +30,8 @@ pub struct InviteResidentInput {
     pub phone: Option<String>,
     pub national_id: Option<String>,
     pub portal_base_url: String,
+    /// Shown in the email greeting, e.g. "Acme Realty". Optional.
+    pub agency_name: Option<String>,
 }
 
 pub struct InviteResidentOutput {
@@ -39,8 +43,7 @@ pub struct InviteResidentUseCase {
     pub resident_repo: Arc<dyn ResidentRepository>,
     pub auth_repo: Arc<dyn AuthRepository>,
     pub auth_port: Arc<dyn AuthPort>,
-    pub email: Arc<dyn EmailPort>,
-    pub sms: Arc<dyn SmsPort>,
+    pub notifications: NotificationService,
 }
 
 impl InviteResidentUseCase {
@@ -124,7 +127,7 @@ impl InviteResidentUseCase {
             })
             .await?;
 
-        // 4. Create tenant profile (resident row)
+        // 4. Create agency profile (resident row)
         let resident = self
             .resident_repo
             .create(CreateResidentCommand {
@@ -154,27 +157,37 @@ impl InviteResidentUseCase {
             })
             .await?;
 
-        // 6. Notify
+        // 6. Notify via NotificationService
         let notified_via = match &contact {
             ContactMethod::Email(email) => {
-                let url = format!("{}/invite/{}", input.portal_base_url, token);
+                let invite_url = format!("{}/invite/{}", input.portal_base_url, token);
                 let _ = self
-                    .email
-                    .send(
-                        email,
-                        "Welcome to Emakao – Resident Portal Invitation",
-                        &email_body(&input.first_name, &url),
+                    .notifications
+                    .email(
+                        email.clone(),
+                        EmailTemplate::ResidentInvite,
+                        serde_json::json!({
+                            "first_name":  input.first_name,
+                            "invite_url":  invite_url,
+                            "agency_name": input.agency_name,
+                        }),
                     )
                     .await;
                 "email"
             }
             ContactMethod::Phone(phone) => {
-                let temp = temp_plain.unwrap_or_default();
-                let msg = format!(
-                    "Hi {}, you have been invited to the Emakao resident portal at {}. Your temporary password is: {}. Change it after first login.",
-                    input.first_name, input.portal_base_url, temp
-                );
-                let _ = self.sms.send(phone, &msg).await;
+                let _ = self
+                    .notifications
+                    .sms(
+                        phone.clone(),
+                        SmsTemplate::ResidentInvite,
+                        serde_json::json!({
+                            "first_name":    input.first_name,
+                            "portal_url":    input.portal_base_url,
+                            "temp_password": temp_plain.unwrap_or_default(),
+                        }),
+                    )
+                    .await;
                 "sms"
             }
         };
@@ -185,13 +198,4 @@ impl InviteResidentUseCase {
             notified_via,
         })
     }
-}
-
-fn email_body(first_name: &str, invite_url: &str) -> String {
-    format!(
-        r#"<p>Hi {first_name},</p>
-<p>You have been invited to the <strong>Emakao Resident Portal</strong>.</p>
-<p><a href="{invite_url}" style="background:#1a56db;color:white;padding:10px 20px;border-radius:4px;text-decoration:none">Activate your account</a></p>
-<p>This link expires in 48 hours.</p>"#
-    )
 }

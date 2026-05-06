@@ -1,8 +1,7 @@
+use crate::domain::enums::VendorStatus;
 use garde::Validate;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
-
-use crate::domain::vendor::VendorStatus;
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateVendorDto {

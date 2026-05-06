@@ -4,6 +4,7 @@ pub mod applicant;
 pub mod auth;
 pub mod conversation;
 pub mod disbursement;
+pub mod enums;
 pub mod errors;
 pub mod inspection;
 pub mod invoice;

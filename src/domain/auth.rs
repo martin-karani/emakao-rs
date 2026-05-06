@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::domain::enums::PortalType;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum ContactMethod {
@@ -44,17 +46,6 @@ impl ContactMethod {
         };
         Self::Phone(e164)
     }
-}
-
-// ── PortalType ────────────────────────────────────────────────────────────────
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PortalType {
-    Staff,
-    Resident,
-    Owner,
-    Vendor,
 }
 
 impl PortalType {

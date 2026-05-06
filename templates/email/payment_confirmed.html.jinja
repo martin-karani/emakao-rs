@@ -1,0 +1,37 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}Payment Received – Thank You{% endblock %}
+
+{% block content %}
+<h2>Payment Received</h2>
+<p>Hi {{ resident_name }},</p>
+<p>We have successfully received your payment. Thank you!</p>
+<div class="highlight-box">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="padding:4px 0;color:#555;">Amount Paid</td>
+      <td style="padding:4px 0;font-weight:600;color:#2e7d32;">KES {{ amount_kes }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Reference</td>
+      <td style="padding:4px 0;font-weight:600;">{{ reference }}</td>
+    </tr>
+    {% if payment_date %}
+    <tr>
+      <td style="padding:4px 0;color:#555;">Date</td>
+      <td style="padding:4px 0;">{{ payment_date }}</td>
+    </tr>
+    {% endif %}
+    {% if unit_ref %}
+    <tr>
+      <td style="padding:4px 0;color:#555;">Unit</td>
+      <td style="padding:4px 0;">{{ unit_ref }}</td>
+    </tr>
+    {% endif %}
+  </table>
+</div>
+<p style="font-size:13px;color:#888888;">
+  Please keep this reference number for your records.
+  You can view your full payment history in the resident portal.
+</p>
+{% endblock %}

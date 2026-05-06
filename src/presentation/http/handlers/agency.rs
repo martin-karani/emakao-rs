@@ -18,7 +18,7 @@ use crate::{
 
 /// POST /api/v1/admin/agencies
 ///
-/// Creates an agency row, provisions the tenant Postgres schema (migrations
+/// Creates an agency row, provisions the agency Postgres schema (migrations
 /// included), creates an OpenFGA store, seeds the default authorization model,
 /// and persists the `store_id`.  All in one atomic-ish flow.
 #[utoipa::path(

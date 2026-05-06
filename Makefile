@@ -1,6 +1,6 @@
 # ── Config ────────────────────────────────────────────────────────────────────
 PLATFORM_URL = postgres://emakao:password@localhost:5432/emakao_platform
-TENANT_URL   = postgres://emakao:password@localhost:5432/emakao_tenant
+AGENCY_URL   = postgres://emakao:password@localhost:5432/emakao_agency
 PREPARE_URL  = $(PLATFORM_URL)?options=-c%20search_path%3Ddev_agency,public
 
 # ── Shortcuts ─────────────────────────────────────────────────────────────────
@@ -10,7 +10,7 @@ help:
 	@echo ""
 	@echo "  make up          Start Postgres containers"
 	@echo "  make down        Stop containers"
-	@echo "  make migrate     Run all migrations (platform + tenant)"
+	@echo "  make migrate     Run all migrations (platform + agency)"
 	@echo "  make prepare     Generate .sqlx offline cache"
 	@echo "  make build       Build the main crate (no DB needed)"
 	@echo "  make setup       Fresh setup: up + migrate + prepare + build"
@@ -40,7 +40,7 @@ reset:
 .PHONY: migrate
 migrate:
 	PLATFORM_DATABASE_URL="$(PLATFORM_URL)" \
-	TENANT_DATABASE_URL="$(TENANT_URL)" \
+	AGENCY_DATABASE_URL="$(AGENCY_URL)" \
 	cargo run -p migrate
 
 # ── sqlx offline cache ────────────────────────────────────────────────────────

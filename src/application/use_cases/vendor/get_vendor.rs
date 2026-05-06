@@ -16,7 +16,6 @@ impl GetVendorUseCase {
     }
 
     pub async fn execute(&self, agency_id: Uuid, id: Uuid) -> Result<Vendor, AppError> {
-        // Uses: VendorRepository::find_by_id
         self.repo
             .find_by_id(agency_id, id)
             .await?

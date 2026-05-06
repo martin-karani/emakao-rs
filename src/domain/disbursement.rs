@@ -1,26 +1,8 @@
+use crate::domain::enums::{DisbursementMethod, DisbursementStatus};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
-
-use utoipa::ToSchema;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum DisbursementStatus {
-    Pending,
-    Processing,
-    Completed,
-    Failed,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum DisbursementMethod {
-    BankTransfer,
-    MpesaB2C,
-    Cheque,
-}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Disbursement {

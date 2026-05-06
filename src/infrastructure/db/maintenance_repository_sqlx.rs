@@ -4,9 +4,9 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::maintenance_repository::MaintenanceRepository},
-    domain::maintenance::{
-        CreateWorkOrderCommand, UpdateWorkOrderCommand, WorkOrder, WorkOrderPriority,
-        WorkOrderStatus,
+    domain::{
+        enums::{WorkOrderPriority, WorkOrderStatus},
+        maintenance::{CreateWorkOrderCommand, UpdateWorkOrderCommand, WorkOrder},
     },
 };
 

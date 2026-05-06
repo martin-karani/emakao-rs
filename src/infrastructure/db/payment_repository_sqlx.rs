@@ -4,7 +4,10 @@ use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::payment_repository::PaymentRepository},
-    domain::payment::{ClaimStatus, CreatePaymentClaimCommand, PaymentClaim, PaymentMethodType},
+    domain::{
+        enums::{PaymentClaimStatus, PaymentMethodType},
+        payment::{CreatePaymentClaimCommand, PaymentClaim},
+    },
 };
 
 pub struct PgPaymentRepo {
@@ -63,19 +66,19 @@ fn method_str(m: &PaymentMethodType) -> &'static str {
     }
 }
 
-fn parse_claim_status(s: &str) -> ClaimStatus {
+fn parse_claim_status(s: &str) -> PaymentClaimStatus {
     match s {
-        "approved" => ClaimStatus::Approved,
-        "rejected" => ClaimStatus::Rejected,
-        _ => ClaimStatus::PendingReview,
+        "approved" => PaymentClaimStatus::Approved,
+        "rejected" => PaymentClaimStatus::Rejected,
+        _ => PaymentClaimStatus::PendingReview,
     }
 }
 
-fn claim_status_str(s: &ClaimStatus) -> &'static str {
+fn claim_status_str(s: &PaymentClaimStatus) -> &'static str {
     match s {
-        ClaimStatus::PendingReview => "pending_review",
-        ClaimStatus::Approved => "approved",
-        ClaimStatus::Rejected => "rejected",
+        PaymentClaimStatus::PendingReview => "pending_review",
+        PaymentClaimStatus::Approved => "approved",
+        PaymentClaimStatus::Rejected => "rejected",
     }
 }
 
@@ -110,7 +113,7 @@ impl PaymentRepository for PgPaymentRepo {
         &self,
         agency_id: Uuid,
         property_id: Option<Uuid>,
-        status: Option<ClaimStatus>,
+        status: Option<PaymentClaimStatus>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<PaymentClaim>, AppError> {
@@ -208,7 +211,7 @@ impl PaymentRepository for PgPaymentRepo {
     async fn update_status(
         &self,
         id: Uuid,
-        status: ClaimStatus,
+        status: PaymentClaimStatus,
         reviewed_by: Uuid,
         review_notes: Option<String>,
         rejection_reason: Option<String>,

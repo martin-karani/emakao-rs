@@ -1,25 +1,7 @@
-use serde::{Deserialize, Serialize};
+use crate::domain::enums::{WorkOrderPriority, WorkOrderStatus};
+use serde::Serialize;
 use time::OffsetDateTime;
-use utoipa::ToSchema;
 use uuid::Uuid;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkOrderStatus {
-    Open,
-    InProgress,
-    Completed,
-    Cancelled,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkOrderPriority {
-    Low,
-    Medium,
-    High,
-    Emergency,
-}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct WorkOrder {

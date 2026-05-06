@@ -16,7 +16,6 @@ impl GetBalanceUseCase {
     }
 
     pub async fn execute(&self, agreement_id: Uuid) -> Result<BalanceSummary, AppError> {
-        // Uses: LedgerRepository::balance_for_agreement
         self.repo.balance_for_agreement(agreement_id).await
     }
 }
