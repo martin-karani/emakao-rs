@@ -1,12 +1,22 @@
 use async_trait::async_trait;
+use rust_decimal::Decimal;
+use serde_json::Value;
 use sqlx::PgPool;
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::maintenance_repository::MaintenanceRepository},
     domain::{
-        enums::{WorkOrderPriority, WorkOrderStatus},
-        maintenance::{CreateWorkOrderCommand, UpdateWorkOrderCommand, WorkOrder},
+        enums::{
+            WorkOrderCategory, WorkOrderCommentAuthorType, WorkOrderPriority,
+            WorkOrderReporterType, WorkOrderStatus,
+        },
+        maintenance::{
+            Caretaker, CreateCaretakerCommand, CreateWorkOrderCommand,
+            CreateWorkOrderCommentCommand, UpdateCaretakerCommand, UpdateWorkOrderCommand,
+            WorkOrder, WorkOrderActivity, WorkOrderAttachment, WorkOrderComment,
+        },
     },
 };
 
@@ -19,10 +29,44 @@ impl PgMaintenanceRepo {
         Self { pool }
     }
 }
-
 impl From<PgPool> for PgMaintenanceRepo {
     fn from(pool: PgPool) -> Self {
         Self { pool }
+    }
+}
+
+// ── Low-level row structs ─────────────────────────────────────────────────────
+
+#[derive(sqlx::FromRow)]
+struct CaretakerRow {
+    id: Uuid,
+    property_id: Uuid,
+    user_id: Option<Uuid>,
+    first_name: String,
+    last_name: String,
+    phone: Option<String>,
+    email: Option<String>,
+    is_active: bool,
+    created_by: Uuid,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+}
+
+impl From<CaretakerRow> for Caretaker {
+    fn from(r: CaretakerRow) -> Self {
+        Self {
+            id: r.id,
+            property_id: r.property_id,
+            user_id: r.user_id,
+            first_name: r.first_name,
+            last_name: r.last_name,
+            phone: r.phone,
+            email: r.email,
+            is_active: r.is_active,
+            created_by: r.created_by,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
     }
 }
 
@@ -31,14 +75,65 @@ struct WorkOrderRow {
     id: Uuid,
     property_id: Uuid,
     unit_id: Option<Uuid>,
+    vendor_id: Option<Uuid>,
     title: String,
     description: Option<String>,
+    category: String,
     status: String,
     priority: String,
-    vendor_id: Option<Uuid>,
     reported_by: Uuid,
-    created_at: time::OffsetDateTime,
-    updated_at: time::OffsetDateTime,
+    reporter_type: String,
+    reporter_resident_id: Option<Uuid>,
+    reporter_caretaker_id: Option<Uuid>,
+    assigned_to: Option<Uuid>,
+    assigned_caretaker_id: Option<Uuid>,
+    due_date: Option<Date>,
+    scheduled_at: Option<OffsetDateTime>,
+    started_at: Option<OffsetDateTime>,
+    completed_at: Option<OffsetDateTime>,
+    estimated_cost_kes: Option<Decimal>,
+    actual_cost_kes: Option<Decimal>,
+    is_tenant_visible: bool,
+    internal_notes: Option<String>,
+    attachments: Value,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+}
+
+fn parse_attachments(v: Value) -> Vec<WorkOrderAttachment> {
+    serde_json::from_value(v).unwrap_or_default()
+}
+
+fn parse_category(s: &str) -> WorkOrderCategory {
+    match s {
+        "plumbing" => WorkOrderCategory::Plumbing,
+        "electrical" => WorkOrderCategory::Electrical,
+        "structural" => WorkOrderCategory::Structural,
+        "hvac" => WorkOrderCategory::Hvac,
+        "appliance" => WorkOrderCategory::Appliance,
+        "painting" => WorkOrderCategory::Painting,
+        "cleaning" => WorkOrderCategory::Cleaning,
+        "security" => WorkOrderCategory::Security,
+        "landscaping" => WorkOrderCategory::Landscaping,
+        "pest_control" => WorkOrderCategory::PestControl,
+        _ => WorkOrderCategory::General,
+    }
+}
+
+fn category_str(c: &WorkOrderCategory) -> &'static str {
+    match c {
+        WorkOrderCategory::Plumbing => "plumbing",
+        WorkOrderCategory::Electrical => "electrical",
+        WorkOrderCategory::Structural => "structural",
+        WorkOrderCategory::Hvac => "hvac",
+        WorkOrderCategory::Appliance => "appliance",
+        WorkOrderCategory::Painting => "painting",
+        WorkOrderCategory::Cleaning => "cleaning",
+        WorkOrderCategory::Security => "security",
+        WorkOrderCategory::Landscaping => "landscaping",
+        WorkOrderCategory::PestControl => "pest_control",
+        WorkOrderCategory::General => "general",
+    }
 }
 
 fn parse_status(s: &str) -> WorkOrderStatus {
@@ -77,43 +172,280 @@ fn priority_str(p: &WorkOrderPriority) -> &'static str {
     }
 }
 
+fn parse_reporter_type(s: &str) -> WorkOrderReporterType {
+    match s {
+        "resident" => WorkOrderReporterType::Resident,
+        "caretaker" => WorkOrderReporterType::Caretaker,
+        "owner" => WorkOrderReporterType::Owner,
+        "vendor" => WorkOrderReporterType::Vendor,
+        _ => WorkOrderReporterType::Staff,
+    }
+}
+
+fn reporter_type_str(r: &WorkOrderReporterType) -> &'static str {
+    match r {
+        WorkOrderReporterType::Staff => "staff",
+        WorkOrderReporterType::Resident => "resident",
+        WorkOrderReporterType::Caretaker => "caretaker",
+        WorkOrderReporterType::Owner => "owner",
+        WorkOrderReporterType::Vendor => "vendor",
+    }
+}
+
+fn parse_author_type(s: &str) -> WorkOrderCommentAuthorType {
+    match s {
+        "resident" => WorkOrderCommentAuthorType::Resident,
+        "caretaker" => WorkOrderCommentAuthorType::Caretaker,
+        "owner" => WorkOrderCommentAuthorType::Owner,
+        "vendor" => WorkOrderCommentAuthorType::Vendor,
+        _ => WorkOrderCommentAuthorType::Staff,
+    }
+}
+
+fn author_type_str(a: &WorkOrderCommentAuthorType) -> &'static str {
+    match a {
+        WorkOrderCommentAuthorType::Staff => "staff",
+        WorkOrderCommentAuthorType::Resident => "resident",
+        WorkOrderCommentAuthorType::Caretaker => "caretaker",
+        WorkOrderCommentAuthorType::Owner => "owner",
+        WorkOrderCommentAuthorType::Vendor => "vendor",
+    }
+}
+
 impl From<WorkOrderRow> for WorkOrder {
     fn from(r: WorkOrderRow) -> Self {
         Self {
             id: r.id,
             property_id: r.property_id,
             unit_id: r.unit_id,
+            vendor_id: r.vendor_id,
             title: r.title,
             description: r.description,
+            category: parse_category(&r.category),
             status: parse_status(&r.status),
             priority: parse_priority(&r.priority),
-            vendor_id: r.vendor_id,
             reported_by: r.reported_by,
+            reporter_type: parse_reporter_type(&r.reporter_type),
+            reporter_resident_id: r.reporter_resident_id,
+            reporter_caretaker_id: r.reporter_caretaker_id,
+            assigned_to: r.assigned_to,
+            assigned_caretaker_id: r.assigned_caretaker_id,
+            due_date: r.due_date,
+            scheduled_at: r.scheduled_at,
+            started_at: r.started_at,
+            completed_at: r.completed_at,
+            estimated_cost_kes: r.estimated_cost_kes,
+            actual_cost_kes: r.actual_cost_kes,
+            is_tenant_visible: r.is_tenant_visible,
+            internal_notes: r.internal_notes,
+            attachments: parse_attachments(r.attachments),
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
     }
 }
 
+#[derive(sqlx::FromRow)]
+struct CommentRow {
+    id: Uuid,
+    work_order_id: Uuid,
+    parent_comment_id: Option<Uuid>,
+    author_id: Uuid,
+    author_type: String,
+    author_resident_id: Option<Uuid>,
+    author_caretaker_id: Option<Uuid>,
+    body: String,
+    is_internal: bool,
+    attachments: Value,
+    is_edited: bool,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+}
+
+impl From<CommentRow> for WorkOrderComment {
+    fn from(r: CommentRow) -> Self {
+        Self {
+            id: r.id,
+            work_order_id: r.work_order_id,
+            parent_comment_id: r.parent_comment_id,
+            author_id: r.author_id,
+            author_type: parse_author_type(&r.author_type),
+            author_resident_id: r.author_resident_id,
+            author_caretaker_id: r.author_caretaker_id,
+            body: r.body,
+            is_internal: r.is_internal,
+            attachments: parse_attachments(r.attachments),
+            is_edited: r.is_edited,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct ActivityRow {
+    id: Uuid,
+    work_order_id: Uuid,
+    actor_id: Uuid,
+    actor_type: String,
+    event_type: String,
+    payload: Value,
+    created_at: OffsetDateTime,
+}
+
+impl From<ActivityRow> for WorkOrderActivity {
+    fn from(r: ActivityRow) -> Self {
+        Self {
+            id: r.id,
+            work_order_id: r.work_order_id,
+            actor_id: r.actor_id,
+            actor_type: parse_author_type(&r.actor_type),
+            event_type: r.event_type,
+            payload: r.payload,
+            created_at: r.created_at,
+        }
+    }
+}
+
+// ── Trait implementation ──────────────────────────────────────────────────────
+
 #[async_trait]
 impl MaintenanceRepository for PgMaintenanceRepo {
+    // ── Caretakers ────────────────────────────────────────────────────────────
+
+    async fn find_caretakers(
+        &self,
+        property_id: Option<Uuid>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Caretaker>, AppError> {
+        let rows = sqlx::query_as!(
+            CaretakerRow,
+            r#"
+            SELECT id, property_id, user_id, first_name, last_name, phone, email,
+                   is_active, created_by, created_at, updated_at
+            FROM caretakers
+            WHERE ($1::uuid IS NULL OR property_id = $1::uuid)
+            ORDER BY first_name, last_name
+            LIMIT $2 OFFSET $3
+            "#,
+            property_id,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(Caretaker::from).collect())
+    }
+
+    async fn find_caretaker_by_id(&self, id: Uuid) -> Result<Option<Caretaker>, AppError> {
+        let row = sqlx::query_as!(
+            CaretakerRow,
+            r#"
+            SELECT id, property_id, user_id, first_name, last_name, phone, email,
+                   is_active, created_by, created_at, updated_at
+            FROM caretakers WHERE id = $1::uuid
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(Caretaker::from))
+    }
+
+    async fn create_caretaker(&self, cmd: CreateCaretakerCommand) -> Result<Caretaker, AppError> {
+        let row = sqlx::query_as!(
+            CaretakerRow,
+            r#"
+            INSERT INTO caretakers (
+                id, property_id, first_name, last_name, phone, email, created_by
+            )
+            VALUES (uuidv7(), $1::uuid, $2::text, $3::text, $4::text, $5::text, $6::uuid)
+            RETURNING id, property_id, user_id, first_name, last_name, phone, email,
+                      is_active, created_by, created_at, updated_at
+            "#,
+            cmd.property_id,
+            cmd.first_name,
+            cmd.last_name,
+            cmd.phone,
+            cmd.email,
+            cmd.created_by
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(Caretaker::from(row))
+    }
+
+    async fn update_caretaker(&self, cmd: UpdateCaretakerCommand) -> Result<Caretaker, AppError> {
+        let row = sqlx::query_as!(
+            CaretakerRow,
+            r#"
+            UPDATE caretakers SET
+                first_name = COALESCE($2::text, first_name),
+                last_name  = COALESCE($3::text, last_name),
+                phone      = COALESCE($4::text, phone),
+                email      = COALESCE($5::text, email),
+                is_active  = COALESCE($6::boolean, is_active),
+                updated_at = now()
+            WHERE id = $1::uuid
+            RETURNING id, property_id, user_id, first_name, last_name, phone, email,
+                      is_active, created_by, created_at, updated_at
+            "#,
+            cmd.id,
+            cmd.first_name,
+            cmd.last_name,
+            cmd.phone,
+            cmd.email,
+            cmd.is_active
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("caretaker {}", cmd.id)))?;
+        Ok(Caretaker::from(row))
+    }
+
+    // ── Work Orders ───────────────────────────────────────────────────────────
+
     async fn find_all(
         &self,
         agency_id: Uuid,
         property_id: Option<Uuid>,
+        unit_id: Option<Uuid>,
+        status: Option<WorkOrderStatus>,
+        priority: Option<WorkOrderPriority>,
+        category: Option<WorkOrderCategory>,
+        reporter_type: Option<WorkOrderReporterType>,
+        assigned_caretaker_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WorkOrder>, AppError> {
+        let status_s = status.as_ref().map(status_str);
+        let priority_s = priority.as_ref().map(priority_str);
+        let category_s = category.as_ref().map(category_str);
+        let reporter_s = reporter_type.as_ref().map(reporter_type_str);
+
         let rows = sqlx::query_as!(
             WorkOrderRow,
             r#"
-            SELECT wo.id, wo.property_id, wo.unit_id, wo.title, wo.description,
-                   wo.status, wo.priority, wo.vendor_id, wo.reported_by,
+            SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
+                   wo.title, wo.description, wo.category, wo.status, wo.priority,
+                   wo.reported_by, wo.reporter_type,
+                   wo.reporter_resident_id, wo.reporter_caretaker_id,
+                   wo.assigned_to, wo.assigned_caretaker_id,
+                   wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
+                   wo.estimated_cost_kes, wo.actual_cost_kes,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
                    wo.created_at, wo.updated_at
             FROM work_orders wo
             JOIN properties p ON p.id = wo.property_id
             WHERE p.agency_id = $1::uuid
-              AND ($2::uuid IS NULL OR wo.property_id = $2::uuid)
+              AND ($2::uuid    IS NULL OR wo.property_id          = $2::uuid)
+              AND ($3::uuid    IS NULL OR wo.unit_id              = $3::uuid)
+              AND ($4::text    IS NULL OR wo.status::text         = $4::text)
+              AND ($5::text    IS NULL OR wo.priority::text       = $5::text)
+              AND ($6::text    IS NULL OR wo.category::text       = $6::text)
+              AND ($7::text    IS NULL OR wo.reporter_type::text  = $7::text)
+              AND ($8::uuid    IS NULL OR wo.assigned_caretaker_id = $8::uuid)
             ORDER BY
                 CASE wo.priority
                     WHEN 'emergency' THEN 1
@@ -122,16 +454,21 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                     ELSE 4
                 END,
                 wo.created_at DESC
-            LIMIT $3 OFFSET $4
+            LIMIT $9 OFFSET $10
             "#,
             agency_id,
             property_id,
+            unit_id,
+            status_s,
+            priority_s,
+            category_s,
+            reporter_s,
+            assigned_caretaker_id,
             limit,
             offset
         )
         .fetch_all(&self.pool)
         .await?;
-
         Ok(rows.into_iter().map(WorkOrder::from).collect())
     }
 
@@ -139,8 +476,14 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         let row = sqlx::query_as!(
             WorkOrderRow,
             r#"
-            SELECT wo.id, wo.property_id, wo.unit_id, wo.title, wo.description,
-                   wo.status, wo.priority, wo.vendor_id, wo.reported_by,
+            SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
+                   wo.title, wo.description, wo.category, wo.status, wo.priority,
+                   wo.reported_by, wo.reporter_type,
+                   wo.reporter_resident_id, wo.reporter_caretaker_id,
+                   wo.assigned_to, wo.assigned_caretaker_id,
+                   wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
+                   wo.estimated_cost_kes, wo.actual_cost_kes,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
                    wo.created_at, wo.updated_at
             FROM work_orders wo
             JOIN properties p ON p.id = wo.property_id
@@ -151,72 +494,472 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         )
         .fetch_optional(&self.pool)
         .await?;
+        Ok(row.map(WorkOrder::from))
+    }
+
+    async fn find_for_resident(
+        &self,
+        resident_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WorkOrder>, AppError> {
+        // Returns work orders for units where the resident has an active agreement,
+        // filtered to is_tenant_visible = true.
+        let rows = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
+                   wo.title, wo.description, wo.category, wo.status, wo.priority,
+                   wo.reported_by, wo.reporter_type,
+                   wo.reporter_resident_id, wo.reporter_caretaker_id,
+                   wo.assigned_to, wo.assigned_caretaker_id,
+                   wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
+                   wo.estimated_cost_kes, wo.actual_cost_kes,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.created_at, wo.updated_at
+            FROM work_orders wo
+            JOIN agreements ag ON ag.unit_id = wo.unit_id
+            WHERE ag.resident_id = $1::uuid
+              AND ag.status = 'active'
+              AND wo.is_tenant_visible = true
+            ORDER BY wo.created_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+            resident_id,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(WorkOrder::from).collect())
+    }
+
+    async fn find_for_caretaker(
+        &self,
+        caretaker_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WorkOrder>, AppError> {
+        let rows = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
+                   wo.title, wo.description, wo.category, wo.status, wo.priority,
+                   wo.reported_by, wo.reporter_type,
+                   wo.reporter_resident_id, wo.reporter_caretaker_id,
+                   wo.assigned_to, wo.assigned_caretaker_id,
+                   wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
+                   wo.estimated_cost_kes, wo.actual_cost_kes,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.created_at, wo.updated_at
+            FROM work_orders wo
+            JOIN caretakers ct ON ct.property_id = wo.property_id
+            WHERE ct.id = $1::uuid
+              AND ct.is_active = true
+              AND (wo.assigned_caretaker_id = $1::uuid
+                   OR wo.reporter_caretaker_id = $1::uuid)
+            ORDER BY wo.created_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+            caretaker_id,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(WorkOrder::from).collect())
+    }
+
+    async fn find_work_orders_by_vendor_id(
+        &self,
+        vendor_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WorkOrder>, AppError> {
+        let rows = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            SELECT id, property_id, unit_id, vendor_id,
+                   title, description, category, status, priority,
+                   reported_by, reporter_type,
+                   reporter_resident_id, reporter_caretaker_id,
+                   assigned_to, assigned_caretaker_id,
+                   due_date, scheduled_at, started_at, completed_at,
+                   estimated_cost_kes, actual_cost_kes,
+                   is_tenant_visible, internal_notes, attachments,
+                   created_at, updated_at
+            FROM work_orders
+            WHERE vendor_id = $1::uuid
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+            vendor_id,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(WorkOrder::from).collect())
+    }
+
+    async fn find_by_code(
+        &self,
+        agency_id: Uuid,
+        code: &str,
+    ) -> Result<Option<WorkOrder>, AppError> {
+        // Normalise: codes are always uppercase
+        let code_upper = code.to_ascii_uppercase();
+
+        let row = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
+                   wo.code, wo.work_order_number,
+                   wo.title, wo.description, wo.category, wo.status, wo.priority,
+                   wo.reported_by, wo.reporter_type,
+                   wo.reporter_resident_id, wo.reporter_caretaker_id,
+                   wo.assigned_to, wo.assigned_caretaker_id,
+                   wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
+                   wo.estimated_cost_kes, wo.actual_cost_kes,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.created_at, wo.updated_at
+            FROM   work_orders wo
+            JOIN   properties p ON p.id = wo.property_id
+            WHERE  wo.code = $1
+              AND  p.agency_id = $2::uuid
+            "#,
+            code_upper,
+            agency_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
 
         Ok(row.map(WorkOrder::from))
     }
 
     async fn create(&self, cmd: CreateWorkOrderCommand) -> Result<WorkOrder, AppError> {
+        let attachments =
+            serde_json::to_value(&cmd.attachments).unwrap_or(serde_json::Value::Array(vec![]));
+
+        // ── All of this is one atomic transaction ──────────────────────────────
+        //
+        // Step 1: Increment work_order_seq on the property row and fetch the new
+        //         value + prefix. The UPDATE acquires a row-level exclusive lock,
+        //         serialising concurrent work order creates for the same property.
+        //
+        // Step 2: Build the code string in application code (or via SQL concat).
+        //
+        // Step 3: Insert the work order with the generated code.
+        //
+        // If Step 3 fails (e.g. duplicate code from a bug), the transaction rolls
+        // back, the sequence counter is not committed, and the caller retries.
+
+        let mut tx = self.pool.begin().await?;
+
+        // ── Step 1: atomic sequence increment ─────────────────────────────────
+        let (seq, prefix): (i32, String) = sqlx::query_as(
+            r#"
+            UPDATE properties
+            SET    work_order_seq = work_order_seq + 1
+            WHERE  id = $1
+            RETURNING work_order_seq, work_order_prefix
+            "#,
+        )
+        .bind(cmd.property_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_| AppError::NotFound(format!("property {}", cmd.property_id)))?;
+
+        // ── Step 2: build the code ─────────────────────────────────────────────
+        let code = crate::domain::work_order_code::format_code(&prefix, seq);
+
+        // ── Step 3: insert work order ──────────────────────────────────────────
         let row = sqlx::query_as!(
             WorkOrderRow,
             r#"
             INSERT INTO work_orders (
-                id, property_id, unit_id, title, description,
-                status, priority, vendor_id, reported_by
+                id, property_id, unit_id, vendor_id,
+                code, work_order_number,
+                title, description, category, status, priority,
+                reported_by, reporter_type, reporter_resident_id, reporter_caretaker_id,
+                assigned_to, assigned_caretaker_id,
+                due_date, scheduled_at, estimated_cost_kes,
+                is_tenant_visible, internal_notes, attachments
             )
-            VALUES ($1::uuid, $2::uuid, $3::uuid, $4::text, $5::text,
-                    'open', $6::text, $7::uuid, $8::uuid)
+            VALUES (
+                uuidv7(), $1::uuid, $2::uuid, $3::uuid,
+                $4::text, $5::int,
+                $6::text, $7::text, $8::text, 'open', $9::text,
+                $10::uuid, $11::text, $12::uuid, $13::uuid,
+                $14::uuid, $15::uuid,
+                $16::date, $17::timestamptz, $18,
+                $19::boolean, $20::text, $21::jsonb
+            )
             RETURNING
-                id, property_id, unit_id, title, description,
-                status, priority, vendor_id, reported_by,
+                id, property_id, unit_id, vendor_id,
+                code, work_order_number,
+                title, description, category, status, priority,
+                reported_by, reporter_type,
+                reporter_resident_id, reporter_caretaker_id,
+                assigned_to, assigned_caretaker_id,
+                due_date, scheduled_at, started_at, completed_at,
+                estimated_cost_kes, actual_cost_kes,
+                is_tenant_visible, internal_notes, attachments,
                 created_at, updated_at
             "#,
-            Uuid::new_v4(),
-            cmd.property_id,
-            cmd.unit_id,
-            cmd.title,
-            cmd.description,
-            priority_str(&cmd.priority),
-            cmd.vendor_id,
-            cmd.reported_by
+            cmd.property_id,                       // $1
+            cmd.unit_id,                           // $2
+            cmd.vendor_id,                         // $3
+            code,                                  // $4  ← generated code
+            seq,                                   // $5  ← sequence number
+            cmd.title,                             // $6
+            cmd.description,                       // $7
+            category_str(&cmd.category),           // $8
+            priority_str(&cmd.priority),           // $9
+            cmd.reported_by,                       // $10
+            reporter_type_str(&cmd.reporter_type), // $11
+            cmd.reporter_resident_id,              // $12
+            cmd.reporter_caretaker_id,             // $13
+            cmd.assigned_to,                       // $14
+            cmd.assigned_caretaker_id,             // $15
+            cmd.due_date,                          // $16
+            cmd.scheduled_at,                      // $17
+            cmd.estimated_cost_kes,                // $18
+            cmd.is_tenant_visible,                 // $19
+            cmd.internal_notes,                    // $20
+            attachments,                           // $21
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+
+        tx.commit().await?;
 
         Ok(WorkOrder::from(row))
     }
 
     async fn update(&self, cmd: UpdateWorkOrderCommand) -> Result<WorkOrder, AppError> {
-        // $1 = id, $2 = status (Option<&str>), $3 = vendor_id_is_some (bool),
-        // $4 = vendor_id (Option<Uuid>), $5 = description (Option<String>)
-        // All $N are referenced in SQL so Postgres can infer every type.
+        let status_s = cmd.status.as_ref().map(status_str);
+        let priority_s = cmd.priority.as_ref().map(priority_str);
+        let category_s = cmd.category.as_ref().map(category_str);
+        let attachments = cmd
+            .attachments
+            .as_ref()
+            .map(|a| serde_json::to_value(a).unwrap_or(Value::Array(vec![])));
+
         let row = sqlx::query_as!(
             WorkOrderRow,
             r#"
-            UPDATE work_orders
-            SET
-                status      = COALESCE($2::text, status),
-                vendor_id   = CASE
-                                WHEN $3::boolean THEN $4::uuid
-                                ELSE vendor_id
-                              END,
-                description = COALESCE($5::text, description),
-                updated_at  = now()
+            UPDATE work_orders SET
+                status               = COALESCE($2::text,      status::text)::work_order_status,
+                priority             = COALESCE($3::text,      priority::text)::work_order_priority,
+                category             = COALESCE($4::text,      category::text)::work_order_category,
+                vendor_id            = CASE WHEN $5::boolean THEN $6::uuid       ELSE vendor_id END,
+                assigned_to          = CASE WHEN $7::boolean THEN $8::uuid       ELSE assigned_to END,
+                assigned_caretaker_id= CASE WHEN $9::boolean THEN $10::uuid      ELSE assigned_caretaker_id END,
+                description          = COALESCE($11::text,     description),
+                internal_notes       = COALESCE($12::text,     internal_notes),
+                due_date             = CASE WHEN $13::boolean THEN $14::date     ELSE due_date END,
+                scheduled_at         = CASE WHEN $15::boolean THEN $16::timestamptz ELSE scheduled_at END,
+                started_at           = CASE WHEN $17::boolean THEN $18::timestamptz ELSE started_at END,
+                completed_at         = CASE WHEN $19::boolean THEN $20::timestamptz ELSE completed_at END,
+                estimated_cost_kes   = CASE WHEN $21::boolean THEN $22           ELSE estimated_cost_kes END,
+                actual_cost_kes      = CASE WHEN $23::boolean THEN $24           ELSE actual_cost_kes END,
+                is_tenant_visible    = COALESCE($25::boolean,  is_tenant_visible),
+                attachments          = COALESCE($26::jsonb,    attachments),
+                updated_at           = now()
             WHERE id = $1::uuid
             RETURNING
-                id, property_id, unit_id, title, description,
-                status, priority, vendor_id, reported_by,
+                id, property_id, unit_id, vendor_id,
+                title, description, category, status, priority,
+                reported_by, reporter_type,
+                reporter_resident_id, reporter_caretaker_id,
+                assigned_to, assigned_caretaker_id,
+                due_date, scheduled_at, started_at, completed_at,
+                estimated_cost_kes, actual_cost_kes,
+                is_tenant_visible, internal_notes, attachments,
                 created_at, updated_at
             "#,
-            cmd.id,
-            cmd.status.as_ref().map(status_str), // $2
-            cmd.vendor_id.is_some(),             // $3
-            cmd.vendor_id.flatten(),             // $4
-            cmd.description,                     // $5
+            cmd.id,                                  // $1
+            status_s,                                // $2
+            priority_s,                              // $3
+            category_s,                              // $4
+            cmd.vendor_id.is_some(),                 // $5
+            cmd.vendor_id.flatten(),                 // $6
+            cmd.assigned_to.is_some(),               // $7
+            cmd.assigned_to.flatten(),               // $8
+            cmd.assigned_caretaker_id.is_some(),     // $9
+            cmd.assigned_caretaker_id.flatten(),     // $10
+            cmd.description,                         // $11
+            cmd.internal_notes,                      // $12
+            cmd.due_date.is_some(),                  // $13
+            cmd.due_date.flatten(),                  // $14
+            cmd.scheduled_at.is_some(),              // $15
+            cmd.scheduled_at.flatten(),              // $16
+            cmd.started_at.is_some(),                // $17
+            cmd.started_at.flatten(),                // $18
+            cmd.completed_at.is_some(),              // $19
+            cmd.completed_at.flatten(),              // $20
+            cmd.estimated_cost_kes.is_some(),        // $21
+            cmd.estimated_cost_kes.flatten(),        // $22
+            cmd.actual_cost_kes.is_some(),           // $23
+            cmd.actual_cost_kes.flatten(),           // $24
+            cmd.is_tenant_visible,                   // $25
+            attachments,                             // $26
         )
-        .fetch_optional(&self.pool)
-        .await?
+        .fetch_optional(&self.pool).await?
         .ok_or_else(|| AppError::NotFound(format!("work order {}", cmd.id)))?;
-
         Ok(WorkOrder::from(row))
+    }
+
+    // ── Comments ──────────────────────────────────────────────────────────────
+
+    async fn find_comments(
+        &self,
+        work_order_id: Uuid,
+        include_internal: bool,
+        top_level_only: bool,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WorkOrderComment>, AppError> {
+        let rows = sqlx::query_as!(
+            CommentRow,
+            r#"
+            SELECT id, work_order_id, parent_comment_id,
+                   author_id, author_type, author_resident_id, author_caretaker_id,
+                   body, is_internal, attachments, is_edited, created_at, updated_at
+            FROM work_order_comments
+            WHERE work_order_id = $1::uuid
+              AND ($2::boolean = true OR is_internal = false)
+              AND ($3::boolean = false OR parent_comment_id IS NULL)
+            ORDER BY created_at ASC
+            LIMIT $4 OFFSET $5
+            "#,
+            work_order_id,
+            include_internal,
+            top_level_only,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(WorkOrderComment::from).collect())
+    }
+
+    async fn find_comment_replies(
+        &self,
+        parent_comment_id: Uuid,
+        include_internal: bool,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WorkOrderComment>, AppError> {
+        let rows = sqlx::query_as!(
+            CommentRow,
+            r#"
+            SELECT id, work_order_id, parent_comment_id,
+                   author_id, author_type, author_resident_id, author_caretaker_id,
+                   body, is_internal, attachments, is_edited, created_at, updated_at
+            FROM work_order_comments
+            WHERE parent_comment_id = $1::uuid
+              AND ($2::boolean = true OR is_internal = false)
+            ORDER BY created_at ASC
+            LIMIT $3 OFFSET $4
+            "#,
+            parent_comment_id,
+            include_internal,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(WorkOrderComment::from).collect())
+    }
+
+    async fn create_comment(
+        &self,
+        cmd: CreateWorkOrderCommentCommand,
+    ) -> Result<WorkOrderComment, AppError> {
+        let attachments = serde_json::to_value(&cmd.attachments).unwrap_or(Value::Array(vec![]));
+        let row = sqlx::query_as!(
+            CommentRow,
+            r#"
+            INSERT INTO work_order_comments (
+                id, work_order_id, parent_comment_id,
+                author_id, author_type, author_resident_id, author_caretaker_id,
+                body, is_internal, attachments
+            )
+            VALUES (
+                uuidv7(), $1::uuid, $2::uuid,
+                $3::uuid, $4::text, $5::uuid, $6::uuid,
+                $7::text, $8::boolean, $9::jsonb
+            )
+            RETURNING
+                id, work_order_id, parent_comment_id,
+                author_id, author_type, author_resident_id, author_caretaker_id,
+                body, is_internal, attachments, is_edited, created_at, updated_at
+            "#,
+            cmd.work_order_id,
+            cmd.parent_comment_id,
+            cmd.author_id,
+            author_type_str(&cmd.author_type),
+            cmd.author_resident_id,
+            cmd.author_caretaker_id,
+            cmd.body,
+            cmd.is_internal,
+            attachments
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(WorkOrderComment::from(row))
+    }
+
+    // ── Activity Log ──────────────────────────────────────────────────────────
+
+    async fn find_activity(
+        &self,
+        work_order_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<WorkOrderActivity>, AppError> {
+        let rows = sqlx::query_as!(
+            ActivityRow,
+            r#"
+            SELECT id, work_order_id, actor_id, actor_type, event_type, payload, created_at
+            FROM work_order_activity
+            WHERE work_order_id = $1::uuid
+            ORDER BY created_at ASC
+            LIMIT $2 OFFSET $3
+            "#,
+            work_order_id,
+            limit,
+            offset
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(WorkOrderActivity::from).collect())
+    }
+
+    async fn log_activity(
+        &self,
+        work_order_id: Uuid,
+        actor_id: Uuid,
+        actor_type: &str,
+        event_type: &str,
+        payload: Value,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            INSERT INTO work_order_activity
+                (id, work_order_id, actor_id, actor_type, event_type, payload)
+            VALUES (uuidv7(), $1::uuid, $2::uuid, $3::text, $4::text, $5::jsonb)
+            "#,
+            work_order_id,
+            actor_id,
+            actor_type,
+            event_type,
+            payload
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 }

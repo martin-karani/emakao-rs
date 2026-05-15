@@ -120,7 +120,8 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
 fn build_portal_api(state: AppState) -> Router<AppState> {
     Router::new()
         .merge(with_auth_stack(
-            resident_routes::resident_portal_routes(),
+            resident_routes::resident_portal_routes()
+                .merge(maintenance_routes::resident_portal_routes()),
             state.clone(),
             PortalType::Resident,
         ))
@@ -134,8 +135,13 @@ fn build_portal_api(state: AppState) -> Router<AppState> {
             state.clone(),
             PortalType::Vendor,
         ))
+        // ── new: caretaker portal ─────────────────────────────────────────────
+        .merge(with_auth_stack(
+            maintenance_routes::caretaker_portal_routes(),
+            state.clone(),
+            PortalType::Caretaker,
+        ))
 }
-
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 fn build_admin_api(state: AppState) -> Router<AppState> {

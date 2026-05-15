@@ -59,6 +59,8 @@ pub struct Property {
     pub country_code: String,
     pub property_type: PropertyType,
     pub config: PropertyConfig,
+    pub work_order_prefix: String,
+    pub work_order_seq: i32,
     pub created_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -88,6 +90,7 @@ pub struct CreatePropertyCommand {
     pub city: String,
     pub property_type: PropertyType,
     pub config: PropertyConfig,
+    pub work_order_prefix: Option<String>,
 }
 
 pub struct UpdatePropertyCommand {

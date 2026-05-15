@@ -4,6 +4,8 @@ pub mod auth_port;
 pub mod auth_repository;
 pub mod conversation_repository;
 pub mod email_port;
+pub mod inspection_repository;
+pub mod invoice_repository;
 pub mod ledger_repository;
 pub mod maintenance_repository;
 pub mod message_repository;

@@ -35,6 +35,7 @@ pub enum PortalType {
     Resident,
     Owner,
     Vendor,
+    Caretaker,
 }
 
 /// portal_user_index.contact_type  +  invite_tokens.contact_type

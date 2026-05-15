@@ -56,6 +56,7 @@ impl PortalType {
             "resident" => Self::Resident,
             "owner" => Self::Owner,
             "vendor" => Self::Vendor,
+            "caretaker" => Self::Caretaker,
             _ => Self::Staff,
         }
     }
@@ -66,6 +67,7 @@ impl PortalType {
             Self::Resident => "resident",
             Self::Owner => "owner",
             Self::Vendor => "vendor",
+            Self::Caretaker => "caretaker",
         }
     }
 
@@ -76,6 +78,7 @@ impl PortalType {
             Self::Resident => "residents",
             Self::Owner => "owners",
             Self::Vendor => "vendors",
+            Self::Caretaker => "caretakers",
         }
     }
 }

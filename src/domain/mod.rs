@@ -19,3 +19,4 @@ pub mod subscription;
 pub mod unit;
 pub mod utility;
 pub mod vendor;
+pub mod work_order_code;

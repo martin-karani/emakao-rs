@@ -2,6 +2,7 @@ pub mod agency;
 pub mod agreement;
 pub mod auth;
 pub mod health;
+pub mod inspection;
 pub mod ledger;
 pub mod maintenance;
 pub mod owner;

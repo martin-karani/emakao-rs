@@ -5,7 +5,7 @@ use crate::{
     presentation::{
         app_state::AppState,
         http::{
-            dto::auth::PortalLoginDto,
+            dto::auth::{LoginDto, PortalLoginDto},
             handlers::auth::{accept_invite, change_password, portal_login, refresh, staff_login},
         },
         middleware::auth::require_auth,
@@ -65,4 +65,15 @@ pub fn change_password_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/auth/change-password", post(change_password))
         .layer(middleware::from_fn_with_state(state, require_auth))
+}
+
+pub fn caretaker_login_routes() -> Router<AppState> {
+    Router::new().route(
+        "/api/v1/auth/caretaker/login",
+        post(
+            |State(s): State<AppState>, Json(dto): Json<PortalLoginDto>| async move {
+                portal_login(PortalType::Caretaker, s, dto).await
+            },
+        ),
+    )
 }

@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::application::{errors::AppError, ports::openfga_port::OpenFgaPort};
+use crate::{
+    application::{errors::AppError, ports::openfga_port::OpenFgaPort},
+    domain::auth::AuthenticatedUser,
+    presentation::{app_state::AppState, extractors::AgencyContext},
+};
 
 // ── Core helper ───────────────────────────────────────────────────────────────
 
@@ -72,6 +76,30 @@ pub async fn require_permissions(
     let results = futures::future::join_all(futs).await;
     for r in results {
         r?;
+    }
+    Ok(())
+}
+
+// ── Helper ────────────────────────────────────────────────────────────────────
+
+/// Runs the OpenFGA permission check only when an FGA store is configured.
+/// When the agency has no store (e.g. during local dev) the check is skipped.
+pub async fn check_permission(
+    state: &AppState,
+    ctx: &AgencyContext,
+    user: &AuthenticatedUser,
+    relation: &str,
+    object: &str,
+) -> Result<(), AppError> {
+    if let Some(store_id) = ctx.agency.fga_store_id.as_deref() {
+        require_permission(
+            state.openfga.as_ref(),
+            store_id,
+            user.user_id,
+            relation,
+            object,
+        )
+        .await?;
     }
     Ok(())
 }

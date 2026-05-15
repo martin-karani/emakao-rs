@@ -2,6 +2,7 @@ pub mod agency_repository_sqlx;
 pub mod agreement_repository_sqlx;
 pub mod auth_repository_sqlx;
 pub mod conversation_repository_sqlx;
+pub mod inspection_repository_sqlx;
 pub mod ledger_repository_sqlx;
 pub mod maintenance_repository_sqlx;
 pub mod message_repository_sqlx;

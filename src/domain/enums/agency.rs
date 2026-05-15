@@ -13,6 +13,7 @@ pub enum PropertyType {
     Community,
     Student,
     AffordableHousing,
+    Affordable,
 }
 
 /// units.status
@@ -162,6 +163,45 @@ pub enum WorkOrderPriority {
     Medium,
     High,
     Emergency,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, sqlx::Type, ToSchema)]
+#[sqlx(type_name = "work_order_category", rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
+pub enum WorkOrderCategory {
+    Plumbing,
+    Electrical,
+    Structural,
+    Hvac,
+    Appliance,
+    Painting,
+    Cleaning,
+    Security,
+    Landscaping,
+    PestControl,
+    General,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, sqlx::Type, ToSchema)]
+#[sqlx(type_name = "work_order_reporter_type", rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
+pub enum WorkOrderReporterType {
+    Staff,
+    Resident,
+    Caretaker,
+    Owner,
+    Vendor,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, sqlx::Type, ToSchema)]
+#[sqlx(type_name = "work_order_comment_author_type", rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
+pub enum WorkOrderCommentAuthorType {
+    Staff,
+    Resident,
+    Caretaker,
+    Owner,
+    Vendor,
 }
 
 /// vendors.status

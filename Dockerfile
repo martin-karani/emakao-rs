@@ -15,6 +15,8 @@ RUN cargo build --release 2>/dev/null; rm -rf src
 # Build real source
 COPY src ./src
 COPY migrations ./migrations
+COPY templates ./templates
+COPY resources ./resources
 RUN touch src/main.rs && cargo build --release
 
 # ── runtime ────────────────────────────────────────────────────────────────────
@@ -26,11 +28,15 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/emakao-backend   ./emakao-backend
-COPY --from=builder /app/target/release/migrate          ./migrate
-COPY --from=builder /app/migrations                      ./migrations
+# FIX: binary is named "emakao" (matches [[bin]] name in Cargo.toml),
+# not "emakao-backend" as the old Dockerfile had it.
+COPY --from=builder /app/target/release/emakao      ./emakao
+COPY --from=builder /app/target/release/migrate      ./migrate
+COPY --from=builder /app/migrations                  ./migrations
+COPY --from=builder /app/templates                   ./templates
+COPY --from=builder /app/resources                   ./resources
 
 EXPOSE 3000
 ENV RUST_LOG=info
 
-CMD ["./emakao-backend"]
+CMD ["./emakao"]

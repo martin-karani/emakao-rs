@@ -80,6 +80,37 @@ CREATE TYPE work_order_priority AS ENUM (
     'emergency'
 );
 
+CREATE TYPE work_order_category AS ENUM (
+    'plumbing',
+    'electrical',
+    'structural',
+    'hvac',
+    'appliance',
+    'painting',
+    'cleaning',
+    'security',
+    'landscaping',
+    'pest_control',
+    'general'
+);
+
+CREATE TYPE work_order_reporter_type AS ENUM (
+    'staff',
+    'resident',
+    'caretaker',
+    'owner',
+    'vendor'
+);
+
+CREATE TYPE work_order_comment_author_type AS ENUM (
+    'staff',
+    'resident',
+    'caretaker',
+    'owner',
+    'vendor'
+);
+
+
 CREATE TYPE vendor_status AS ENUM (
     'active',
     'inactive',
@@ -154,26 +185,38 @@ CREATE TYPE invoice_status AS ENUM (
     'void'
 );
 
--- ── PROPERTIES ────────────────────────────────────────────────────────────────
-
+-- ── PROPERTIES 
 CREATE TABLE properties (
-    id            UUID          NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    -- agency_id is a cross-database reference; no FK constraint possible
-    agency_id     UUID          NOT NULL,
-    name          TEXT          NOT NULL CHECK (length(trim(name)) > 0),
-    address       TEXT          NOT NULL CHECK (length(trim(address)) > 0),
-    city          TEXT          NOT NULL DEFAULT '',
-    country_code  CHAR(2)       NOT NULL DEFAULT 'KE',
-    property_type property_type NOT NULL,
-    config        JSONB         NOT NULL DEFAULT '{}',
-    created_by    UUID          NOT NULL,
-    created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
+    id               UUID          NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    agency_id        UUID          NOT NULL,
+    name             TEXT          NOT NULL CHECK (length(trim(name)) > 0),
+    address          TEXT          NOT NULL CHECK (length(trim(address)) > 0),
+    city             TEXT          NOT NULL DEFAULT '',
+    country_code     CHAR(2)       NOT NULL DEFAULT 'KE',
+    property_type    property_type NOT NULL,
+    config           JSONB         NOT NULL DEFAULT '{}',
+
+    -- ── Work order code generation ──────────────────────────────────────────
+    -- Short uppercase prefix, unique within this agency schema.
+    -- Auto-generated from property name; can be overridden on creation.
+    -- Examples: MG, MGRD, PARKL, SA2
+    work_order_prefix VARCHAR(8)   NOT NULL DEFAULT '',
+    CHECK (work_order_prefix ~ '^[A-Z][A-Z0-9]{1,7}$'),
+
+    -- Monotonic counter — incremented atomically each time a work order is created.
+    work_order_seq   INT           NOT NULL DEFAULT 0 CHECK (work_order_seq >= 0),
+
+    created_by       UUID          NOT NULL,
+    created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+
+    -- Prefix must be unique within the agency schema
+    UNIQUE (work_order_prefix)
 );
 
-CREATE INDEX idx_properties_agency      ON properties (agency_id);
-CREATE INDEX idx_properties_type        ON properties (agency_id, property_type);
-CREATE INDEX idx_properties_created_by  ON properties (created_by);
+CREATE INDEX idx_properties_agency     ON properties (agency_id);
+CREATE INDEX idx_properties_type       ON properties (agency_id, property_type);
+CREATE INDEX idx_properties_created_by ON properties (created_by);
 
 -- ── UNITS ─────────────────────────────────────────────────────────────────────
 
@@ -369,29 +412,145 @@ CREATE TABLE vendors (
 CREATE INDEX idx_vendors_agency  ON vendors (agency_id, status);
 CREATE INDEX idx_vendors_user_id ON vendors (user_id) WHERE user_id IS NOT NULL;
 
--- ── WORK ORDERS ───────────────────────────────────────────────────────────────
 
-CREATE TABLE work_orders (
-    id          UUID                NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    property_id UUID                NOT NULL REFERENCES properties (id) ON DELETE RESTRICT,
-    unit_id     UUID                REFERENCES units (id) ON DELETE SET NULL,
-    -- vendor_id is a local reference (no cross-schema)
-    vendor_id   UUID                REFERENCES vendors (id) ON DELETE SET NULL,
-    title       TEXT                NOT NULL CHECK (length(trim(title)) > 0),
-    description TEXT,
-    status      work_order_status   NOT NULL DEFAULT 'open',
-    priority    work_order_priority NOT NULL DEFAULT 'medium',
-    reported_by UUID                NOT NULL,
-    created_at  TIMESTAMPTZ         NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ         NOT NULL DEFAULT now()
+-- ── CARETAKERS ────────────────────────────────────────────────────────────────
+-- A caretaker is a on-site property manager distinct from agency staff.
+-- They can create work orders and comment on them.
+
+CREATE TABLE caretakers (
+    id           UUID        NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    property_id  UUID        NOT NULL REFERENCES properties (id) ON DELETE CASCADE,
+    -- Cross-DB reference to platform users.id (nullable = not yet invited)
+    user_id      UUID,
+    first_name   TEXT        NOT NULL CHECK (length(trim(first_name)) > 0),
+    last_name    TEXT        NOT NULL CHECK (length(trim(last_name)) > 0),
+    phone        TEXT,
+    email        TEXT        CHECK (email = lower(email)),
+    is_active    BOOLEAN     NOT NULL DEFAULT true,
+    created_by   UUID        NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_work_orders_property ON work_orders (property_id, status);
-CREATE INDEX idx_work_orders_unit     ON work_orders (unit_id)   WHERE unit_id IS NOT NULL;
-CREATE INDEX idx_work_orders_vendor   ON work_orders (vendor_id) WHERE vendor_id IS NOT NULL;
+CREATE INDEX idx_caretakers_property ON caretakers (property_id, is_active);
+CREATE INDEX idx_caretakers_user_id  ON caretakers (user_id) WHERE user_id IS NOT NULL;
+
+-- ── WORK ORDERS ─────────────────────
+CREATE TABLE work_orders (
+    id                   UUID                     NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    property_id          UUID                     NOT NULL REFERENCES properties (id) ON DELETE RESTRICT,
+    unit_id              UUID                     REFERENCES units      (id) ON DELETE SET NULL,
+    vendor_id            UUID                     REFERENCES vendors    (id) ON DELETE SET NULL,
+
+    work_order_number    INT                      NOT NULL,
+    -- Full code, e.g. "MGRD-0042". Immutable after creation.
+    code                 TEXT                     NOT NULL,
+    UNIQUE (code),
+    CHECK  (code ~ '^[A-Z][A-Z0-9]{1,7}-[0-9]+$'),
+
+    -- ── Core fields ───────────────────────────────────────────────────────────
+    title                TEXT                     NOT NULL CHECK (length(trim(title)) > 0),
+    description          TEXT,
+    category             work_order_category      NOT NULL DEFAULT 'general',
+    status               work_order_status        NOT NULL DEFAULT 'open',
+    priority             work_order_priority      NOT NULL DEFAULT 'medium',
+
+    -- ── Reporter ─────────────────────────────────────────────────────────────
+    reported_by          UUID                     NOT NULL,
+    reporter_type        work_order_reporter_type NOT NULL DEFAULT 'staff',
+    reporter_resident_id UUID                     REFERENCES residents  (id) ON DELETE SET NULL,
+    reporter_caretaker_id UUID                    REFERENCES caretakers (id) ON DELETE SET NULL,
+
+    -- ── Assignment ───────────────────────────────────────────────────────────
+    assigned_to          UUID,
+    assigned_caretaker_id UUID                    REFERENCES caretakers (id) ON DELETE SET NULL,
+
+    -- ── Scheduling & cost ────────────────────────────────────────────────────
+    due_date             DATE,
+    scheduled_at         TIMESTAMPTZ,
+    started_at           TIMESTAMPTZ,
+    completed_at         TIMESTAMPTZ,
+    estimated_cost_kes   NUMERIC(14,2)            CHECK (estimated_cost_kes >= 0),
+    actual_cost_kes      NUMERIC(14,2)            CHECK (actual_cost_kes >= 0),
+
+    -- ── Visibility & notes ────────────────────────────────────────────────────
+    is_tenant_visible    BOOLEAN                  NOT NULL DEFAULT true,
+    internal_notes       TEXT,
+    attachments          JSONB                    NOT NULL DEFAULT '[]',
+
+    created_at           TIMESTAMPTZ              NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ              NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_work_orders_property      ON work_orders (property_id, status);
+CREATE INDEX idx_work_orders_code          ON work_orders (code);          -- fast lookup by code
+CREATE INDEX idx_work_orders_unit          ON work_orders (unit_id)        WHERE unit_id IS NOT NULL;
+CREATE INDEX idx_work_orders_vendor        ON work_orders (vendor_id)      WHERE vendor_id IS NOT NULL;
+CREATE INDEX idx_work_orders_assigned      ON work_orders (assigned_to)    WHERE assigned_to IS NOT NULL;
+CREATE INDEX idx_work_orders_caretaker     ON work_orders (assigned_caretaker_id)
+    WHERE assigned_caretaker_id IS NOT NULL;
+CREATE INDEX idx_work_orders_reporter_res  ON work_orders (reporter_resident_id)
+    WHERE reporter_resident_id IS NOT NULL;
+CREATE INDEX idx_work_orders_due           ON work_orders (due_date)
+    WHERE status NOT IN ('completed', 'cancelled') AND due_date IS NOT NULL;
 CREATE INDEX idx_work_orders_open_priority
     ON work_orders (priority, created_at DESC)
     WHERE status NOT IN ('completed', 'cancelled');
+
+
+-- ── WORK ORDER COMMENTS ───────────────────────────────────────────────────────
+-- Threaded: parent_comment_id = NULL means top-level; non-null = reply.
+-- Any actor type (staff, resident, caretaker, vendor, owner) may comment.
+
+CREATE TABLE work_order_comments (
+    id               UUID                            NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    work_order_id    UUID                            NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
+    -- NULL = top-level comment; non-null = reply to another comment
+    parent_comment_id UUID                           REFERENCES work_order_comments (id) ON DELETE CASCADE,
+
+    -- Who wrote this
+    author_id        UUID                            NOT NULL,  -- cross-DB user_id
+    author_type      work_order_comment_author_type  NOT NULL DEFAULT 'staff',
+    -- Optional back-refs for resident / caretaker lookups
+    author_resident_id  UUID                         REFERENCES residents  (id) ON DELETE SET NULL,
+    author_caretaker_id UUID                         REFERENCES caretakers (id) ON DELETE SET NULL,
+
+    body             TEXT                            NOT NULL CHECK (length(trim(body)) > 0),
+
+    -- Whether only staff/caretakers can see this comment
+    is_internal      BOOLEAN                         NOT NULL DEFAULT false,
+
+    -- Images / docs attached to this comment
+    -- Same JSONB schema as work_orders.attachments
+    attachments      JSONB                           NOT NULL DEFAULT '[]',
+
+    is_edited        BOOLEAN                         NOT NULL DEFAULT false,
+    created_at       TIMESTAMPTZ                     NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ                     NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_wo_comments_work_order  ON work_order_comments (work_order_id, created_at ASC);
+CREATE INDEX idx_wo_comments_parent      ON work_order_comments (parent_comment_id)
+    WHERE parent_comment_id IS NOT NULL;
+CREATE INDEX idx_wo_comments_author      ON work_order_comments (author_id);
+
+-- ── WORK ORDER ACTIVITY LOG ───────────────────────────────────────────────────
+-- Immutable audit trail. Written by the application on every state change.
+-- event_type examples: status_changed, comment_added, vendor_assigned,
+--   priority_changed, caretaker_assigned, attachment_added, cost_updated.
+
+CREATE TABLE work_order_activity (
+    id            UUID        NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    work_order_id UUID        NOT NULL REFERENCES work_orders (id) ON DELETE CASCADE,
+    actor_id      UUID        NOT NULL,
+    actor_type    work_order_comment_author_type NOT NULL DEFAULT 'staff',
+    event_type    TEXT        NOT NULL CHECK (length(trim(event_type)) > 0),
+    -- Flexible payload, e.g. {"from":"open","to":"in_progress"} for status_changed
+    payload       JSONB       NOT NULL DEFAULT '{}',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_wo_activity_work_order ON work_order_activity (work_order_id, created_at ASC);
 
 -- ── UTILITY METERS ────────────────────────────────────────────────────────────
 
