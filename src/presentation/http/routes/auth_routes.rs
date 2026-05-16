@@ -6,7 +6,10 @@ use crate::{
         app_state::AppState,
         http::{
             dto::auth::{LoginDto, PortalLoginDto},
-            handlers::auth::{accept_invite, change_password, portal_login, refresh, staff_login},
+            handlers::auth::{
+                accept_invite, change_password, forgot_password, logout, portal_login, refresh,
+                reset_password, staff_login,
+            },
         },
         middleware::auth::require_auth,
     },
@@ -76,4 +79,20 @@ pub fn caretaker_login_routes() -> Router<AppState> {
             },
         ),
     )
+}
+
+/// Public routes — no JWT required.
+pub fn password_reset_routes() -> Router<AppState> {
+    Router::new()
+        .route("/auth/forgot-password", post(forgot_password))
+        .route("/auth/reset-password", post(reset_password))
+}
+
+/// Protected session route — JWT required (checked by `with_auth_stack`).
+/// Mounted in `build_staff_api` so the `require_auth` layer runs first.
+///
+/// Note: logout intentionally skips `resolve_agency_context` because
+/// revoking a token doesn't need the tenant DB pool.
+pub fn session_routes(_state: AppState) -> Router<AppState> {
+    Router::new().route("/auth/logout", post(logout))
 }

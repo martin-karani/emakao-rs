@@ -15,5 +15,4 @@ features         = [
     "postgres",
     "migrate",
     "uuid",
-     "macros", 
 ]

@@ -1,6 +1,10 @@
 pub mod agency;
 pub mod agreement;
+pub mod analytics;
 pub mod auth;
+pub mod dashboard;
+pub mod document;
+pub mod inspection;
 pub mod ledger;
 pub mod maintenance;
 pub mod openfga;

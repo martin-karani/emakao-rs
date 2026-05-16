@@ -20,3 +20,17 @@ pub struct Agreement {
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
+/// Minimal projection used by the billing scheduler — avoids loading
+/// the full Agreement for bulk billing runs.
+#[derive(Debug, Clone)]
+pub struct ActiveAgreementBillingView {
+    pub id: uuid::Uuid,
+    pub unit_id: uuid::Uuid,
+    pub resident_id: uuid::Uuid,
+    pub property_id: uuid::Uuid,
+    pub rent_amount_kes: rust_decimal::Decimal,
+    pub billing_day: i32,          // day-of-month rent is due
+    pub billing_frequency: String, // "monthly", "quarterly", etc.
+    pub start_date: time::Date,
+    pub end_date: Option<time::Date>,
+}

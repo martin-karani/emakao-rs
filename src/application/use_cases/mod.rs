@@ -1,6 +1,13 @@
 pub mod agency;
 pub mod agreement;
+pub mod ai_insights;
+pub mod analytics;
 pub mod auth;
+pub mod dashboard;
+pub mod disbursement;
+pub mod document;
+pub mod inspection;
+pub mod invoice;
 pub mod ledger;
 pub mod maintenance;
 pub mod owner;

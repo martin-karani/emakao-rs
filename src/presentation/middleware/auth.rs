@@ -1,64 +1,64 @@
 use axum::{
     body::Body,
-    extract::State,
-    http::{Request, StatusCode},
+    extract::{Request, State},
+    http::{header::AUTHORIZATION, StatusCode},
     middleware::Next,
-    response::{IntoResponse, Json, Response},
+    response::{IntoResponse, Response},
 };
-use serde_json::json;
 
-use crate::{domain::auth::AuthenticatedUser, presentation::app_state::AppState};
+use crate::{
+    domain::auth::AuthenticatedUser, infrastructure::cache::token_blacklist::TokenBlacklist,
+    presentation::app_state::AppState,
+};
 
-/// Validates the Bearer JWT and inserts `AuthenticatedUser` into request
-/// extensions.  Must run before `resolve_agency_context` on every
-/// authenticated route.
 pub async fn require_auth(
     State(state): State<AppState>,
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
-    let token = match extract_bearer(&req) {
-        Some(t) => t,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "error":   "MISSING_TOKEN",
-                    "message": "Authorization header is missing or not a Bearer token"
-                })),
-            )
-                .into_response();
-        }
+    // ── 1. Extract Bearer token ────────────────────────────────────────────────
+    let token = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+
+    let token = match token {
+        Some(t) => t.to_owned(),
+        None => return (StatusCode::UNAUTHORIZED, "missing authorization header").into_response(),
     };
 
-    let claims = match state.identity.auth_port.verify_token(&token) {
+    // ── 2. Decode & validate JWT ───────────────────────────────────────────────
+    let claims = match state.jwt.decode(&token) {
         Ok(c) => c,
-        Err(_) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "error":   "INVALID_TOKEN",
-                    "message": "Token is invalid or has expired"
-                })),
-            )
-                .into_response();
+        Err(e) => {
+            tracing::debug!(err = %e, "JWT decode failed");
+            return (StatusCode::UNAUTHORIZED, "invalid or expired token").into_response();
         }
     };
 
-    req.extensions_mut().insert(AuthenticatedUser {
+    // ── 3. Check revocation blacklist (logout) ─────────────────────────────────
+    match state.token_blacklist.is_revoked(&claims.jti).await {
+        Ok(true) => {
+            tracing::info!(jti = %claims.jti, "revoked token presented");
+            return (StatusCode::UNAUTHORIZED, "token has been revoked").into_response();
+        }
+        Err(e) => {
+            // If Redis is down, fail open with a warning rather than blocking
+            // all users. Change to fail-closed if your threat model requires it.
+            tracing::warn!(err = %e, "token blacklist unavailable — failing open");
+        }
+        Ok(false) => {}
+    }
+
+    // ── 4. Build authenticated user and insert as extension ───────────────────
+    let user = AuthenticatedUser {
         user_id: claims.sub,
         agency_id: claims.agency_id,
         role: claims.role,
-        portal: claims.portal,
-    });
+        portal: claims.portal_type,
+    };
 
+    req.extensions_mut().insert(user);
     next.run(req).await
-}
-
-fn extract_bearer(req: &Request<Body>) -> Option<String> {
-    req.headers()
-        .get("authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|t| t.trim().to_owned())
 }

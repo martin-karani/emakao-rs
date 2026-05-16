@@ -10,10 +10,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql # creates emakao_agency
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U emakao" ]
+      test: ["CMD-SHELL", "pg_isready -U emakao"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -43,7 +43,7 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -64,7 +64,7 @@ services:
     environment:
       OPENFGA_DATASTORE_ENGINE: memory
     healthcheck:
-      test: [ "CMD", "grpc_health_probe", "-addr=:8081" ]
+      test: ["CMD", "grpc_health_probe", "-addr=:8081"]
       interval: 10s
       timeout: 5s
       retries: 5

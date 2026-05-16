@@ -62,3 +62,22 @@ pub struct ChangePasswordDto {
     #[garde(length(min = 8))]
     pub new_password: String,
 }
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct ForgotPasswordDto {
+    #[garde(email)]
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct ResetPasswordDto {
+    #[garde(length(min = 64, max = 64))] // raw 32-byte token encoded as 64 hex chars
+    pub token: String,
+    #[garde(length(min = 8, max = 128))]
+    pub new_password: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MessageResponse {
+    pub message: String,
+}

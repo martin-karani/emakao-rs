@@ -1,8 +1,9 @@
 use crate::domain::enums::{InspectionStatus, InspectionType};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 pub struct InspectionItem {
     pub area: String,
     pub condition: String,
@@ -10,7 +11,7 @@ pub struct InspectionItem {
     pub photo_urls: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct Inspection {
     pub id: Uuid,
     pub property_id: Uuid,

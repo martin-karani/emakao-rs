@@ -1,20 +1,32 @@
-//! Application state — the composition root for the Axum server.
-//!
-//! ## Structure
-//!
-//! Rather than one flat bag of every adapter and use-case, `AppState` groups
-//! its fields into four focused sub-structs:
-//!
-//! | Sub-struct           | Responsibility                                    |
-//! |----------------------|---------------------------------------------------|
-//! | `RuntimeState`       | Observability — start time, uptime, WS channels   |
-//! | `InfraState`         | Data layer — DB pool manager, Redis cache          |
-//! | `IdentityState`      | Auth — JWT port, user/invite repo, auth use-cases  |
-//! | `IntegrationState`   | External services — email, SMS, M-Pesa             |
-//!
-//! Domain use-case groups (`subscription`, `agency`) stay as top-level
-//! `Arc<T>` fields because they are accessed by many middleware layers and
-//! keeping them flat avoids boilerplate with no structural gain.
+// src/presentation/app_state.rs
+//
+// Application state — the composition root for the Axum server.
+//
+// ## Structure
+//
+// Rather than one flat bag of every adapter and use-case, `AppState` groups
+// its fields into four focused sub-structs:
+//
+// | Sub-struct           | Responsibility                                    |
+// |----------------------|---------------------------------------------------|
+// | `RuntimeState`       | Observability — start time, uptime, WS channels   |
+// | `InfraState`         | Data layer — DB pool manager, Redis cache & pool   |
+// | `IdentityState`      | Auth — JWT port, user/invite repo, auth use-cases  |
+// | `IntegrationState`   | External services — email, SMS, M-Pesa             |
+//
+// Two fields are also promoted **flat** onto `AppState` itself so that Axum
+// middleware (`require_auth`) can access them without traversing sub-structs:
+//
+// * `jwt`               — the `AuthPort` used to decode Bearer tokens
+// * `token_blacklist`   — the Redis-backed revocation list (logout / refresh)
+//
+// ## Storage
+//
+// `AppState` carries a single `Arc<dyn StoragePort>` built once at startup.
+// All handlers (upload, documents, payments, …) must use `state.storage` — do
+// NOT call `S3Storage::from_config` or `S3Storage::new` from within a handler.
+// Building a new S3 client per request wastes connection-pool initialisation
+// and blocks the async executor if done synchronously.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -33,7 +45,8 @@ use crate::{
         ports::{
             agency_repository::AgencyRepository, auth_port::AuthPort,
             auth_repository::AuthRepository, email_port::EmailPort, openfga_port::OpenFgaPort,
-            sms_port::SmsPort, subscription_repository::SubscriptionRepository,
+            sms_port::SmsPort, storage_port::StoragePort,
+            subscription_repository::SubscriptionRepository,
         },
         use_cases::{
             agency::provision::ProvisionAgencyUseCase,
@@ -54,7 +67,10 @@ use crate::{
     domain::subscription::SubscriptionEvent,
     infrastructure::{
         auth::jwt::JwtAuth,
-        cache::{redis_cache::RedisCache, subscription_cache::SubscriptionCache},
+        cache::{
+            redis_cache::RedisCache, subscription_cache::SubscriptionCache,
+            token_blacklist::TokenBlacklist,
+        },
         db::{
             agency_repository_sqlx::PgAgencyRepo, auth_repository_sqlx::PgAuthRepo,
             pool::AgencyPoolManager, subscription_repository_sqlx::PgSubscriptionRepo,
@@ -64,6 +80,7 @@ use crate::{
         openfga::openfga_adapter::OpenFgaAdapter,
         payments::mpesa_adapter::MpesaAdapter,
         sms::africa_talking_adapter::AfricasTalkingSms,
+        storage::s3_adapter::S3Storage,
     },
 };
 
@@ -78,10 +95,16 @@ pub struct RuntimeState {
 }
 
 /// Database and cache layer.
+///
+/// `redis` is exposed here so that out-of-process workers (billing monitor)
+/// can obtain a pool handle without going through `AppState`.
 #[derive(Clone)]
 pub struct InfraState {
     pub tenant_pools: Arc<AgencyPoolManager>,
     pub redis_cache: Arc<RedisCache>,
+    /// Raw Fred pool — share with billing workers and any component that needs
+    /// direct pub/sub or raw Redis commands.
+    pub redis: RedisPool,
 }
 
 /// Authentication — JWT verification, user/invite repository, auth use-cases.
@@ -89,7 +112,7 @@ pub struct InfraState {
 pub struct IdentityState {
     pub auth_port: Arc<dyn AuthPort>,
     pub auth_repo: Arc<dyn AuthRepository>,
-    /// Stateless use-cases (refresh token, etc.).  Previously `state.auth`.
+    /// Stateless use-cases (refresh token, etc.).
     pub auth_uc: Arc<AuthUseCases>,
 }
 
@@ -136,9 +159,11 @@ pub struct AgencyUseCases {
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
+
+    // ── Sub-structs ───────────────────────────────────────────────────────────
     /// Observability, start time, WS channels.
     pub runtime: Arc<RuntimeState>,
-    /// DB pool manager + Redis cache.
+    /// DB pool manager + Redis cache + raw Redis pool.
     pub infra: Arc<InfraState>,
     /// Auth JWT port, auth repo, auth use-cases.
     pub identity: Arc<IdentityState>,
@@ -152,6 +177,18 @@ pub struct AppState {
     pub notifications: NotificationService,
     /// OpenFGA authorisation port.
     pub openfga: Arc<dyn OpenFgaPort>,
+
+    /// Shared S3 storage adapter — built once at startup, reused by every
+    /// handler. Use `state.storage` everywhere; never call `S3Storage::new`
+    /// or `S3Storage::from_config` from a handler.
+    pub storage: Arc<dyn StoragePort>,
+
+    // ── Flat middleware shortcuts ─────────────────────────────────────────────
+    /// JWT decode/verify — used directly by `require_auth` middleware.
+    /// Same underlying adapter as `identity.auth_port`.
+    pub jwt: Arc<dyn AuthPort>,
+    /// Token revocation list — used by `require_auth` to check logout/refresh.
+    pub token_blacklist: Arc<TokenBlacklist>,
 }
 
 impl AppState {
@@ -186,11 +223,13 @@ impl AppState {
 
         let sub_cache = Arc::new(SubscriptionCache::new(redis.clone()));
         let redis_cache = Arc::new(RedisCache::new(redis.clone()));
+        let token_blacklist = Arc::new(TokenBlacklist::new(redis.clone()));
 
         // ── InfraState ────────────────────────────────────────────────────────
         let infra = Arc::new(InfraState {
             tenant_pools: Arc::clone(&agency_pools),
             redis_cache,
+            redis: redis.clone(),
         });
 
         // ── IdentityState ─────────────────────────────────────────────────────
@@ -205,10 +244,25 @@ impl AppState {
         });
 
         let identity = Arc::new(IdentityState {
-            auth_port,
+            auth_port: Arc::clone(&auth_port),
             auth_repo,
             auth_uc,
         });
+
+        // ── Storage (S3 / MinIO) ──────────────────────────────────────────────
+        // Built once here; every handler that touches files uses state.storage.
+        // This avoids the costly per-request client initialisation that the old
+        // `build_storage()` / `S3Storage::from_config()` pattern caused.
+        let storage: Arc<dyn StoragePort> = Arc::new(
+            S3Storage::new(
+                &cfg.aws_access_key_id,
+                &cfg.aws_secret_access_key,
+                &cfg.aws_region,
+                cfg.s3_bucket.clone(),
+                cfg.aws_endpoint_url.as_deref(),
+            )
+            .await,
+        );
 
         // ── IntegrationState ──────────────────────────────────────────────────
         let email: Arc<dyn EmailPort> = Arc::new(
@@ -244,7 +298,6 @@ impl AppState {
         });
 
         // ── Notifications ─────────────────────────────────────────────────────
-        // templates_dir is a real directory root — NOT a glob pattern.
         let templates_dir = std::env::current_dir()
             .context("cannot determine cwd")?
             .join("templates");
@@ -260,8 +313,6 @@ impl AppState {
 
         let notifications = notification_components.service.clone();
 
-        // Workers are spawned in a background task — they stay alive for the
-        // lifetime of the process.
         start_notification_workers(
             notification_components,
             Arc::clone(&email),
@@ -365,6 +416,10 @@ impl AppState {
             integrations,
             notifications,
             openfga,
+            storage,
+            // Flat middleware shortcuts — same underlying instances, no extra cost.
+            jwt: auth_port,
+            token_blacklist,
         })
     }
 }

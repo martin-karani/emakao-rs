@@ -1,5 +1,3 @@
-// src/presentation/http/responses/inspection.rs
-
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;

@@ -1,0 +1,132 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE inspections SET\n                status        = COALESCE($2::text::inspection_status, status),\n                scheduled_at  = COALESCE($3::timestamptz, scheduled_at),\n                completed_at  = CASE WHEN $4::boolean THEN $5::timestamptz ELSE completed_at END,\n                conducted_by  = CASE WHEN $6::boolean THEN $7::uuid ELSE conducted_by END,\n                items         = COALESCE($8::jsonb, items),\n                summary_notes = COALESCE($9::text, summary_notes),\n                updated_at    = now()\n            WHERE id = $1::uuid\n            RETURNING\n                id, property_id, unit_id, agreement_id,\n                inspection_type, status,\n                scheduled_at, completed_at, conducted_by,\n                items, summary_notes,\n                created_by, created_at, updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "property_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "unit_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "inspection_type",
+        "type_info": {
+          "Custom": {
+            "name": "inspection_type",
+            "kind": {
+              "Enum": [
+                "move_in",
+                "move_out",
+                "routine",
+                "emergency"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": {
+          "Custom": {
+            "name": "inspection_status",
+            "kind": {
+              "Enum": [
+                "scheduled",
+                "in_progress",
+                "completed",
+                "cancelled"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "scheduled_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "completed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "conducted_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "items",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 10,
+        "name": "summary_notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Bool",
+        "Timestamptz",
+        "Bool",
+        "Uuid",
+        "Jsonb",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8bdbcd3483dbca8d4f17975b38a5b3f20c87f49f02fbc92c2b5681da12f0733b"
+}

@@ -1,9 +1,14 @@
+pub mod accounting;
 pub mod agency;
 pub mod agreement;
+pub mod ai_insights;
+pub mod analytics;
 pub mod applicant;
 pub mod auth;
 pub mod conversation;
+pub mod dashboard;
 pub mod disbursement;
+pub mod document;
 pub mod enums;
 pub mod errors;
 pub mod inspection;

@@ -90,6 +90,7 @@ impl CreatePropertyUseCase {
                 property_type: input.property_type,
                 config: input.config,
                 work_order_prefix,
+                country_code: "KE".to_string(),
             })
             .await?;
 

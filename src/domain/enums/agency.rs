@@ -17,7 +17,7 @@ pub enum PropertyType {
 }
 
 /// units.status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "unit_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum UnitStatus {
@@ -245,7 +245,7 @@ pub enum UtilityBillStatus {
 }
 
 /// applicants.status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "applicant_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum ApplicantStatus {
@@ -278,7 +278,7 @@ pub enum DisbursementStatus {
 }
 
 /// inspections.inspection_type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "inspection_type", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum InspectionType {
@@ -289,7 +289,7 @@ pub enum InspectionType {
 }
 
 /// inspections.status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "inspection_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum InspectionStatus {
@@ -300,7 +300,7 @@ pub enum InspectionStatus {
 }
 
 /// messages.sender_type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "sender_type", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum SenderType {
@@ -312,7 +312,7 @@ pub enum SenderType {
 }
 
 /// invoices.status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "invoice_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum InvoiceStatus {

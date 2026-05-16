@@ -27,7 +27,7 @@ use crate::{
         agency::ResolvedAgency,
         auth::AuthenticatedUser,
         enums::{InspectionStatus, InspectionType},
-        inspection::InspectionItem,
+        inspection::{Inspection, InspectionItem},
     },
     infrastructure::db::inspection_repository_sqlx::PgInspectionRepo,
     presentation::{
@@ -106,7 +106,7 @@ pub async fn list_inspections(
     let repo = PgInspectionRepo::new(ctx.pool);
     let uc = ListInspectionsUseCase::new(std::sync::Arc::new(repo));
 
-    let inspections = uc
+    let inspections: Vec<Inspection> = uc
         .execute(ListInspectionsInput {
             property_id: params.property_id,
             unit_id: params.unit_id,

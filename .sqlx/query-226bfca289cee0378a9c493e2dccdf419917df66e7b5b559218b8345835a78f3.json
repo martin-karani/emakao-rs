@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO feature_overrides\n                (agency_id, feature_key, value, reason, created_by, expires_at)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ON CONFLICT (agency_id, feature_key) DO UPDATE\n                SET value      = EXCLUDED.value,\n                    reason     = EXCLUDED.reason,\n                    created_by = EXCLUDED.created_by,\n                    expires_at = EXCLUDED.expires_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "226bfca289cee0378a9c493e2dccdf419917df66e7b5b559218b8345835a78f3"
+}

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use sqlx::{postgres::PgPoolOptions, Executor, PgPool};
 
-mod seed; // <-- new: reference data seeder
+mod seed;
 
 static PLATFORM_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations/platform");
 
@@ -119,6 +119,7 @@ async fn seed_dev_agency(
 ) -> Result<()> {
     let dev_schema =
         std::env::var("DEV_TENANT_SCHEMA").unwrap_or_else(|_| "dev_agency".to_string());
+    let dev_slug = "dev-agency";
 
     // Register placeholder row on platform DB
     sqlx::query(
@@ -126,10 +127,11 @@ async fn seed_dev_agency(
         INSERT INTO agencies
             (id, name, slug, schema_name, country_code, currency_code)
         VALUES
-            (gen_random_uuid(), 'Dev Agency', $1, $1, 'KE', 'KES')
+            (gen_random_uuid(), 'Dev Agency', $1, $2, 'KE', 'KES')
         ON CONFLICT (slug) DO NOTHING
         "#,
     )
+    .bind(dev_slug)
     .bind(&dev_schema)
     .execute(platform_pool)
     .await

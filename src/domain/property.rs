@@ -91,6 +91,7 @@ pub struct CreatePropertyCommand {
     pub property_type: PropertyType,
     pub config: PropertyConfig,
     pub work_order_prefix: Option<String>,
+    pub country_code: String,
 }
 
 pub struct UpdatePropertyCommand {
