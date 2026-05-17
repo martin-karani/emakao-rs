@@ -1,5 +1,3 @@
-// src/infrastructure/db/analytics_repository_sqlx.rs
-
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -61,6 +59,16 @@ struct CategoryBreakdownRow {
     avg_resolution_days: Decimal,
 }
 
+#[derive(sqlx::FromRow)]
+struct MaintStatsRow {
+    total: i64,
+    open: i64,
+    completed: i64,
+    avg_days: Decimal,
+    total_cost: Decimal,
+    est_cost: Decimal,
+}
+
 // ── Repository ────────────────────────────────────────────────────────────────
 
 #[async_trait]
@@ -84,55 +92,56 @@ impl AnalyticsRepository for PgAnalyticsRepo {
         };
 
         // ── Maintenance stats ─────────────────────────────────────────────────
-        let maint_stats = sqlx::query!(
+        let maint_stats = sqlx::query_as::<_, MaintStatsRow>(
             r#"
             SELECT
-                COUNT(*)::BIGINT                                            AS "total!",
-                COUNT(*) FILTER (WHERE status NOT IN ('completed','cancelled'))::BIGINT AS "open!",
-                COUNT(*) FILTER (WHERE status = 'completed')::BIGINT        AS "completed!",
+                COUNT(*)::BIGINT                                            AS total,
+                COUNT(*) FILTER (WHERE status NOT IN ('completed','cancelled'))::BIGINT AS open,
+                COUNT(*) FILTER (WHERE status = 'completed')::BIGINT        AS completed,
                 COALESCE(AVG(
                     CASE WHEN completed_at IS NOT NULL
                     THEN EXTRACT(EPOCH FROM (completed_at - created_at))/86400
                     END
-                ), 0)::NUMERIC(10,1)                                        AS "avg_days!",
-                COALESCE(SUM(actual_cost_kes),0)                            AS "total_cost!",
-                COALESCE(SUM(estimated_cost_kes),0)                        AS "est_cost!"
+                ), 0)::NUMERIC(10,1)                                        AS avg_days,
+                COALESCE(SUM(actual_cost_kes),0)                            AS total_cost,
+                COALESCE(SUM(estimated_cost_kes),0)                         AS est_cost
             FROM work_orders
             WHERE created_at BETWEEN $1 AND $2
               AND ($3::uuid IS NULL OR property_id = $3)
             "#,
-            query.period_start,
-            query.period_end,
-            query.property_id,
         )
+        .bind(query.period_start)
+        .bind(query.period_end)
+        .bind(query.property_id)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         // ── Category breakdown ────────────────────────────────────────────────
-        let cat_rows = sqlx::query_as!(
-            CategoryBreakdownRow,
+        let cat_rows: Vec<CategoryBreakdownRow> = sqlx::query_as::<_, CategoryBreakdownRow>(
             r#"
             SELECT
-                category::text          AS "category!",
-                COUNT(*)::BIGINT        AS "count!",
-                COALESCE(SUM(actual_cost_kes),0) AS "total_cost_kes!",
+                category::text          AS category,
+                COUNT(*)::BIGINT        AS count,
+                COALESCE(SUM(actual_cost_kes),0) AS total_cost_kes,
                 COALESCE(AVG(
                     CASE WHEN completed_at IS NOT NULL
                     THEN EXTRACT(EPOCH FROM (completed_at - created_at))/86400
                     END
-                ), 0)::NUMERIC(10,1)   AS "avg_resolution_days!"
+                ), 0)::NUMERIC(10,1)   AS avg_resolution_days
             FROM work_orders
             WHERE created_at BETWEEN $1 AND $2
               AND ($3::uuid IS NULL OR property_id = $3)
             GROUP BY category
             ORDER BY count DESC
             "#,
-            query.period_start,
-            query.period_end,
-            query.property_id,
         )
+        .bind(query.period_start)
+        .bind(query.period_end)
+        .bind(query.property_id)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         // ── Occupancy trend ───────────────────────────────────────────────────
         let occ_rows = self.fetch_monthly_occupancy(&query).await?;
@@ -143,22 +152,21 @@ impl AnalyticsRepository for PgAnalyticsRepo {
         let avg_vacancy = Decimal::ZERO; // simplification; needs vacancy-day tracking
 
         // ── Property performance ──────────────────────────────────────────────
-        let prop_rows = sqlx::query_as!(
-            PropertyPerfRow,
+        let prop_rows: Vec<PropertyPerfRow> = sqlx::query_as::<_, PropertyPerfRow>(
             r#"
             SELECT
                 p.id                    AS property_id,
                 p.name                  AS property_name,
                 p.city,
-                COUNT(u.id)::BIGINT     AS "units!",
-                COUNT(u.id) FILTER (WHERE u.status = 'occupied')::BIGINT AS "occupied_units!",
+                COUNT(u.id)::BIGINT     AS units,
+                COUNT(u.id) FILTER (WHERE u.status = 'occupied')::BIGINT AS occupied_units,
                 COALESCE(
                     (SELECT SUM(le.amount_kes) FROM ledger_entries le
                      JOIN agreements a ON a.id = le.agreement_id
                      WHERE a.property_id = p.id
                        AND le.entry_type = 'payment'
                        AND le.posted_at BETWEEN $1 AND $2), 0
-                ) AS "revenue_kes!",
+                ) AS revenue_kes,
                 COALESCE(
                     (SELECT SUM(le.amount_kes)
                      FROM ledger_entries le
@@ -172,13 +180,13 @@ impl AnalyticsRepository for PgAnalyticsRepo {
                      WHERE a.property_id = p.id
                        AND le.entry_type IN ('payment','credit','waiver')
                     ), 0
-                ) AS "outstanding_kes!",
+                ) AS outstanding_kes,
                 COALESCE(
                     (SELECT SUM(wo.actual_cost_kes) FROM work_orders wo
                      WHERE wo.property_id = p.id
                        AND wo.status = 'completed'
                        AND wo.completed_at BETWEEN $1 AND $2), 0
-                ) AS "maintenance_cost_kes!"
+                ) AS maintenance_cost_kes
             FROM properties p
             LEFT JOIN units u ON u.property_id = p.id
             WHERE ($3::uuid IS NULL OR p.id = $3)
@@ -186,12 +194,13 @@ impl AnalyticsRepository for PgAnalyticsRepo {
             ORDER BY revenue_kes DESC
             LIMIT 20
             "#,
-            query.period_start,
-            query.period_end,
-            query.property_id,
         )
+        .bind(query.period_start)
+        .bind(query.period_end)
+        .bind(query.property_id)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let top_properties: Vec<PropertyPerformance> = prop_rows
             .into_iter()
@@ -220,8 +229,7 @@ impl AnalyticsRepository for PgAnalyticsRepo {
             })
             .collect();
 
-        let net_operating_income =
-            total_collected - maint_stats.total_cost.unwrap_or(Decimal::ZERO);
+        let net_operating_income = total_collected - maint_stats.total_cost;
 
         Ok(PortfolioAnalytics {
             generated_at,
@@ -260,7 +268,7 @@ impl AnalyticsRepository for PgAnalyticsRepo {
                 total_outstanding_kes: total_outstanding,
                 collection_rate_pct: collection_rate,
                 total_late_fees_kes: total_late_fees,
-                total_maintenance_cost_kes: maint_stats.total_cost.unwrap_or(Decimal::ZERO),
+                total_maintenance_cost_kes: maint_stats.total_cost,
                 net_operating_income_kes: net_operating_income,
                 monthly_trend: rev_rows
                     .into_iter()
@@ -277,12 +285,12 @@ impl AnalyticsRepository for PgAnalyticsRepo {
                     .collect(),
             },
             maintenance: MaintenanceAnalytics {
-                total_work_orders: maint_stats.total.unwrap_or(0),
-                open_work_orders: maint_stats.open.unwrap_or(0),
-                completed_work_orders: maint_stats.completed.unwrap_or(0),
-                avg_resolution_days: maint_stats.avg_days.unwrap_or(Decimal::ZERO),
-                total_actual_cost_kes: maint_stats.total_cost.unwrap_or(Decimal::ZERO),
-                total_estimated_cost_kes: maint_stats.est_cost.unwrap_or(Decimal::ZERO),
+                total_work_orders: maint_stats.total,
+                open_work_orders: maint_stats.open,
+                completed_work_orders: maint_stats.completed,
+                avg_resolution_days: maint_stats.avg_days,
+                total_actual_cost_kes: maint_stats.total_cost,
+                total_estimated_cost_kes: maint_stats.est_cost,
                 by_category: cat_rows
                     .into_iter()
                     .map(|r| MaintenanceCategoryBreakdown {
@@ -379,14 +387,13 @@ impl PgAnalyticsRepo {
         &self,
         query: &AnalyticsQuery,
     ) -> Result<Vec<MonthlyRevenueRow>, AppError> {
-        Ok(sqlx::query_as!(
-            MonthlyRevenueRow,
+        sqlx::query_as::<_, MonthlyRevenueRow>(
             r#"
             SELECT
-                DATE_TRUNC('month', le.posted_at)::DATE  AS "month!",
-                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'rent_charge'), 0) AS "charged_kes!",
-                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'payment'), 0)     AS "collected_kes!",
-                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'late_fee'), 0)    AS "late_fees_kes!"
+                DATE_TRUNC('month', le.posted_at)::DATE  AS month,
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'rent_charge'), 0) AS charged_kes,
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'payment'), 0)     AS collected_kes,
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'late_fee'), 0)    AS late_fees_kes
             FROM   ledger_entries le
             LEFT JOIN agreements a ON a.id = le.agreement_id
             WHERE  le.posted_at BETWEEN $1 AND $2
@@ -394,12 +401,13 @@ impl PgAnalyticsRepo {
             GROUP  BY 1
             ORDER  BY 1
             "#,
-            query.period_start,
-            query.period_end,
-            query.property_id,
         )
+        .bind(query.period_start)
+        .bind(query.period_end)
+        .bind(query.property_id)
         .fetch_all(&self.pool)
-        .await?)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))
     }
 
     async fn fetch_monthly_occupancy(
@@ -408,18 +416,17 @@ impl PgAnalyticsRepo {
     ) -> Result<Vec<MonthlyOccupancyRow>, AppError> {
         // We approximate monthly occupancy by snapshotting per-unit status.
         // For a production system you'd use a vacancy-event table.
-        Ok(sqlx::query_as!(
-            MonthlyOccupancyRow,
+        sqlx::query_as::<_, MonthlyOccupancyRow>(
             r#"
             SELECT
-                gs.month                         AS "month!",
+                gs.month                         AS month,
                 (SELECT COUNT(*)::BIGINT FROM units u
                  JOIN properties p ON p.id = u.property_id
-                 WHERE ($3::uuid IS NULL OR p.id = $3)) AS "total_units!",
+                 WHERE ($3::uuid IS NULL OR p.id = $3)) AS total_units,
                 (SELECT COUNT(*)::BIGINT FROM units u
                  JOIN properties p ON p.id = u.property_id
                  WHERE u.status = 'occupied'
-                   AND ($3::uuid IS NULL OR p.id = $3)) AS "occupied_units!"
+                   AND ($3::uuid IS NULL OR p.id = $3)) AS occupied_units
             FROM (
                 SELECT generate_series(
                     DATE_TRUNC('month', $1::date),
@@ -429,11 +436,12 @@ impl PgAnalyticsRepo {
             ) gs
             ORDER BY gs.month
             "#,
-            query.period_start,
-            query.period_end,
-            query.property_id,
         )
+        .bind(query.period_start)
+        .bind(query.period_end)
+        .bind(query.property_id)
         .fetch_all(&self.pool)
-        .await?)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))
     }
 }

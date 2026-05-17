@@ -1,13 +1,12 @@
-// src/presentation/http/dto/document.rs
 //
 // Query parameters for listing documents.
 // Upload itself is multipart and parsed directly in the handler.
 
 use serde::Deserialize;
-use utoipa::IntoParams;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListDocumentsParams {
     /// Filter by property.
     pub property_id: Option<Uuid>,

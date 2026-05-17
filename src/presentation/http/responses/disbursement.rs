@@ -1,4 +1,3 @@
-// src/presentation/http/responses/disbursement.rs
 //
 // DisbursementResponse is defined in `responses::owner` (where it lives
 // alongside OwnerResponse, since disbursements are displayed on the owner

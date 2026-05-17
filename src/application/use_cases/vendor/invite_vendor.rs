@@ -2,27 +2,26 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{
-    application::{
-        errors::AppError,
-        helpers::auth_helpers::{generate_temp_password, generate_token},
-        notifications::{
-            service::NotificationService,
-            templates::{EmailTemplate, SmsTemplate},
-        },
-        ports::{
-            auth_port::AuthPort,
-            auth_repository::{
-                AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand,
-                CreateUserCommand, UpsertPortalIndexCommand,
-            },
-            vendor_repository::VendorRepository,
-        },
+use crate::application::{
+    errors::AppError,
+    helpers::auth_helpers::{generate_temp_password, generate_token},
+    notifications::{
+        contexts::{VendorInviteEmailCtx, VendorInviteSmsCtx},
+        service::NotificationService,
+        templates::{EmailTemplate, SmsTemplate},
     },
-    domain::{
-        auth::ContactMethod,
-        vendor::{CreateVendorCommand, Vendor},
+    ports::{
+        auth_port::AuthPort,
+        auth_repository::{
+            AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand, CreateUserCommand,
+            UpsertPortalIndexCommand,
+        },
+        vendor_repository::VendorRepository,
     },
+};
+use crate::domain::{
+    auth::ContactMethod,
+    vendor::{CreateVendorCommand, Vendor},
 };
 
 pub struct InviteVendorInput {
@@ -169,18 +168,17 @@ impl InviteVendorUseCase {
         // 3. Notify via NotificationService
         match &contact {
             ContactMethod::Email(email) => {
-                let invite_url = format!("{}/invite/{}", input.portal_base_url, token);
                 let _ = self
                     .notifications
                     .email(
                         email.clone(),
                         EmailTemplate::VendorInvite,
-                        serde_json::json!({
-                            "contact_name": input.contact_name,
-                            "vendor_name":  input.name,
-                            "invite_url":   invite_url,
-                            "agency_name":  input.agency_name,
-                        }),
+                        VendorInviteEmailCtx {
+                            contact_name: input.contact_name.clone(),
+                            vendor_name: input.name.clone(),
+                            invite_url: format!("{}/invite/{}", input.portal_base_url, token),
+                            agency_name: input.agency_name.clone(),
+                        },
                     )
                     .await;
             }
@@ -190,10 +188,10 @@ impl InviteVendorUseCase {
                     .sms(
                         phone.clone(),
                         SmsTemplate::VendorInvite,
-                        serde_json::json!({
-                            "portal_url":    input.portal_base_url,
-                            "temp_password": temp_plain.as_deref().unwrap_or(""),
-                        }),
+                        VendorInviteSmsCtx {
+                            portal_url: input.portal_base_url.clone(),
+                            temp_password: temp_plain.as_deref().unwrap_or("").to_owned(),
+                        },
                     )
                     .await;
             }

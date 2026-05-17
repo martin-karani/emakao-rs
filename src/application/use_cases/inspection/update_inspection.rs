@@ -8,7 +8,7 @@ use crate::{
         ports::inspection_repository::{InspectionRepository, UpdateInspectionCommand},
     },
     domain::{
-        enums::{InspectionStatus, InspectionType},
+        enums::InspectionStatus,
         inspection::{Inspection, InspectionItem},
     },
 };

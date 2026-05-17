@@ -1,5 +1,3 @@
-// src/infrastructure/db/dashboard_repository_sqlx.rs
-
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -93,19 +91,19 @@ impl DashboardRepository for PgDashboardRepo {
         let generated_at = OffsetDateTime::now_utc();
 
         // ── Portfolio stats ───────────────────────────────────────────────────
-        let portfolio_row = sqlx::query_as!(
-            PortfolioRow,
+        let portfolio_row = sqlx::query_as::<_, PortfolioRow>(
             r#"
             SELECT
-                (SELECT COUNT(*) FROM properties)::BIGINT                                AS "total_properties!",
-                (SELECT COUNT(*) FROM units)::BIGINT                                     AS "total_units!",
-                (SELECT COUNT(*) FROM units WHERE status = 'occupied')::BIGINT           AS "occupied_units!",
-                (SELECT COUNT(*) FROM agreements WHERE status = 'active')::BIGINT        AS "total_active_leases!",
-                (SELECT COUNT(*) FROM work_orders WHERE status NOT IN ('completed','cancelled'))::BIGINT AS "total_open_work_orders!"
+                (SELECT COUNT(*) FROM properties)::BIGINT                                AS total_properties,
+                (SELECT COUNT(*) FROM units)::BIGINT                                     AS total_units,
+                (SELECT COUNT(*) FROM units WHERE status = 'occupied')::BIGINT           AS occupied_units,
+                (SELECT COUNT(*) FROM agreements WHERE status = 'active')::BIGINT        AS total_active_leases,
+                (SELECT COUNT(*) FROM work_orders WHERE status NOT IN ('completed','cancelled'))::BIGINT AS total_open_work_orders
             "#
         )
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let total_units = portfolio_row.total_units.max(1);
         let occupancy_rate =
@@ -122,18 +120,17 @@ impl DashboardRepository for PgDashboardRepo {
         };
 
         // ── Per-property occupancy ────────────────────────────────────────────
-        let prop_rows = sqlx::query_as!(
-            PropertyOccupancyRow,
+        let prop_rows = sqlx::query_as::<_, PropertyOccupancyRow>(
             r#"
             SELECT
                 p.id                    AS property_id,
                 p.name                  AS property_name,
                 p.city,
-                COUNT(u.id)             AS "total_units!",
-                COUNT(u.id) FILTER (WHERE u.status = 'occupied') AS "occupied_units!",
+                COUNT(u.id)             AS total_units,
+                COUNT(u.id) FILTER (WHERE u.status = 'occupied') AS occupied_units,
                 (SELECT COUNT(*) FROM work_orders wo
                  WHERE wo.property_id = p.id
-                   AND wo.status NOT IN ('completed','cancelled')) AS "open_work_orders!",
+                   AND wo.status NOT IN ('completed','cancelled')) AS open_work_orders,
                 COALESCE(
                     (SELECT SUM(le.amount_kes)
                      FROM   ledger_entries le
@@ -142,15 +139,16 @@ impl DashboardRepository for PgDashboardRepo {
                        AND  le.entry_type = 'payment'
                        AND  le.posted_at >= DATE_TRUNC('month', now())
                     ), 0
-                )                       AS "rent_collected_this_month_kes!"
+                )                       AS rent_collected_this_month_kes
             FROM  properties p
             LEFT JOIN units u ON u.property_id = p.id
             GROUP BY p.id, p.name, p.city
             ORDER BY p.name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let properties: Vec<PropertyOccupancySummary> = prop_rows
             .into_iter()
@@ -175,8 +173,7 @@ impl DashboardRepository for PgDashboardRepo {
             .collect();
 
         // ── Expiring leases ───────────────────────────────────────────────────
-        let lease_rows = sqlx::query_as!(
-            ExpiringLeaseRow,
+        let lease_rows = sqlx::query_as::<_, ExpiringLeaseRow>(
             r#"
             SELECT
                 a.id                                          AS agreement_id,
@@ -185,9 +182,9 @@ impl DashboardRepository for PgDashboardRepo {
                 p.id                                          AS property_id,
                 p.name                                        AS property_name,
                 r.id                                          AS resident_id,
-                (r.first_name || ' ' || r.last_name)          AS "resident_name!",
-                a.end_date                                    AS "end_date!",
-                (a.end_date - CURRENT_DATE)::BIGINT           AS "days_until_expiry!",
+                (r.first_name || ' ' || r.last_name)          AS resident_name,
+                a.end_date                                    AS end_date,
+                (a.end_date - CURRENT_DATE)::BIGINT           AS days_until_expiry,
                 a.rent_amount_kes
             FROM  agreements a
             JOIN  units       u ON u.id = a.unit_id
@@ -199,11 +196,12 @@ impl DashboardRepository for PgDashboardRepo {
             ORDER BY a.end_date ASC
             LIMIT $2
             "#,
-            query.expiring_lease_days.to_string(),
-            query.expiring_lease_limit
         )
+        .bind(query.expiring_lease_days.to_string())
+        .bind(query.expiring_lease_limit)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let expiring_leases: Vec<ExpiringLease> = lease_rows
             .into_iter()
@@ -222,21 +220,20 @@ impl DashboardRepository for PgDashboardRepo {
             .collect();
 
         // ── Pending maintenance ───────────────────────────────────────────────
-        let maint_rows = sqlx::query_as!(
-            MaintenanceRow,
+        let maint_rows = sqlx::query_as::<_, MaintenanceRow>(
             r#"
             SELECT
                 wo.id               AS work_order_id,
                 wo.code,
                 wo.title,
-                wo.priority::text   AS "priority!",
-                wo.status::text     AS "status!",
+                wo.priority::text   AS priority,
+                wo.status::text     AS status,
                 p.id                AS property_id,
                 p.name              AS property_name,
                 u.id                AS unit_id,
                 u.unit_number,
                 wo.created_at,
-                EXTRACT(EPOCH FROM (now() - wo.created_at)) / 86400 AS "days_open!"
+                EXTRACT(EPOCH FROM (now() - wo.created_at)) / 86400 AS days_open
             FROM  work_orders wo
             JOIN  properties  p ON p.id = wo.property_id
             LEFT JOIN units   u ON u.id = wo.unit_id
@@ -251,10 +248,11 @@ impl DashboardRepository for PgDashboardRepo {
                 wo.created_at ASC
             LIMIT $1
             "#,
-            query.pending_maintenance_limit
         )
+        .bind(query.pending_maintenance_limit)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let pending_maintenance: Vec<MaintenanceSummary> = maint_rows
             .into_iter()
@@ -274,22 +272,21 @@ impl DashboardRepository for PgDashboardRepo {
             .collect();
 
         // ── Rent collection (current month) ───────────────────────────────────
-        let rc = sqlx::query_as!(
-            RentCollectionRow,
+        let rc = sqlx::query_as::<_, RentCollectionRow>(
             r#"
             SELECT
                 COALESCE(
                     (SELECT SUM(rc.amount_kes) FROM rent_charges rc
                      WHERE rc.charged_at >= DATE_TRUNC('month', now())),
                     0
-                ) AS "total_charged_kes!",
+                ) AS total_charged_kes,
                 COALESCE(
                     (SELECT SUM(le.amount_kes)
                      FROM   ledger_entries le
                      WHERE  le.entry_type = 'payment'
                        AND  le.posted_at >= DATE_TRUNC('month', now())),
                     0
-                ) AS "total_collected_kes!",
+                ) AS total_collected_kes,
                 (SELECT COUNT(DISTINCT rc2.agreement_id)
                  FROM   rent_charges rc2
                  LEFT JOIN ledger_entries le2
@@ -298,11 +295,12 @@ impl DashboardRepository for PgDashboardRepo {
                        AND le2.posted_at >= rc2.charged_at
                  WHERE  rc2.charged_at >= DATE_TRUNC('month', now()) - INTERVAL '7 days'
                    AND  le2.id IS NULL
-                )::BIGINT AS "overdue_count!"
-            "#
+                )::BIGINT AS overdue_count
+            "#,
         )
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         let outstanding = (rc.total_charged_kes - rc.total_collected_kes).max(Decimal::ZERO);
         let collection_rate = if rc.total_charged_kes > Decimal::ZERO {

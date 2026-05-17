@@ -1,4 +1,3 @@
-// src/domain/document.rs
 //
 // Document management domain. Each document is a file stored in S3 and
 // catalogued in the `documents` table with metadata and entity linkage.

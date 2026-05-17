@@ -1,5 +1,42 @@
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- HELPERS
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- UUID v7 implementation for PostgreSQL
+CREATE OR REPLACE FUNCTION uuidv7()
+RETURNS uuid AS $$
+DECLARE
+    v_time timestamp with time zone:= clock_timestamp();
+    v_unix_t bigint;
+    v_rand_a int;
+    v_rand_b bigint;
+BEGIN
+    v_unix_t:= (EXTRACT(EPOCH FROM v_time) * 1000)::bigint;
+    v_rand_a:= floor(random() * 4096)::int;
+    v_rand_b:= (random() * 4611686018427387904)::bigint; -- 2^62
+
+    RETURN encode(
+        set_byte(
+            set_byte(
+                decode(
+                    lpad(to_hex(v_unix_t), 12, '0') ||
+                    lpad(to_hex(v_rand_a), 4, '0') ||
+                    lpad(to_hex(v_rand_b), 16, '0'),
+                    'hex'
+                ),
+                6,
+                (get_byte(decode(lpad(to_hex(v_rand_a), 4, '0'), 'hex'), 0) & 15 | 112)
+            ),
+            8,
+            (get_byte(decode(lpad(to_hex(v_rand_b), 16, '0'), 'hex'), 0) & 63 | 128)
+        ),
+        'hex'
+    )::uuid;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- ENUMS
 -- ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,3 @@
-// src/application/use_cases/auth/accept_invite.rs
 //
 // Called when an invited user activates their account.
 //

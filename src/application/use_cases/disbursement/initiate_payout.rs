@@ -1,4 +1,3 @@
-// src/application/use_cases/disbursement/initiate_payout.rs
 //
 // Moves a disbursement from Pending → Processing and, for M-Pesa B2C
 // disbursements, fires an STK/B2C request via the M-Pesa adapter.

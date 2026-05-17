@@ -2,27 +2,26 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{
-    application::{
-        errors::AppError,
-        helpers::auth_helpers::{generate_temp_password, generate_token},
-        notifications::{
-            service::NotificationService,
-            templates::{EmailTemplate, SmsTemplate},
-        },
-        ports::{
-            auth_port::AuthPort,
-            auth_repository::{
-                AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand,
-                CreateUserCommand, UpsertPortalIndexCommand,
-            },
-            owner_repository::OwnerRepository,
-        },
+use crate::application::{
+    errors::AppError,
+    helpers::auth_helpers::{generate_temp_password, generate_token},
+    notifications::{
+        contexts::{OwnerInviteEmailCtx, OwnerInviteSmsCtx},
+        service::NotificationService,
+        templates::{EmailTemplate, SmsTemplate},
     },
-    domain::{
-        auth::ContactMethod,
-        owner::{CreateOwnerCommand, Owner},
+    ports::{
+        auth_port::AuthPort,
+        auth_repository::{
+            AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand, CreateUserCommand,
+            UpsertPortalIndexCommand,
+        },
+        owner_repository::OwnerRepository,
     },
+};
+use crate::domain::{
+    auth::ContactMethod,
+    owner::{CreateOwnerCommand, Owner},
 };
 
 pub struct OnboardOwnerInput {
@@ -84,7 +83,7 @@ impl OnboardOwnerUseCase {
             .owner_repo
             .create(CreateOwnerCommand {
                 agency_id: input.agency_id,
-                user_id: Some(Uuid::new_v4()), // placeholder — real user_id set below
+                user_id: Some(Uuid::new_v4()),
                 first_name: input.first_name.clone(),
                 last_name: input.last_name.clone(),
                 email: input.email.clone(),
@@ -163,17 +162,16 @@ impl OnboardOwnerUseCase {
         // 6. Notify via NotificationService
         match &contact {
             ContactMethod::Email(email) => {
-                let invite_url = format!("{}/invite/{}", input.portal_base_url, token);
                 let _ = self
                     .notifications
                     .email(
                         email.clone(),
                         EmailTemplate::OwnerInvite,
-                        serde_json::json!({
-                            "first_name":  input.first_name,
-                            "invite_url":  invite_url,
-                            "agency_name": input.agency_name,
-                        }),
+                        OwnerInviteEmailCtx {
+                            first_name: input.first_name.clone(),
+                            invite_url: format!("{}/invite/{}", input.portal_base_url, token),
+                            agency_name: input.agency_name.clone(),
+                        },
                     )
                     .await;
             }
@@ -183,11 +181,11 @@ impl OnboardOwnerUseCase {
                     .sms(
                         phone.clone(),
                         SmsTemplate::OwnerInvite,
-                        serde_json::json!({
-                            "first_name":    input.first_name,
-                            "portal_url":    input.portal_base_url,
-                            "temp_password": temp_plain.as_deref().unwrap_or(""),
-                        }),
+                        OwnerInviteSmsCtx {
+                            first_name: input.first_name.clone(),
+                            portal_url: input.portal_base_url.clone(),
+                            temp_password: temp_plain.as_deref().unwrap_or("").to_owned(),
+                        },
                     )
                     .await;
             }

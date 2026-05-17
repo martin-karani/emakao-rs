@@ -1,5 +1,3 @@
-// src/presentation/http/routes/disbursement_routes.rs
-
 use axum::{
     routing::{get, patch, post},
     Router,

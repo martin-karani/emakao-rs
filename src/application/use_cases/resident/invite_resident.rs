@@ -2,25 +2,24 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{
-    application::{
-        errors::AppError,
-        helpers::auth_helpers::{generate_temp_password, generate_token},
-        notifications::{
-            service::NotificationService,
-            templates::{EmailTemplate, SmsTemplate},
-        },
-        ports::{
-            auth_port::AuthPort,
-            auth_repository::{
-                AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand,
-                CreateUserCommand, UpsertPortalIndexCommand,
-            },
-            resident_repository::{CreateResidentCommand, ResidentRepository},
-        },
+use crate::application::{
+    errors::AppError,
+    helpers::auth_helpers::{generate_temp_password, generate_token},
+    notifications::{
+        contexts::{ResidentInviteEmailCtx, ResidentInviteSmsCtx},
+        service::NotificationService,
+        templates::{EmailTemplate, SmsTemplate},
     },
-    domain::{auth::ContactMethod, resident::Resident},
+    ports::{
+        auth_port::AuthPort,
+        auth_repository::{
+            AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand, CreateUserCommand,
+            UpsertPortalIndexCommand,
+        },
+        resident_repository::{CreateResidentCommand, ResidentRepository},
+    },
 };
+use crate::domain::{auth::ContactMethod, resident::Resident};
 
 pub struct InviteResidentInput {
     pub agency_id: Uuid,
@@ -160,17 +159,16 @@ impl InviteResidentUseCase {
         // 6. Notify via NotificationService
         let notified_via = match &contact {
             ContactMethod::Email(email) => {
-                let invite_url = format!("{}/invite/{}", input.portal_base_url, token);
                 let _ = self
                     .notifications
                     .email(
                         email.clone(),
                         EmailTemplate::ResidentInvite,
-                        serde_json::json!({
-                            "first_name":  input.first_name,
-                            "invite_url":  invite_url,
-                            "agency_name": input.agency_name,
-                        }),
+                        ResidentInviteEmailCtx {
+                            first_name: input.first_name.clone(),
+                            invite_url: format!("{}/invite/{}", input.portal_base_url, token),
+                            agency_name: input.agency_name.clone(),
+                        },
                     )
                     .await;
                 "email"
@@ -181,18 +179,23 @@ impl InviteResidentUseCase {
                     .sms(
                         phone.clone(),
                         SmsTemplate::ResidentInvite,
-                        serde_json::json!({
-                            "first_name":    input.first_name,
-                            "portal_url":    input.portal_base_url,
-                            "temp_password": temp_plain.unwrap_or_default(),
-                        }),
+                        ResidentInviteSmsCtx {
+                            first_name: input.first_name.clone(),
+                            portal_url: input.portal_base_url.clone(),
+                            temp_password: temp_plain.unwrap_or_default(),
+                        },
                     )
                     .await;
                 "sms"
             }
         };
 
-        tracing::info!(resident_id = %resident.id, user_id = %user_id, via = notified_via, "resident invited");
+        tracing::info!(
+            resident_id = %resident.id,
+            user_id     = %user_id,
+            via         = notified_via,
+            "resident invited"
+        );
         Ok(InviteResidentOutput {
             resident,
             notified_via,

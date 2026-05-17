@@ -200,14 +200,18 @@ pub async fn logout(
     Extension(raw_token): Extension<String>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Decode to get jti and expiry — we need the remaining TTL for Redis
-    let claims = state.jwt.decode(&raw_token)?;
+    // Verify to get jti and expiry — we need the remaining TTL for Redis
+    let claims = state.jwt.verify_token(&raw_token)?;
 
     let now_unix = time::OffsetDateTime::now_utc().unix_timestamp();
     let remaining = (claims.exp as i64).saturating_sub(now_unix);
-    let ttl = remaining.max(0) as u64;
+    let ttl = remaining.max(0) as i64;
 
-    state.token_blacklist.revoke(&claims.jti, ttl).await?;
+    state
+        .token_blacklist
+        .revoke(&claims.jti, ttl)
+        .await
+        .map_err(|e| AppError::ExternalService(format!("blacklist: {e}")))?;
 
     tracing::info!(user_id = %user.user_id, jti = %claims.jti, "user logged out");
 
@@ -236,13 +240,13 @@ pub async fn forgot_password(
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    ForgotPasswordUseCase::new(
-        state.auth_repo.clone(),
-        state.notifications.clone(),
-        state.config.app_base_url.clone(),
-    )
-    .execute(ForgotPasswordInput { email: dto.email })
-    .await?;
+    let uc = ForgotPasswordUseCase {
+        auth_repo: state.identity.auth_repo.clone(),
+        notifications: state.notifications.clone(),
+        app_base_url: state.config.app_base_url.clone(),
+    };
+
+    uc.execute(ForgotPasswordInput { email: dto.email }).await?;
 
     Ok(Json(MessageResponse {
         message: "If that email is registered, a reset link has been sent.".into(),
@@ -268,12 +272,15 @@ pub async fn reset_password(
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    ResetPasswordUseCase::new(state.auth_repo.clone())
-        .execute(ResetPasswordInput {
-            token: dto.token,
-            new_password: dto.new_password,
-        })
-        .await?;
+    ResetPasswordUseCase::new(
+        state.identity.auth_repo.clone(),
+        state.identity.auth_port.clone(),
+    )
+    .execute(ResetPasswordInput {
+        token: dto.token,
+        new_password: dto.new_password,
+    })
+    .await?;
 
     Ok(Json(MessageResponse {
         message: "Password updated successfully. Please log in with your new password.".into(),

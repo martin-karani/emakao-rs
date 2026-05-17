@@ -1,5 +1,3 @@
-// src/application/use_cases/inspection/create_inspection.rs
-
 use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;

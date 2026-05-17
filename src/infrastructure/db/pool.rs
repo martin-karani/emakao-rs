@@ -66,16 +66,16 @@ impl AgencyPoolManager {
     /// Resolves `schema_name` for `agency_id` from the platform DB, then
     /// returns the schema-scoped pool.
     pub async fn for_agency(&self, agency_id: Uuid) -> Result<PgPool> {
-        let row = sqlx::query!(
-            "SELECT schema_name AS \"schema_name!\" FROM agencies WHERE id = $1",
-            agency_id
-        )
-        .fetch_optional(&self.platform_pool)
-        .await
-        .context("failed to look up agency schema")?
-        .ok_or_else(|| anyhow::anyhow!("agency {agency_id} not found"))?;
+        let row = sqlx::query("SELECT schema_name FROM agencies WHERE id = $1")
+            .bind(agency_id)
+            .fetch_optional(&self.platform_pool)
+            .await
+            .context("failed to look up agency schema")?
+            .ok_or_else(|| anyhow::anyhow!("agency {agency_id} not found"))?;
 
-        self.for_tenant(&row.schema_name).await
+        use sqlx::Row;
+        let schema_name: String = row.get("schema_name");
+        self.for_tenant(&schema_name).await
     }
 
     /// Call this exactly once during agency provisioning, before the first

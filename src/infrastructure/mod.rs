@@ -5,5 +5,6 @@ pub mod email;
 pub mod notifications;
 pub mod openfga;
 pub mod payments;
+pub mod scheduler;
 pub mod sms;
 pub mod storage;

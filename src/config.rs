@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 pub struct Config {
     pub port: u16,
     pub rust_log: String,
+    pub app_base_url: String,
 
     pub platform_database_url: String,
     pub tenant_database_url: String,
@@ -49,6 +50,8 @@ impl Config {
         Ok(Self {
             port: env_parse("PORT", 3000),
             rust_log: std::env::var("RUST_LOG").unwrap_or_else(|_| "emakao=debug".into()),
+            app_base_url: std::env::var("APP_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:3000".into()),
 
             platform_database_url: required("PLATFORM_DATABASE_URL")
                 .context("PLATFORM_DATABASE_URL must be set")?,

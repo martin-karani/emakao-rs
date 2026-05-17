@@ -1,5 +1,3 @@
-// src/application/ports/accounting_repository.rs
-
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -7,7 +5,7 @@ use crate::{
     application::errors::AppError,
     domain::accounting::{
         Account, AccountFilter, CreateAccountCommand, CreateJournalEntryCommand, JournalEntry,
-        JournalEntryFilter, TrialBalance, VoidJournalEntryCommand,
+        JournalEntryFilter, TrialBalance, VatReport, VatReportFilter, VoidJournalEntryCommand,
     },
 };
 
@@ -25,9 +23,12 @@ pub trait AccountingRepository: Send + Sync + 'static {
 
     async fn create_account(&self, cmd: CreateAccountCommand) -> Result<Account, AppError>;
 
-    /// Deletes a non-system account.  Returns `Conflict` if the account has
-    /// any journal lines referencing it.
     async fn delete_account(&self, agency_id: Uuid, id: Uuid) -> Result<(), AppError>;
+
+    /// Seeds the standard chart of accounts for a newly provisioned agency.
+    /// All seeded accounts have `is_system = true`.
+    /// Called once from `ProvisionAgencyUseCase` — not exposed via the API.
+    async fn seed_system_accounts(&self, agency_id: Uuid) -> Result<(), AppError>;
 
     // ── Journal entries ───────────────────────────────────────────────────────
 
@@ -42,9 +43,6 @@ pub trait AccountingRepository: Send + Sync + 'static {
         id: Uuid,
     ) -> Result<Option<JournalEntry>, AppError>;
 
-    /// Inserts the entry header + lines and optionally posts it.
-    /// When `post_immediately` is true the status is set to `posted` and
-    /// account balances are updated atomically inside a transaction.
     async fn create_journal_entry(
         &self,
         cmd: CreateJournalEntryCommand,
@@ -55,7 +53,9 @@ pub trait AccountingRepository: Send + Sync + 'static {
         cmd: VoidJournalEntryCommand,
     ) -> Result<JournalEntry, AppError>;
 
-    // ── Trial balance ─────────────────────────────────────────────────────────
+    // ── Reports ───────────────────────────────────────────────────────────────
 
     async fn get_trial_balance(&self, agency_id: Uuid) -> Result<TrialBalance, AppError>;
+
+    async fn get_vat_report(&self, filter: VatReportFilter) -> Result<VatReport, AppError>;
 }

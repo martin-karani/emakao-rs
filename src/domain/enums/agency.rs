@@ -182,6 +182,24 @@ pub enum WorkOrderCategory {
     General,
 }
 
+impl WorkOrderCategory {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Plumbing => "plumbing",
+            Self::Electrical => "electrical",
+            Self::Structural => "structural",
+            Self::Hvac => "hvac",
+            Self::Appliance => "appliance",
+            Self::Painting => "painting",
+            Self::Cleaning => "cleaning",
+            Self::Security => "security",
+            Self::Landscaping => "landscaping",
+            Self::PestControl => "pestcontrol",
+            Self::General => "general",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "work_order_reporter_type", rename_all = "lowercase")]
 #[serde(rename_all = "snake_case")]

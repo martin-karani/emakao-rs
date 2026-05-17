@@ -84,8 +84,7 @@ impl OwnerRepository for PgOwnerRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Owner>, AppError> {
-        let rows = sqlx::query_as!(
-            OwnerRow,
+        let rows = sqlx::query_as::<_, OwnerRow>(
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
@@ -95,18 +94,18 @@ impl OwnerRepository for PgOwnerRepo {
             ORDER BY o.created_at DESC
             LIMIT $1 OFFSET $2
             "#,
-            limit,
-            offset
         )
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(Owner::from).collect())
     }
 
     async fn find_by_id(&self, _agency_id: Uuid, id: Uuid) -> Result<Option<Owner>, AppError> {
-        let row = sqlx::query_as!(
-            OwnerRow,
+        let row = sqlx::query_as::<_, OwnerRow>(
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
@@ -115,17 +114,17 @@ impl OwnerRepository for PgOwnerRepo {
             FROM owners o
             WHERE o.id = $1
             "#,
-            id
         )
+        .bind(id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Owner::from))
     }
 
     async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Owner>, AppError> {
-        let row = sqlx::query_as!(
-            OwnerRow,
+        let row = sqlx::query_as::<_, OwnerRow>(
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
@@ -134,10 +133,11 @@ impl OwnerRepository for PgOwnerRepo {
             FROM owners o
             WHERE o.user_id = $1
             "#,
-            user_id
         )
+        .bind(user_id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Owner::from))
     }
@@ -147,8 +147,7 @@ impl OwnerRepository for PgOwnerRepo {
         _agency_id: Uuid,
         email: &str,
     ) -> Result<Option<Owner>, AppError> {
-        let row = sqlx::query_as!(
-            OwnerRow,
+        let row = sqlx::query_as::<_, OwnerRow>(
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
@@ -158,17 +157,17 @@ impl OwnerRepository for PgOwnerRepo {
             WHERE o.email = $1
             LIMIT 1
             "#,
-            email
         )
+        .bind(email)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Owner::from))
     }
 
     async fn create(&self, cmd: CreateOwnerCommand) -> Result<Owner, AppError> {
-        let row = sqlx::query_as!(
-            OwnerRow,
+        let row = sqlx::query_as::<_, OwnerRow>(
             r#"
         INSERT INTO owners (
             id, user_id, first_name, last_name, email, phone,
@@ -181,27 +180,28 @@ impl OwnerRepository for PgOwnerRepo {
             company_name, kra_pin, bank_name, bank_account, mpesa_number,
             portal_status, created_at, updated_at
         "#,
-            Uuid::new_v4(),
-            cmd.user_id,
-            cmd.first_name,
-            cmd.last_name,
-            cmd.email,
-            cmd.phone,
-            cmd.company_name,
-            cmd.kra_pin,
-            cmd.bank_name,
-            cmd.bank_account,
-            cmd.mpesa_number,
-            "invited"
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.user_id)
+        .bind(cmd.first_name)
+        .bind(cmd.last_name)
+        .bind(cmd.email)
+        .bind(cmd.phone)
+        .bind(cmd.company_name)
+        .bind(cmd.kra_pin)
+        .bind(cmd.bank_name)
+        .bind(cmd.bank_account)
+        .bind(cmd.mpesa_number)
+        .bind("invited")
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
         Ok(Owner::from(row))
     }
 
     async fn update(&self, cmd: UpdateOwnerCommand) -> Result<Owner, AppError> {
-        let row = sqlx::query_as!(
-            OwnerRow,
+        let row = sqlx::query_as::<_, OwnerRow>(
             r#"
             UPDATE owners
             SET
@@ -220,18 +220,19 @@ impl OwnerRepository for PgOwnerRepo {
                 company_name, kra_pin, bank_name, bank_account, mpesa_number,
                 portal_status, created_at, updated_at
             "#,
-            cmd.id,
-            cmd.first_name,
-            cmd.last_name,
-            cmd.phone,
-            cmd.company_name,
-            cmd.kra_pin,
-            cmd.bank_name,
-            cmd.bank_account,
-            cmd.mpesa_number
         )
+        .bind(cmd.id)
+        .bind(cmd.first_name)
+        .bind(cmd.last_name)
+        .bind(cmd.phone)
+        .bind(cmd.company_name)
+        .bind(cmd.kra_pin)
+        .bind(cmd.bank_name)
+        .bind(cmd.bank_account)
+        .bind(cmd.mpesa_number)
         .fetch_optional(&self.pool)
-        .await?
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("owner {}", cmd.id)))?;
 
         Ok(Owner::from(row))
@@ -243,19 +244,20 @@ impl OwnerRepository for PgOwnerRepo {
         property_id: Uuid,
         ownership_percent: Decimal,
     ) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO property_owners (property_id, owner_id, ownership_percent)
             VALUES ($1, $2, $3)
             ON CONFLICT (property_id, owner_id)
             DO UPDATE SET ownership_percent = EXCLUDED.ownership_percent
             "#,
-            property_id,
-            owner_id,
-            ownership_percent
         )
+        .bind(property_id)
+        .bind(owner_id)
+        .bind(ownership_percent)
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
@@ -266,6 +268,7 @@ impl OwnerRepository for PgOwnerRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<(Property, Decimal)>, AppError> {
+        #[derive(sqlx::FromRow)]
         struct PropertyRow {
             id: Uuid,
             agency_id: Uuid,
@@ -275,32 +278,35 @@ impl OwnerRepository for PgOwnerRepo {
             country_code: String,
             property_type: String,
             config: sqlx::types::Json<serde_json::Value>,
+            work_order_prefix: String,
+            work_order_seq: i32,
             created_by: Uuid,
             created_at: time::OffsetDateTime,
             updated_at: time::OffsetDateTime,
             ownership_percent: Decimal,
         }
 
-        let rows = sqlx::query_as!(
-            PropertyRow,
+        let rows = sqlx::query_as::<_, PropertyRow>(
             r#"
         SELECT
             p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
-            p.property_type, p.config as "config: sqlx::types::Json<serde_json::Value>",
+            p.property_type, p.config,
+            p.work_order_prefix, p.work_order_seq,
             p.created_by, p.created_at, p.updated_at,
-            po.ownership_percent as "ownership_percent!"
+            po.ownership_percent
         FROM properties p
         JOIN property_owners po ON po.property_id = p.id
         WHERE po.owner_id = $1
         ORDER BY p.created_at DESC
         LIMIT $2 OFFSET $3
         "#,
-            owner_id,
-            limit,
-            offset
         )
+        .bind(owner_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         rows.into_iter()
             .map(|row| {
@@ -318,6 +324,8 @@ impl OwnerRepository for PgOwnerRepo {
                     country_code: row.country_code,
                     property_type,
                     config,
+                    work_order_prefix: row.work_order_prefix,
+                    work_order_seq: row.work_order_seq,
                     created_by: row.created_by,
                     created_at: row.created_at,
                     updated_at: row.updated_at,
@@ -333,6 +341,7 @@ impl OwnerRepository for PgOwnerRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Disbursement>, AppError> {
+        #[derive(sqlx::FromRow)]
         struct DisbursementRow {
             id: Uuid,
             agency_id: Uuid,
@@ -350,8 +359,7 @@ impl OwnerRepository for PgOwnerRepo {
             updated_at: time::OffsetDateTime,
         }
 
-        let rows = sqlx::query_as!(
-            DisbursementRow,
+        let rows = sqlx::query_as::<_, DisbursementRow>(
             r#"
         SELECT id, agency_id, owner_id, property_id, amount_kes,
                method, reference, status, period_start, period_end,
@@ -361,12 +369,13 @@ impl OwnerRepository for PgOwnerRepo {
         ORDER BY created_at DESC
         LIMIT $2 OFFSET $3
         "#,
-            owner_id,
-            limit,
-            offset
         )
+        .bind(owner_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         fn parse_method(s: &str) -> DisbursementMethod {
             match s {

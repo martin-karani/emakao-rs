@@ -1,9 +1,4 @@
-// src/presentation/http/routes/document_routes.rs
-
-use axum::{
-    routing::{delete, get, post},
-    Router,
-};
+use axum::{routing::get, Router};
 
 use crate::presentation::{app_state::AppState, http::handlers::document};
 

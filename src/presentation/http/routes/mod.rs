@@ -1,8 +1,10 @@
+pub mod accounting_routes;
 pub mod agency_routes;
 pub mod agreement_routes;
-pub mod ai_insights_routes;
+pub mod insights_routes;
 pub mod analytics_routes;
 pub mod auth_routes;
+pub mod bank_reconciliation_routes;
 pub mod dashboard_routes;
 pub mod disbursement_routes;
 pub mod document_routes;

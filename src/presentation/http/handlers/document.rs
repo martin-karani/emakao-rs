@@ -1,5 +1,3 @@
-// src/presentation/http/handlers/document.rs
-
 use std::sync::Arc;
 
 use axum::{

@@ -76,6 +76,8 @@ struct WorkOrderRow {
     property_id: Uuid,
     unit_id: Option<Uuid>,
     vendor_id: Option<Uuid>,
+    code: String,
+    work_order_number: i32,
     title: String,
     description: Option<String>,
     category: String,
@@ -219,6 +221,8 @@ impl From<WorkOrderRow> for WorkOrder {
             property_id: r.property_id,
             unit_id: r.unit_id,
             vendor_id: r.vendor_id,
+            code: r.code,
+            work_order_number: r.work_order_number,
             title: r.title,
             description: r.description,
             category: parse_category(&r.category),
@@ -319,8 +323,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Caretaker>, AppError> {
-        let rows = sqlx::query_as!(
-            CaretakerRow,
+        let rows = sqlx::query_as::<_, CaretakerRow>(
             r#"
             SELECT id, property_id, user_id, first_name, last_name, phone, email,
                    is_active, created_by, created_at, updated_at
@@ -329,33 +332,31 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             ORDER BY first_name, last_name
             LIMIT $2 OFFSET $3
             "#,
-            property_id,
-            limit,
-            offset
         )
+        .bind(property_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(Caretaker::from).collect())
     }
 
     async fn find_caretaker_by_id(&self, id: Uuid) -> Result<Option<Caretaker>, AppError> {
-        let row = sqlx::query_as!(
-            CaretakerRow,
+        let row = sqlx::query_as::<_, CaretakerRow>(
             r#"
             SELECT id, property_id, user_id, first_name, last_name, phone, email,
                    is_active, created_by, created_at, updated_at
             FROM caretakers WHERE id = $1::uuid
             "#,
-            id
         )
+        .bind(id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(Caretaker::from))
     }
 
     async fn create_caretaker(&self, cmd: CreateCaretakerCommand) -> Result<Caretaker, AppError> {
-        let row = sqlx::query_as!(
-            CaretakerRow,
+        let row = sqlx::query_as::<_, CaretakerRow>(
             r#"
             INSERT INTO caretakers (
                 id, property_id, first_name, last_name, phone, email, created_by
@@ -364,21 +365,20 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             RETURNING id, property_id, user_id, first_name, last_name, phone, email,
                       is_active, created_by, created_at, updated_at
             "#,
-            cmd.property_id,
-            cmd.first_name,
-            cmd.last_name,
-            cmd.phone,
-            cmd.email,
-            cmd.created_by
         )
+        .bind(cmd.property_id)
+        .bind(cmd.first_name)
+        .bind(cmd.last_name)
+        .bind(cmd.phone)
+        .bind(cmd.email)
+        .bind(cmd.created_by)
         .fetch_one(&self.pool)
         .await?;
         Ok(Caretaker::from(row))
     }
 
     async fn update_caretaker(&self, cmd: UpdateCaretakerCommand) -> Result<Caretaker, AppError> {
-        let row = sqlx::query_as!(
-            CaretakerRow,
+        let row = sqlx::query_as::<_, CaretakerRow>(
             r#"
             UPDATE caretakers SET
                 first_name = COALESCE($2::text, first_name),
@@ -391,13 +391,13 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             RETURNING id, property_id, user_id, first_name, last_name, phone, email,
                       is_active, created_by, created_at, updated_at
             "#,
-            cmd.id,
-            cmd.first_name,
-            cmd.last_name,
-            cmd.phone,
-            cmd.email,
-            cmd.is_active
         )
+        .bind(cmd.id)
+        .bind(cmd.first_name)
+        .bind(cmd.last_name)
+        .bind(cmd.phone)
+        .bind(cmd.email)
+        .bind(cmd.is_active)
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("caretaker {}", cmd.id)))?;
@@ -424,12 +424,13 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         let category_s = category.as_ref().map(category_str);
         let reporter_s = reporter_type.as_ref().map(reporter_type_str);
 
-        let rows = sqlx::query_as!(
-            WorkOrderRow,
+        let rows = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
-                   wo.title, wo.description, wo.category, wo.status, wo.priority,
-                   wo.reported_by, wo.reporter_type,
+                   wo.code, wo.work_order_number,
+                   wo.title, wo.description, wo.category::text AS category,
+                   wo.status::text AS status, wo.priority::text AS priority,
+                   wo.reported_by, wo.reporter_type::text AS reporter_type,
                    wo.reporter_resident_id, wo.reporter_caretaker_id,
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
@@ -438,14 +439,14 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    wo.created_at, wo.updated_at
             FROM work_orders wo
             JOIN properties p ON p.id = wo.property_id
-            WHERE p.agency_id = $1::uuid
-              AND ($2::uuid    IS NULL OR wo.property_id          = $2::uuid)
-              AND ($3::uuid    IS NULL OR wo.unit_id              = $3::uuid)
-              AND ($4::text    IS NULL OR wo.status::text         = $4::text)
-              AND ($5::text    IS NULL OR wo.priority::text       = $5::text)
-              AND ($6::text    IS NULL OR wo.category::text       = $6::text)
-              AND ($7::text    IS NULL OR wo.reporter_type::text  = $7::text)
-              AND ($8::uuid    IS NULL OR wo.assigned_caretaker_id = $8::uuid)
+            WHERE p.agency_id = $1
+              AND ($2::uuid IS NULL OR wo.property_id = $2::uuid)
+              AND ($3::uuid IS NULL OR wo.unit_id = $3::uuid)
+              AND ($4::text IS NULL OR wo.status = $4::text::work_order_status)
+              AND ($5::text IS NULL OR wo.priority = $5::text::work_order_priority)
+              AND ($6::text IS NULL OR wo.category = $6::text::work_order_category)
+              AND ($7::text IS NULL OR wo.reporter_type = $7::text::work_order_reporter_type)
+              AND ($8::uuid IS NULL OR wo.assigned_caretaker_id = $8::uuid)
             ORDER BY
                 CASE wo.priority
                     WHEN 'emergency' THEN 1
@@ -456,29 +457,30 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 wo.created_at DESC
             LIMIT $9 OFFSET $10
             "#,
-            agency_id,
-            property_id,
-            unit_id,
-            status_s,
-            priority_s,
-            category_s,
-            reporter_s,
-            assigned_caretaker_id,
-            limit,
-            offset
         )
+        .bind(agency_id)
+        .bind(property_id)
+        .bind(unit_id)
+        .bind(status_s)
+        .bind(priority_s)
+        .bind(category_s)
+        .bind(reporter_s)
+        .bind(assigned_caretaker_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(WorkOrder::from).collect())
     }
 
     async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<WorkOrder>, AppError> {
-        let row = sqlx::query_as!(
-            WorkOrderRow,
+        let row = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
-                   wo.title, wo.description, wo.category, wo.status, wo.priority,
-                   wo.reported_by, wo.reporter_type,
+                   wo.code, wo.work_order_number,
+                   wo.title, wo.description, wo.category::text AS category,
+                   wo.status::text AS status, wo.priority::text AS priority,
+                   wo.reported_by, wo.reporter_type::text AS reporter_type,
                    wo.reporter_resident_id, wo.reporter_caretaker_id,
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
@@ -489,9 +491,9 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             JOIN properties p ON p.id = wo.property_id
             WHERE wo.id = $1::uuid AND p.agency_id = $2::uuid
             "#,
-            id,
-            agency_id
         )
+        .bind(id)
+        .bind(agency_id)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(WorkOrder::from))
@@ -503,14 +505,13 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WorkOrder>, AppError> {
-        // Returns work orders for units where the resident has an active agreement,
-        // filtered to is_tenant_visible = true.
-        let rows = sqlx::query_as!(
-            WorkOrderRow,
+        let rows = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
-                   wo.title, wo.description, wo.category, wo.status, wo.priority,
-                   wo.reported_by, wo.reporter_type,
+                   wo.code, wo.work_order_number,
+                   wo.title, wo.description, wo.category::text AS category,
+                   wo.status::text AS status, wo.priority::text AS priority,
+                   wo.reported_by, wo.reporter_type::text AS reporter_type,
                    wo.reporter_resident_id, wo.reporter_caretaker_id,
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
@@ -525,10 +526,10 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             ORDER BY wo.created_at DESC
             LIMIT $2 OFFSET $3
             "#,
-            resident_id,
-            limit,
-            offset
         )
+        .bind(resident_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(WorkOrder::from).collect())
@@ -540,12 +541,13 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WorkOrder>, AppError> {
-        let rows = sqlx::query_as!(
-            WorkOrderRow,
+        let rows = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
-                   wo.title, wo.description, wo.category, wo.status, wo.priority,
-                   wo.reported_by, wo.reporter_type,
+                   wo.code, wo.work_order_number,
+                   wo.title, wo.description, wo.category::text AS category,
+                   wo.status::text AS status, wo.priority::text AS priority,
+                   wo.reported_by, wo.reporter_type::text AS reporter_type,
                    wo.reporter_resident_id, wo.reporter_caretaker_id,
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
@@ -553,18 +555,15 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    wo.is_tenant_visible, wo.internal_notes, wo.attachments,
                    wo.created_at, wo.updated_at
             FROM work_orders wo
-            JOIN caretakers ct ON ct.property_id = wo.property_id
-            WHERE ct.id = $1::uuid
-              AND ct.is_active = true
-              AND (wo.assigned_caretaker_id = $1::uuid
-                   OR wo.reporter_caretaker_id = $1::uuid)
+            JOIN caretakers c ON c.property_id = wo.property_id
+            WHERE c.id = $1::uuid
             ORDER BY wo.created_at DESC
             LIMIT $2 OFFSET $3
             "#,
-            caretaker_id,
-            limit,
-            offset
         )
+        .bind(caretaker_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(WorkOrder::from).collect())
@@ -576,12 +575,13 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WorkOrder>, AppError> {
-        let rows = sqlx::query_as!(
-            WorkOrderRow,
+        let rows = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             SELECT id, property_id, unit_id, vendor_id,
-                   title, description, category, status, priority,
-                   reported_by, reporter_type,
+                   code, work_order_number,
+                   title, description, category::text AS category,
+                   status::text AS status, priority::text AS priority,
+                   reported_by, reporter_type::text AS reporter_type,
                    reporter_resident_id, reporter_caretaker_id,
                    assigned_to, assigned_caretaker_id,
                    due_date, scheduled_at, started_at, completed_at,
@@ -593,10 +593,10 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
             "#,
-            vendor_id,
-            limit,
-            offset
         )
+        .bind(vendor_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(WorkOrder::from).collect())
@@ -607,16 +607,15 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         agency_id: Uuid,
         code: &str,
     ) -> Result<Option<WorkOrder>, AppError> {
-        // Normalise: codes are always uppercase
         let code_upper = code.to_ascii_uppercase();
 
-        let row = sqlx::query_as!(
-            WorkOrderRow,
+        let row = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             SELECT wo.id, wo.property_id, wo.unit_id, wo.vendor_id,
                    wo.code, wo.work_order_number,
-                   wo.title, wo.description, wo.category, wo.status, wo.priority,
-                   wo.reported_by, wo.reporter_type,
+                   wo.title, wo.description, wo.category::text AS category,
+                   wo.status::text AS status, wo.priority::text AS priority,
+                   wo.reported_by, wo.reporter_type::text AS reporter_type,
                    wo.reporter_resident_id, wo.reporter_caretaker_id,
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
@@ -628,9 +627,9 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             WHERE  wo.code = $1
               AND  p.agency_id = $2::uuid
             "#,
-            code_upper,
-            agency_id
         )
+        .bind(code_upper)
+        .bind(agency_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -641,22 +640,8 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         let attachments =
             serde_json::to_value(&cmd.attachments).unwrap_or(serde_json::Value::Array(vec![]));
 
-        // ── All of this is one atomic transaction ──────────────────────────────
-        //
-        // Step 1: Increment work_order_seq on the property row and fetch the new
-        //         value + prefix. The UPDATE acquires a row-level exclusive lock,
-        //         serialising concurrent work order creates for the same property.
-        //
-        // Step 2: Build the code string in application code (or via SQL concat).
-        //
-        // Step 3: Insert the work order with the generated code.
-        //
-        // If Step 3 fails (e.g. duplicate code from a bug), the transaction rolls
-        // back, the sequence counter is not committed, and the caller retries.
-
         let mut tx = self.pool.begin().await?;
 
-        // ── Step 1: atomic sequence increment ─────────────────────────────────
         let (seq, prefix): (i32, String) = sqlx::query_as(
             r#"
             UPDATE properties
@@ -670,12 +655,9 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         .await
         .map_err(|_| AppError::NotFound(format!("property {}", cmd.property_id)))?;
 
-        // ── Step 2: build the code ─────────────────────────────────────────────
         let code = crate::domain::work_order_code::format_code(&prefix, seq);
 
-        // ── Step 3: insert work order ──────────────────────────────────────────
-        let row = sqlx::query_as!(
-            WorkOrderRow,
+        let row = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             INSERT INTO work_orders (
                 id, property_id, unit_id, vendor_id,
@@ -698,8 +680,9 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             RETURNING
                 id, property_id, unit_id, vendor_id,
                 code, work_order_number,
-                title, description, category, status, priority,
-                reported_by, reporter_type,
+                title, description, category::text AS category,
+                status::text AS status, priority::text AS priority,
+                reported_by, reporter_type::text AS reporter_type,
                 reporter_resident_id, reporter_caretaker_id,
                 assigned_to, assigned_caretaker_id,
                 due_date, scheduled_at, started_at, completed_at,
@@ -707,28 +690,28 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 is_tenant_visible, internal_notes, attachments,
                 created_at, updated_at
             "#,
-            cmd.property_id,                       // $1
-            cmd.unit_id,                           // $2
-            cmd.vendor_id,                         // $3
-            code,                                  // $4  ← generated code
-            seq,                                   // $5  ← sequence number
-            cmd.title,                             // $6
-            cmd.description,                       // $7
-            category_str(&cmd.category),           // $8
-            priority_str(&cmd.priority),           // $9
-            cmd.reported_by,                       // $10
-            reporter_type_str(&cmd.reporter_type), // $11
-            cmd.reporter_resident_id,              // $12
-            cmd.reporter_caretaker_id,             // $13
-            cmd.assigned_to,                       // $14
-            cmd.assigned_caretaker_id,             // $15
-            cmd.due_date,                          // $16
-            cmd.scheduled_at,                      // $17
-            cmd.estimated_cost_kes,                // $18
-            cmd.is_tenant_visible,                 // $19
-            cmd.internal_notes,                    // $20
-            attachments,                           // $21
         )
+        .bind(cmd.property_id)
+        .bind(cmd.unit_id)
+        .bind(cmd.vendor_id)
+        .bind(code)
+        .bind(seq)
+        .bind(cmd.title)
+        .bind(cmd.description)
+        .bind(category_str(&cmd.category))
+        .bind(priority_str(&cmd.priority))
+        .bind(cmd.reported_by)
+        .bind(reporter_type_str(&cmd.reporter_type))
+        .bind(cmd.reporter_resident_id)
+        .bind(cmd.reporter_caretaker_id)
+        .bind(cmd.assigned_to)
+        .bind(cmd.assigned_caretaker_id)
+        .bind(cmd.due_date)
+        .bind(cmd.scheduled_at)
+        .bind(cmd.estimated_cost_kes)
+        .bind(cmd.is_tenant_visible)
+        .bind(cmd.internal_notes)
+        .bind(attachments)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -746,8 +729,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             .as_ref()
             .map(|a| serde_json::to_value(a).unwrap_or(Value::Array(vec![])));
 
-        let row = sqlx::query_as!(
-            WorkOrderRow,
+        let row = sqlx::query_as::<_, WorkOrderRow>(
             r#"
             UPDATE work_orders SET
                 status               = COALESCE($2::text,      status::text)::work_order_status,
@@ -770,8 +752,10 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             WHERE id = $1::uuid
             RETURNING
                 id, property_id, unit_id, vendor_id,
-                title, description, category, status, priority,
-                reported_by, reporter_type,
+                code, work_order_number,
+                title, description, category::text AS category,
+                status::text AS status, priority::text AS priority,
+                reported_by, reporter_type::text AS reporter_type,
                 reporter_resident_id, reporter_caretaker_id,
                 assigned_to, assigned_caretaker_id,
                 due_date, scheduled_at, started_at, completed_at,
@@ -779,33 +763,33 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 is_tenant_visible, internal_notes, attachments,
                 created_at, updated_at
             "#,
-            cmd.id,                                  // $1
-            status_s,                                // $2
-            priority_s,                              // $3
-            category_s,                              // $4
-            cmd.vendor_id.is_some(),                 // $5
-            cmd.vendor_id.flatten(),                 // $6
-            cmd.assigned_to.is_some(),               // $7
-            cmd.assigned_to.flatten(),               // $8
-            cmd.assigned_caretaker_id.is_some(),     // $9
-            cmd.assigned_caretaker_id.flatten(),     // $10
-            cmd.description,                         // $11
-            cmd.internal_notes,                      // $12
-            cmd.due_date.is_some(),                  // $13
-            cmd.due_date.flatten(),                  // $14
-            cmd.scheduled_at.is_some(),              // $15
-            cmd.scheduled_at.flatten(),              // $16
-            cmd.started_at.is_some(),                // $17
-            cmd.started_at.flatten(),                // $18
-            cmd.completed_at.is_some(),              // $19
-            cmd.completed_at.flatten(),              // $20
-            cmd.estimated_cost_kes.is_some(),        // $21
-            cmd.estimated_cost_kes.flatten(),        // $22
-            cmd.actual_cost_kes.is_some(),           // $23
-            cmd.actual_cost_kes.flatten(),           // $24
-            cmd.is_tenant_visible,                   // $25
-            attachments,                             // $26
         )
+        .bind(cmd.id)
+        .bind(status_s)
+        .bind(priority_s)
+        .bind(category_s)
+        .bind(cmd.vendor_id.is_some())
+        .bind(cmd.vendor_id.flatten())
+        .bind(cmd.assigned_to.is_some())
+        .bind(cmd.assigned_to.flatten())
+        .bind(cmd.assigned_caretaker_id.is_some())
+        .bind(cmd.assigned_caretaker_id.flatten())
+        .bind(cmd.description)
+        .bind(cmd.internal_notes)
+        .bind(cmd.due_date.is_some())
+        .bind(cmd.due_date.flatten())
+        .bind(cmd.scheduled_at.is_some())
+        .bind(cmd.scheduled_at.flatten())
+        .bind(cmd.started_at.is_some())
+        .bind(cmd.started_at.flatten())
+        .bind(cmd.completed_at.is_some())
+        .bind(cmd.completed_at.flatten())
+        .bind(cmd.estimated_cost_kes.is_some())
+        .bind(cmd.estimated_cost_kes.flatten())
+        .bind(cmd.actual_cost_kes.is_some())
+        .bind(cmd.actual_cost_kes.flatten())
+        .bind(cmd.is_tenant_visible)
+        .bind(attachments)
         .fetch_optional(&self.pool).await?
         .ok_or_else(|| AppError::NotFound(format!("work order {}", cmd.id)))?;
         Ok(WorkOrder::from(row))
@@ -821,8 +805,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WorkOrderComment>, AppError> {
-        let rows = sqlx::query_as!(
-            CommentRow,
+        let rows = sqlx::query_as::<_, CommentRow>(
             r#"
             SELECT id, work_order_id, parent_comment_id,
                    author_id, author_type, author_resident_id, author_caretaker_id,
@@ -834,12 +817,12 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             ORDER BY created_at ASC
             LIMIT $4 OFFSET $5
             "#,
-            work_order_id,
-            include_internal,
-            top_level_only,
-            limit,
-            offset
         )
+        .bind(work_order_id)
+        .bind(include_internal)
+        .bind(top_level_only)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(WorkOrderComment::from).collect())
@@ -852,8 +835,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WorkOrderComment>, AppError> {
-        let rows = sqlx::query_as!(
-            CommentRow,
+        let rows = sqlx::query_as::<_, CommentRow>(
             r#"
             SELECT id, work_order_id, parent_comment_id,
                    author_id, author_type, author_resident_id, author_caretaker_id,
@@ -864,11 +846,11 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             ORDER BY created_at ASC
             LIMIT $3 OFFSET $4
             "#,
-            parent_comment_id,
-            include_internal,
-            limit,
-            offset
         )
+        .bind(parent_comment_id)
+        .bind(include_internal)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(WorkOrderComment::from).collect())
@@ -879,8 +861,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         cmd: CreateWorkOrderCommentCommand,
     ) -> Result<WorkOrderComment, AppError> {
         let attachments = serde_json::to_value(&cmd.attachments).unwrap_or(Value::Array(vec![]));
-        let row = sqlx::query_as!(
-            CommentRow,
+        let row = sqlx::query_as::<_, CommentRow>(
             r#"
             INSERT INTO work_order_comments (
                 id, work_order_id, parent_comment_id,
@@ -897,16 +878,16 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 author_id, author_type, author_resident_id, author_caretaker_id,
                 body, is_internal, attachments, is_edited, created_at, updated_at
             "#,
-            cmd.work_order_id,
-            cmd.parent_comment_id,
-            cmd.author_id,
-            author_type_str(&cmd.author_type),
-            cmd.author_resident_id,
-            cmd.author_caretaker_id,
-            cmd.body,
-            cmd.is_internal,
-            attachments
         )
+        .bind(cmd.work_order_id)
+        .bind(cmd.parent_comment_id)
+        .bind(cmd.author_id)
+        .bind(author_type_str(&cmd.author_type))
+        .bind(cmd.author_resident_id)
+        .bind(cmd.author_caretaker_id)
+        .bind(cmd.body)
+        .bind(cmd.is_internal)
+        .bind(attachments)
         .fetch_one(&self.pool)
         .await?;
         Ok(WorkOrderComment::from(row))
@@ -920,8 +901,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<WorkOrderActivity>, AppError> {
-        let rows = sqlx::query_as!(
-            ActivityRow,
+        let rows = sqlx::query_as::<_, ActivityRow>(
             r#"
             SELECT id, work_order_id, actor_id, actor_type, event_type, payload, created_at
             FROM work_order_activity
@@ -929,10 +909,10 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             ORDER BY created_at ASC
             LIMIT $2 OFFSET $3
             "#,
-            work_order_id,
-            limit,
-            offset
         )
+        .bind(work_order_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(WorkOrderActivity::from).collect())
@@ -946,18 +926,18 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         event_type: &str,
         payload: Value,
     ) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO work_order_activity
                 (id, work_order_id, actor_id, actor_type, event_type, payload)
             VALUES (uuidv7(), $1::uuid, $2::uuid, $3::text, $4::text, $5::jsonb)
             "#,
-            work_order_id,
-            actor_id,
-            actor_type,
-            event_type,
-            payload
         )
+        .bind(work_order_id)
+        .bind(actor_id)
+        .bind(actor_type)
+        .bind(event_type)
+        .bind(payload)
         .execute(&self.pool)
         .await?;
         Ok(())

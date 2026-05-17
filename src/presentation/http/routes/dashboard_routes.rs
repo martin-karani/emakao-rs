@@ -1,5 +1,3 @@
-// src/presentation/http/routes/dashboard_routes.rs
-
 use axum::{routing::get, Router};
 
 use crate::presentation::http::handlers::dashboard;

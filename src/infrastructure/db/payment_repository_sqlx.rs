@@ -119,8 +119,7 @@ impl PaymentRepository for PgPaymentRepo {
     ) -> Result<Vec<PaymentClaim>, AppError> {
         let status_str = status.as_ref().map(claim_status_str);
 
-        let rows = sqlx::query_as!(
-            PaymentClaimRow,
+        let rows = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
             SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id,
                    pc.method_type, pc.amount_kes, pc.reference_code,
@@ -136,14 +135,15 @@ impl PaymentRepository for PgPaymentRepo {
             ORDER BY pc.created_at DESC
             LIMIT $4 OFFSET $5
             "#,
-            agency_id,
-            property_id,
-            status_str,
-            limit,
-            offset
         )
+        .bind(agency_id)
+        .bind(property_id)
+        .bind(status_str)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(PaymentClaim::from).collect())
     }
@@ -153,8 +153,7 @@ impl PaymentRepository for PgPaymentRepo {
         agency_id: Uuid,
         id: Uuid,
     ) -> Result<Option<PaymentClaim>, AppError> {
-        let row = sqlx::query_as!(
-            PaymentClaimRow,
+        let row = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
             SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id,
                    pc.method_type, pc.amount_kes, pc.reference_code,
@@ -166,18 +165,18 @@ impl PaymentRepository for PgPaymentRepo {
             JOIN properties p ON p.id = pc.property_id
             WHERE pc.id = $1 AND p.agency_id = $2
             "#,
-            id,
-            agency_id
         )
+        .bind(id)
+        .bind(agency_id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(PaymentClaim::from))
     }
 
     async fn create(&self, cmd: CreatePaymentClaimCommand) -> Result<PaymentClaim, AppError> {
-        let row = sqlx::query_as!(
-            PaymentClaimRow,
+        let row = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
             INSERT INTO payment_claims (
                 id, property_id, agreement_id, resident_id,
@@ -191,19 +190,20 @@ impl PaymentRepository for PgPaymentRepo {
                 reviewed_by, reviewed_at, review_notes, rejection_reason,
                 ledger_entry_id, submitted_by, created_at, updated_at
             "#,
-            Uuid::new_v4(),
-            cmd.property_id,
-            cmd.agreement_id,
-            cmd.resident_id,
-            method_str(&cmd.method_type),
-            cmd.amount_kes,
-            cmd.reference_code,
-            cmd.proof_url,
-            cmd.notes,
-            cmd.submitted_by
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.property_id)
+        .bind(cmd.agreement_id)
+        .bind(cmd.resident_id)
+        .bind(method_str(&cmd.method_type))
+        .bind(cmd.amount_kes)
+        .bind(cmd.reference_code)
+        .bind(cmd.proof_url)
+        .bind(cmd.notes)
+        .bind(cmd.submitted_by)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(PaymentClaim::from(row))
     }
@@ -216,8 +216,7 @@ impl PaymentRepository for PgPaymentRepo {
         review_notes: Option<String>,
         rejection_reason: Option<String>,
     ) -> Result<PaymentClaim, AppError> {
-        let row = sqlx::query_as!(
-            PaymentClaimRow,
+        let row = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
             UPDATE payment_claims
             SET
@@ -234,14 +233,15 @@ impl PaymentRepository for PgPaymentRepo {
                 reviewed_by, reviewed_at, review_notes, rejection_reason,
                 ledger_entry_id, submitted_by, created_at, updated_at
             "#,
-            id,
-            claim_status_str(&status),
-            reviewed_by,
-            review_notes,
-            rejection_reason
         )
+        .bind(id)
+        .bind(claim_status_str(&status))
+        .bind(reviewed_by)
+        .bind(review_notes)
+        .bind(rejection_reason)
         .fetch_optional(&self.pool)
-        .await?
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("payment claim {id}")))?;
 
         Ok(PaymentClaim::from(row))

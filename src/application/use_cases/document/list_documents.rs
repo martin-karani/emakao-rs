@@ -1,5 +1,3 @@
-// src/application/use_cases/document/list_documents.rs
-
 use std::sync::Arc;
 use uuid::Uuid;
 

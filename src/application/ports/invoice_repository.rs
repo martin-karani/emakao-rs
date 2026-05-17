@@ -1,5 +1,3 @@
-// src/application/ports/invoice_repository.rs
-
 use async_trait::async_trait;
 use time::Date;
 use uuid::Uuid;

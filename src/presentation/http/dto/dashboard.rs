@@ -1,4 +1,3 @@
-// src/presentation/http/dto/dashboard.rs
 //
 // Dashboard query params are defined inside the handler (DashboardParams)
 // because they are simple enough to live there. This module exists so the

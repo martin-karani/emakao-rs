@@ -1,4 +1,3 @@
-// src/presentation/app_state.rs
 //
 // Application state — the composition root for the Axum server.
 //

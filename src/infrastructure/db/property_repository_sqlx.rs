@@ -31,11 +31,7 @@ impl From<PgPool> for PgPropertyRepo {
     }
 }
 
-// ── Internal row type ─────────────────────────────────────────────────────────
-// Includes every column returned by INSERT … RETURNING and SELECT queries.
-// `work_order_prefix` and `work_order_seq` are internal implementation details
-// not surfaced in the `Property` domain model, but sqlx requires the struct to
-// cover all columns in the RETURNING clause.
+// ── Row type ──────────────────────────────────────────────────────────────────
 
 #[derive(sqlx::FromRow)]
 struct PropertyRow {
@@ -47,7 +43,6 @@ struct PropertyRow {
     country_code: String,
     property_type: String,
     config: sqlx::types::Json<serde_json::Value>,
-    // Internal work-order sequencing — not on the domain model
     work_order_prefix: String,
     work_order_seq: i32,
     created_by: Uuid,
@@ -75,6 +70,8 @@ impl TryFrom<PropertyRow> for Property {
             country_code: row.country_code,
             property_type,
             config,
+            work_order_prefix: row.work_order_prefix,
+            work_order_seq: row.work_order_seq,
             created_by: row.created_by,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -87,13 +84,11 @@ impl TryFrom<PropertyRow> for Property {
 #[async_trait]
 impl PropertyRepository for PgPropertyRepo {
     async fn find_all(&self, filter: PropertyFilter) -> Result<Vec<Property>, AppError> {
-        let rows = sqlx::query_as!(
-            PropertyRow,
+        let rows = sqlx::query_as::<_, PropertyRow>(
             r#"
             SELECT
                 id, agency_id, name, address, city, country_code,
-                property_type,
-                config AS "config: sqlx::types::Json<serde_json::Value>",
+                property_type, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             FROM properties
@@ -102,35 +97,35 @@ impl PropertyRepository for PgPropertyRepo {
             ORDER BY created_at DESC
             LIMIT $3 OFFSET $4
             "#,
-            filter.agency_id,
-            filter.property_type,
-            filter.limit,
-            filter.offset
         )
+        .bind(filter.agency_id)
+        .bind(filter.property_type)
+        .bind(filter.limit)
+        .bind(filter.offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         rows.into_iter().map(Property::try_from).collect()
     }
 
     async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Property>, AppError> {
-        let row = sqlx::query_as!(
-            PropertyRow,
+        let row = sqlx::query_as::<_, PropertyRow>(
             r#"
             SELECT
                 id, agency_id, name, address, city, country_code,
-                property_type,
-                config AS "config: sqlx::types::Json<serde_json::Value>",
+                property_type, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             FROM properties
             WHERE id = $1 AND agency_id = $2
             "#,
-            id,
-            agency_id
         )
+        .bind(id)
+        .bind(agency_id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         row.map(Property::try_from).transpose()
     }
@@ -153,64 +148,64 @@ impl PropertyRepository for PgPropertyRepo {
             ));
         }
 
-        // ── 2. Fetch existing prefixes in this agency schema ───────────────────
-        let taken: HashSet<String> = sqlx::query_scalar!(
-            "SELECT work_order_prefix FROM properties WHERE work_order_prefix LIKE $1",
-            format!("{}%", &base[..base.len().min(6)])
-        )
-        .fetch_all(&self.pool)
-        .await?
-        .into_iter()
-        .collect();
+        // ── 2. Fetch existing prefixes ────────────────────────────────────────
+        let taken_rows =
+            sqlx::query("SELECT work_order_prefix FROM properties WHERE work_order_prefix LIKE $1")
+                .bind(format!("{}%", &base[..base.len().min(6)]))
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        use sqlx::Row;
+        let taken: HashSet<String> = taken_rows
+            .into_iter()
+            .map(|r| r.get::<String, _>(0))
+            .collect();
 
         let prefix = unique_prefix(&base, &taken);
 
-        // ── 3. Insert ──────────────────────────────────────────────────────────
-        // country_code defaults to "KE" (Kenyan market) when not supplied.
-        let country_code = cmd
-            .country_code
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or("KE")
-            .to_ascii_uppercase();
+        // ── 3. Insert ─────────────────────────────────────────────────────────
+        let country_code = if cmd.country_code.trim().is_empty() {
+            "KE".to_string()
+        } else {
+            cmd.country_code.trim().to_ascii_uppercase()
+        };
 
-        let row = sqlx::query_as!(
-            PropertyRow,
+        let row = sqlx::query_as::<_, PropertyRow>(
             r#"
             INSERT INTO properties (
                 id, agency_id, name, address, city, country_code,
                 property_type, config, work_order_prefix, created_by
             )
             VALUES (
-                uuidv7(), $1::uuid, $2::text, $3::text, $4::text, $5::text,
-                $6::text, $7::jsonb, $8::varchar, $9::uuid
+                uuidv7(), $1, $2, $3, $4, $5,
+                $6, $7, $8, $9
             )
             RETURNING
                 id, agency_id, name, address, city, country_code,
-                property_type,
-                config AS "config: sqlx::types::Json<serde_json::Value>",
+                property_type, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             "#,
-            cmd.agency_id,                                         // $1
-            cmd.name,                                              // $2
-            cmd.address,                                           // $3
-            cmd.city,                                              // $4
-            country_code,                                          // $5 — FIX
-            property_type_str(&cmd.property_type),                 // $6
-            serde_json::to_value(&cmd.config).unwrap_or_default(), // $7
-            prefix,                                                // $8
-            cmd.created_by,                                        // $9
         )
+        .bind(cmd.agency_id)
+        .bind(cmd.name)
+        .bind(cmd.address)
+        .bind(cmd.city)
+        .bind(country_code)
+        .bind(property_type_str(&cmd.property_type))
+        .bind(serde_json::to_value(&cmd.config).unwrap_or_default())
+        .bind(prefix)
+        .bind(cmd.created_by)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Property::try_from(row)
     }
 
     async fn update(&self, cmd: UpdatePropertyCommand) -> Result<Property, AppError> {
-        let row = sqlx::query_as!(
-            PropertyRow,
+        let row = sqlx::query_as::<_, PropertyRow>(
             r#"
             UPDATE properties
             SET
@@ -221,32 +216,31 @@ impl PropertyRepository for PgPropertyRepo {
             WHERE id = $1 AND agency_id = $2
             RETURNING
                 id, agency_id, name, address, city, country_code,
-                property_type,
-                config AS "config: sqlx::types::Json<serde_json::Value>",
+                property_type, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             "#,
-            cmd.id,
-            cmd.agency_id,
-            cmd.name,
-            cmd.address,
-            cmd.city
         )
+        .bind(cmd.id)
+        .bind(cmd.agency_id)
+        .bind(cmd.name)
+        .bind(cmd.address)
+        .bind(cmd.city)
         .fetch_optional(&self.pool)
-        .await?
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("property {}", cmd.id)))?;
 
         Property::try_from(row)
     }
 
     async fn delete(&self, agency_id: Uuid, id: Uuid) -> Result<(), AppError> {
-        let result = sqlx::query!(
-            "DELETE FROM properties WHERE id = $1 AND agency_id = $2",
-            id,
-            agency_id
-        )
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query("DELETE FROM properties WHERE id = $1 AND agency_id = $2")
+            .bind(id)
+            .bind(agency_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(format!("property {id}")));
@@ -255,18 +249,18 @@ impl PropertyRepository for PgPropertyRepo {
     }
 
     async fn count_for_agency(&self, agency_id: Uuid) -> Result<i64, AppError> {
-        let row = sqlx::query!(
-            "SELECT COUNT(*) AS count FROM properties WHERE agency_id = $1",
-            agency_id
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let row = sqlx::query("SELECT COUNT(*) FROM properties WHERE agency_id = $1")
+            .bind(agency_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        Ok(row.count.unwrap_or(0))
+        use sqlx::Row;
+        Ok(row.get::<i64, _>(0))
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helper ────────────────────────────────────────────────────────────────────
 
 fn property_type_str(pt: &PropertyType) -> &'static str {
     match pt {
@@ -275,5 +269,7 @@ fn property_type_str(pt: &PropertyType) -> &'static str {
         PropertyType::Community => "community",
         PropertyType::Student => "student",
         PropertyType::Affordable => "affordable",
+        // FIX: AffordableHousing was missing from this match — non-exhaustive pattern error.
+        PropertyType::AffordableHousing => "affordable_housing",
     }
 }

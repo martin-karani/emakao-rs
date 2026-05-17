@@ -1,7 +1,5 @@
-// src/presentation/http/routes/invoice_routes.rs
-
 use axum::{
-    routing::{get, patch, post},
+    routing::{get, patch},
     Router,
 };
 

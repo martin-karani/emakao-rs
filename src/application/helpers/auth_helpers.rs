@@ -15,3 +15,9 @@ pub fn generate_temp_password() -> String {
         .map(|_| CHARS[rng.random_range(0..CHARS.len())] as char)
         .collect()
 }
+
+/// Compute SHA-256 hash of a string and return it as hex.
+pub fn sha256_hex(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(input.as_bytes()))
+}

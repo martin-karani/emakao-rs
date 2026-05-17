@@ -1,4 +1,3 @@
-// src/application/ports/billing_repository.rs
 //
 // Port used by the billing scheduler to read active agreements and
 // record rent charges, late fees, and sent reminders.
@@ -8,7 +7,7 @@ use rust_decimal::Decimal;
 use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::{application::errors::AppError, domain::agreement::ActiveAgreementBillingView};
+use crate::{application::errors::AppError, domain::billing::ActiveAgreementBillingView};
 
 #[async_trait]
 pub trait BillingRepository: Send + Sync + 'static {

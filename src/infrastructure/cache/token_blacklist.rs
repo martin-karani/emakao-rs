@@ -21,7 +21,8 @@ impl TokenBlacklist {
     /// Revoke a token until `ttl_seconds` elapses (set to JWT remaining lifetime).
     pub async fn revoke(&self, jti: &str, ttl_seconds: i64) -> Result<()> {
         let key = format!("blacklist:{jti}");
-        self.redis
+        let _: () = self
+            .redis
             .set(
                 &key,
                 "1",

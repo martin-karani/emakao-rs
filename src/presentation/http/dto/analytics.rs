@@ -1,4 +1,3 @@
-// src/presentation/http/dto/analytics.rs
 //
 // Query parameters for analytics endpoints are defined directly
 // inside the handler file (analytics.rs) as `AnalyticsParams`,

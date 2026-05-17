@@ -5,7 +5,7 @@ use crate::{
     presentation::{
         app_state::AppState,
         http::{
-            dto::auth::{LoginDto, PortalLoginDto},
+            dto::auth::PortalLoginDto,
             handlers::auth::{
                 accept_invite, change_password, forgot_password, logout, portal_login, refresh,
                 reset_password, staff_login,

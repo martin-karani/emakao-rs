@@ -104,8 +104,7 @@ impl AgreementRepository for PgAgreementRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Agreement>, AppError> {
-        let rows = sqlx::query_as!(
-            AgreementRow,
+        let rows = sqlx::query_as::<_, AgreementRow>(
             r#"
             SELECT a.id, a.property_id, a.unit_id, a.resident_id,
                    a.start_date, a.end_date, a.rent_amount_kes, a.deposit_kes,
@@ -117,20 +116,20 @@ impl AgreementRepository for PgAgreementRepo {
             ORDER BY a.created_at DESC
             LIMIT $3 OFFSET $4
             "#,
-            agency_id,
-            property_id,
-            limit,
-            offset
         )
+        .bind(agency_id)
+        .bind(property_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(Agreement::from).collect())
     }
 
     async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Agreement>, AppError> {
-        let row = sqlx::query_as!(
-            AgreementRow,
+        let row = sqlx::query_as::<_, AgreementRow>(
             r#"
             SELECT a.id, a.property_id, a.unit_id, a.resident_id,
                    a.start_date, a.end_date, a.rent_amount_kes, a.deposit_kes,
@@ -139,11 +138,12 @@ impl AgreementRepository for PgAgreementRepo {
             JOIN properties p ON p.id = a.property_id
             WHERE a.id = $1 AND p.agency_id = $2
             "#,
-            id,
-            agency_id
         )
+        .bind(id)
+        .bind(agency_id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Agreement::from))
     }
@@ -159,8 +159,7 @@ impl AgreementRepository for PgAgreementRepo {
             BillingFrequency::OneTime => "one_time",
         };
 
-        let row = sqlx::query_as!(
-            AgreementRow,
+        let row = sqlx::query_as::<_, AgreementRow>(
             r#"
             INSERT INTO agreements (
                 id, property_id, unit_id, resident_id,
@@ -173,18 +172,19 @@ impl AgreementRepository for PgAgreementRepo {
                 start_date, end_date, rent_amount_kes, deposit_kes,
                 billing_frequency, status, created_at, updated_at
             "#,
-            Uuid::new_v4(),
-            cmd.property_id,
-            cmd.unit_id,
-            cmd.resident_id,
-            cmd.start_date,
-            cmd.end_date,
-            cmd.rent_amount_kes,
-            cmd.deposit_kes,
-            billing_str
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.property_id)
+        .bind(cmd.unit_id)
+        .bind(cmd.resident_id)
+        .bind(cmd.start_date)
+        .bind(cmd.end_date)
+        .bind(cmd.rent_amount_kes)
+        .bind(cmd.deposit_kes)
+        .bind(billing_str)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(Agreement::from(row))
     }
@@ -195,17 +195,18 @@ impl AgreementRepository for PgAgreementRepo {
         status: AgreementStatus,
         _updated_by: Uuid,
     ) -> Result<(), AppError> {
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             UPDATE agreements
             SET status = $2, updated_at = now()
             WHERE id = $1
             "#,
-            id,
-            status_str(&status)
         )
+        .bind(id)
+        .bind(status_str(&status))
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(format!("agreement {id}")));
@@ -214,18 +215,20 @@ impl AgreementRepository for PgAgreementRepo {
     }
 
     async fn has_active_agreement(&self, unit_id: Uuid) -> Result<bool, AppError> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT EXISTS(
                 SELECT 1 FROM agreements
                 WHERE unit_id = $1 AND status = 'active'
             ) AS exists
             "#,
-            unit_id
         )
+        .bind(unit_id)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        Ok(row.exists.unwrap_or(false))
+        use sqlx::Row;
+        Ok(row.get::<Option<bool>, _>("exists").unwrap_or(false))
     }
 }

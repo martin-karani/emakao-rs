@@ -1,5 +1,3 @@
-// src/application/use_cases/disbursement/mod.rs
-
 pub mod create_disbursement;
 pub mod get_disbursement;
 pub mod initiate_payout;

@@ -1,5 +1,3 @@
-// src/presentation/http/routes/upload_routes.rs
-
 use axum::{routing::post, Router};
 
 use crate::presentation::{app_state::AppState, http::handlers::upload::upload_file};

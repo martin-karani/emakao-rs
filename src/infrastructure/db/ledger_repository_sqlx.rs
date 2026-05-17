@@ -1,5 +1,3 @@
-// src/infrastructure/db/ledger_repository_sqlx.rs
-
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -60,10 +58,7 @@ struct LedgerEntryRow {
 #[async_trait]
 impl LedgerRepository for PgLedgerRepo {
     async fn create(&self, cmd: CreateLedgerEntryCommand) -> Result<LedgerEntry, AppError> {
-        // Insert with explicit casting of the entry_type (the Rust enum is automatically
-        // mapped to the DB enum because of `#[sqlx(type_name = "ledger_entry_type")]`).
-        let row = sqlx::query_as!(
-            LedgerEntryRow,
+        let row = sqlx::query_as::<_, LedgerEntryRow>(
             r#"
                 INSERT INTO ledger_entries (
                     id, agreement_id, unit_id, resident_id, owner_id,
@@ -73,29 +68,30 @@ impl LedgerRepository for PgLedgerRepo {
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                 RETURNING
                     id, agreement_id, unit_id, resident_id, owner_id,
-                    entry_type AS "entry_type: LedgerEntryType",
+                    entry_type,
                     amount_kes, description, external_ref,
                     mpesa_receipt, period_start, period_end, posted_by,
                     posted_at, is_reconciled,
-                    metadata AS "metadata: serde_json::Value"
+                    metadata
                 "#,
-            Uuid::new_v4(),
-            cmd.agreement_id,
-            cmd.unit_id,
-            cmd.resident_id,
-            cmd.owner_id,
-            cmd.entry_type as LedgerEntryType, // use the enum directly
-            cmd.amount_kes,
-            cmd.description,
-            cmd.external_ref,
-            cmd.mpesa_receipt,
-            cmd.period_start,
-            cmd.period_end,
-            cmd.posted_by,
-            sqlx::types::Json(cmd.metadata),
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.agreement_id)
+        .bind(cmd.unit_id)
+        .bind(cmd.resident_id)
+        .bind(cmd.owner_id)
+        .bind(cmd.entry_type)
+        .bind(cmd.amount_kes)
+        .bind(cmd.description)
+        .bind(cmd.external_ref)
+        .bind(cmd.mpesa_receipt)
+        .bind(cmd.period_start)
+        .bind(cmd.period_end)
+        .bind(cmd.posted_by)
+        .bind(cmd.metadata)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(LedgerEntry {
             id: row.id,
@@ -123,27 +119,27 @@ impl LedgerRepository for PgLedgerRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<LedgerEntry>, AppError> {
-        let rows = sqlx::query_as!(
-            LedgerEntryRow,
+        let rows = sqlx::query_as::<_, LedgerEntryRow>(
             r#"
                 SELECT
                     id, agreement_id, unit_id, resident_id, owner_id,
-                    entry_type AS "entry_type: LedgerEntryType",
+                    entry_type,
                     amount_kes, description, external_ref,
                     mpesa_receipt, period_start, period_end, posted_by,
                     posted_at, is_reconciled,
-                    metadata AS "metadata: serde_json::Value"
+                    metadata
                 FROM ledger_entries
                 WHERE agreement_id = $1
                 ORDER BY posted_at DESC
                 LIMIT $2 OFFSET $3
                 "#,
-            agreement_id,
-            limit,
-            offset
         )
+        .bind(agreement_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows
             .into_iter()
@@ -170,7 +166,7 @@ impl LedgerRepository for PgLedgerRepo {
 
     async fn balance_for_agreement(&self, agreement_id: Uuid) -> Result<BalanceSummary, AppError> {
         // Use the correct enum strings directly in the FILTER clause.
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
                 SELECT
                     COALESCE(SUM(amount_kes) FILTER (
@@ -182,7 +178,7 @@ impl LedgerRepository for PgLedgerRepo {
                             'waiver'::ledger_entry_type,
                             'deposit_refund'::ledger_entry_type
                         )
-                    ), 0)  AS "total_charged!: Decimal",
+                    ), 0)  AS total_charged,
 
                     COALESCE(SUM(amount_kes) FILTER (
                         WHERE entry_type IN (
@@ -193,7 +189,7 @@ impl LedgerRepository for PgLedgerRepo {
                             'waiver'::ledger_entry_type,
                             'deposit_refund'::ledger_entry_type
                         )
-                    ), 0)  AS "total_paid!: Decimal",
+                    ), 0)  AS total_paid,
 
                     MAX(posted_at) FILTER (
                         WHERE entry_type IN (
@@ -206,17 +202,23 @@ impl LedgerRepository for PgLedgerRepo {
                 FROM ledger_entries
                 WHERE agreement_id = $1
                 "#,
-            agreement_id
         )
+        .bind(agreement_id)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        use sqlx::Row;
+        let total_charged: Decimal = row.get("total_charged");
+        let total_paid: Decimal = row.get("total_paid");
+        let last_payment_at: Option<time::OffsetDateTime> = row.get("last_payment_at");
 
         Ok(BalanceSummary {
             agreement_id,
-            total_charged: row.total_charged,
-            total_paid: row.total_paid,
-            outstanding: row.total_charged - row.total_paid,
-            last_payment_at: row.last_payment_at,
+            total_charged,
+            total_paid,
+            outstanding: total_charged - total_paid,
+            last_payment_at,
         })
     }
 }

@@ -1,5 +1,3 @@
-// src/application/use_cases/disbursement/list_disbursements.rs
-
 use std::sync::Arc;
 use uuid::Uuid;
 

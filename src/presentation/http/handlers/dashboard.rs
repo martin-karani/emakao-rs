@@ -1,5 +1,3 @@
-// src/presentation/http/handlers/dashboard.rs
-
 use std::sync::Arc;
 
 use axum::{

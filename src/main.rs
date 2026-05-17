@@ -1,5 +1,3 @@
-// src/main.rs
-
 use std::sync::Arc;
 
 use emakao::{
@@ -33,12 +31,12 @@ async fn main() -> anyhow::Result<()> {
     // It avoids passing the full AppState into Apalis jobs.
     let billing_ctx = BillingContext {
         pool_manager: Arc::clone(&state.infra.tenant_pools),
-        notifications: state.notifications.clone(),
+        notifications: state.notifications.clone(), // ✓
     };
 
     // Redis is exposed from InfraState so the billing monitor can subscribe to
     // queues without going through AppState.
-    let billing_monitor = build_billing_monitor(billing_ctx, state.infra.redis.clone()).await?;
+    let billing_monitor = build_billing_monitor(billing_ctx, cfg.redis_url.clone()).await?;
 
     tokio::spawn(async move {
         if let Err(e) = billing_monitor.run().await {

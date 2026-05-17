@@ -27,7 +27,7 @@ use crate::{
     },
 };
 
-// ── Shared query params ───────────────────────────────────────────────────────
+// ── Query params ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct AnalyticsParams {
@@ -39,13 +39,14 @@ pub struct AnalyticsParams {
     pub property_id: Option<Uuid>,
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Feature gate ──────────────────────────────────────────────────────────────
 
-/// Require the `analytics` feature flag (Growth+ plans).
+/// Require the analytics feature (Growth+ plans).
+/// FIX: FeatureKey::Custom does not exist — use the nearest real key.
 fn require_analytics(sub: &ResolvedSubscription) -> Result<(), AppError> {
     if !sub
         .entitlements
-        .has_feature(&FeatureKey::Custom("analytics".to_string()))
+        .has_feature(&FeatureKey::ReportPortfolioSummary)
     {
         return Err(AppError::PlanUpgradeRequired);
     }
@@ -55,17 +56,14 @@ fn require_analytics(sub: &ResolvedSubscription) -> Result<(), AppError> {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 /// GET /api/v1/analytics/portfolio
-///
-/// Full portfolio analytics for a date range: occupancy, revenue, maintenance,
-/// and per-property performance. Requires the `analytics` feature flag (Growth+).
 #[utoipa::path(
     get,
     path = "/api/v1/analytics/portfolio",
     params(AnalyticsParams),
     responses(
         (status = 200, description = "Portfolio analytics"),
-        (status = 401, description = "Unauthorised",            body = ErrorResponse),
-        (status = 402, description = "Upgrade required",        body = ErrorResponse),
+        (status = 401, description = "Unauthorised",             body = ErrorResponse),
+        (status = 402, description = "Upgrade required",         body = ErrorResponse),
         (status = 403, description = "Insufficient permissions", body = ErrorResponse),
     ),
     tag = "Analytics",
@@ -89,9 +87,7 @@ pub async fn portfolio_analytics(
     require_analytics(&sub)?;
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
-    let uc = PortfolioAnalyticsUseCase { repo };
-
-    let result = uc
+    let result = PortfolioAnalyticsUseCase { repo }
         .execute(PortfolioAnalyticsInput {
             agency_id: ctx.agency.id,
             period_start: params.from,
@@ -104,8 +100,6 @@ pub async fn portfolio_analytics(
 }
 
 /// GET /api/v1/analytics/revenue
-///
-/// Month-by-month revenue report with totals. Requires `analytics` feature flag.
 #[utoipa::path(
     get,
     path = "/api/v1/analytics/revenue",
@@ -135,9 +129,7 @@ pub async fn revenue_report(
     require_analytics(&sub)?;
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
-    let uc = RevenueReportUseCase { repo };
-
-    let result = uc
+    let result = RevenueReportUseCase { repo }
         .execute(RevenueReportInput {
             agency_id: ctx.agency.id,
             period_start: params.from,
@@ -150,8 +142,6 @@ pub async fn revenue_report(
 }
 
 /// GET /api/v1/analytics/occupancy
-///
-/// Month-by-month occupancy trend. Requires `analytics` feature flag.
 #[utoipa::path(
     get,
     path = "/api/v1/analytics/occupancy",
@@ -181,9 +171,7 @@ pub async fn occupancy_trends(
     require_analytics(&sub)?;
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
-    let uc = OccupancyTrendUseCase { repo };
-
-    let result = uc
+    let result = OccupancyTrendUseCase { repo }
         .execute(OccupancyTrendInput {
             agency_id: ctx.agency.id,
             period_start: params.from,

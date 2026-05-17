@@ -31,21 +31,30 @@ pub async fn resolve_agency_context(
 
     let platform = state.infra.tenant_pools.platform();
 
-    let row = sqlx::query!(
+    let row = sqlx::query(
         r#"
-        SELECT id, name, slug, schema_name AS "schema_name!", fga_store_id
+        SELECT id, name, slug, schema_name, fga_store_id
         FROM   agencies
         WHERE  id     = $1
           AND  status = 'active'
         LIMIT 1
         "#,
-        user.agency_id
     )
+    .bind(user.agency_id)
     .fetch_optional(platform)
     .await;
 
     let row = match row {
-        Ok(Some(r)) => r,
+        Ok(Some(r)) => {
+            use sqlx::Row;
+            ResolvedAgency {
+                id: r.get("id"),
+                name: r.get("name"),
+                slug: r.get("slug"),
+                schema_name: r.get("schema_name"),
+                fga_store_id: r.get("fga_store_id"),
+            }
+        }
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
@@ -70,13 +79,7 @@ pub async fn resolve_agency_context(
         }
     };
 
-    req.extensions_mut().insert(ResolvedAgency {
-        id: row.id,
-        name: row.name,
-        slug: row.slug,
-        schema_name: row.schema_name,
-        fga_store_id: row.fga_store_id,
-    });
+    req.extensions_mut().insert(row);
     req.extensions_mut().insert(AgencyPool(tenant_pool));
 
     next.run(req).await

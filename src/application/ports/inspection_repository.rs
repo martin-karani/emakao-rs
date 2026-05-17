@@ -1,5 +1,3 @@
-// src/application/ports/inspection_repository.rs
-
 use async_trait::async_trait;
 use time::OffsetDateTime;
 use uuid::Uuid;

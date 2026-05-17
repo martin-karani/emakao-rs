@@ -1,5 +1,3 @@
-// src/infrastructure/db/billing_repository_sqlx.rs
-
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -11,7 +9,7 @@ use crate::{
         errors::AppError,
         ports::billing_repository::{BillingRepository, LateFeePolicy},
     },
-    domain::agreement::ActiveAgreementBillingView,
+    domain::billing::ActiveAgreementBillingView,
 };
 
 pub struct PgBillingRepo {
@@ -30,33 +28,65 @@ impl BillingRepository for PgBillingRepo {
         &self,
         _agency_id: Uuid,
     ) -> Result<Vec<ActiveAgreementBillingView>, AppError> {
-        // agency_id is already scoped by the per-agency connection pool —
-        // we just query the local schema.
-        let rows = sqlx::query_as!(
-            ActiveAgreementBillingView,
+        // We use a custom query since the struct has fields from both agreement and resident.
+        let rows = sqlx::query(
             r#"
             SELECT
                 a.id              AS agreement_id,
                 a.unit_id,
                 a.resident_id,
                 a.rent_amount_kes,
-                a.billing_day,
-                a.billing_frequency AS "billing_frequency: String",
+                a.billing_frequency,
                 a.start_date,
                 a.end_date,
                 r.email           AS resident_email,
                 r.phone           AS resident_phone,
-                r.full_name       AS resident_name
+                r.first_name      AS resident_first_name,
+                u.unit_number,
+                p.id              AS property_id
             FROM agreements a
             JOIN residents r ON r.id = a.resident_id
+            JOIN units     u ON u.id = a.unit_id
+            JOIN properties p ON p.id = a.property_id
             WHERE a.status = 'active'
               AND (a.end_date IS NULL OR a.end_date >= CURRENT_DATE)
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        Ok(rows)
+        use crate::domain::enums::BillingFrequency;
+        use sqlx::Row;
+
+        let mut results = Vec::new();
+        for r in rows {
+            let freq_str: String = r.get("billing_frequency");
+            let billing_frequency = match freq_str.as_str() {
+                "quarterly" => BillingFrequency::Quarterly,
+                "semi_annual" => BillingFrequency::SemiAnnual,
+                "annual" => BillingFrequency::Annual,
+                _ => BillingFrequency::Monthly,
+            };
+
+            results.push(ActiveAgreementBillingView {
+                agreement_id: r.get("agreement_id"),
+                agency_id: _agency_id,             // Passed in
+                schema_name: "public".to_string(), // Default if not known
+                unit_id: r.get("unit_id"),
+                resident_id: r.get("resident_id"),
+                rent_amount_kes: r.get("rent_amount_kes"),
+                billing_frequency,
+                start_date: r.get("start_date"),
+                end_date: r.get("end_date"),
+                resident_email: r.get("resident_email"),
+                resident_phone: r.get("resident_phone"),
+                resident_first_name: r.get("resident_first_name"),
+                unit_number: r.get("unit_number"),
+            });
+        }
+
+        Ok(results)
     }
 
     async fn rent_charge_exists(
@@ -64,13 +94,13 @@ impl BillingRepository for PgBillingRepo {
         agreement_id: Uuid,
         period_start: Date,
     ) -> Result<bool, AppError> {
-        let row = sqlx::query!(
-            "SELECT 1 AS exists FROM rent_charges WHERE agreement_id = $1 AND period_start = $2",
-            agreement_id,
-            period_start
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query("SELECT 1 FROM rent_charges WHERE agreement_id = $1 AND period_start = $2")
+                .bind(agreement_id)
+                .bind(period_start)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.is_some())
     }
@@ -82,20 +112,20 @@ impl BillingRepository for PgBillingRepo {
         period_end: Date,
         amount_kes: Decimal,
     ) -> Result<(), AppError> {
-        // ON CONFLICT DO NOTHING handles scheduler retries without error
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO rent_charges (id, agreement_id, period_start, period_end, amount_kes)
             VALUES (uuidv7(), $1, $2, $3, $4)
             ON CONFLICT (agreement_id, period_start) DO NOTHING
             "#,
-            agreement_id,
-            period_start,
-            period_end,
-            amount_kes
         )
+        .bind(agreement_id)
+        .bind(period_start)
+        .bind(period_end)
+        .bind(amount_kes)
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
@@ -105,13 +135,14 @@ impl BillingRepository for PgBillingRepo {
         agreement_id: Uuid,
         period_start: Date,
     ) -> Result<bool, AppError> {
-        let row = sqlx::query!(
-            "SELECT 1 AS e FROM late_fee_charges WHERE agreement_id = $1 AND period_start = $2",
-            agreement_id,
-            period_start
+        let row = sqlx::query(
+            "SELECT 1 FROM late_fee_charges WHERE agreement_id = $1 AND period_start = $2",
         )
+        .bind(agreement_id)
+        .bind(period_start)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.is_some())
     }
@@ -122,18 +153,19 @@ impl BillingRepository for PgBillingRepo {
         period_start: Date,
         amount_kes: Decimal,
     ) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO late_fee_charges (id, agreement_id, period_start, amount_kes)
             VALUES (uuidv7(), $1, $2, $3)
             ON CONFLICT (agreement_id, period_start) DO NOTHING
             "#,
-            agreement_id,
-            period_start,
-            amount_kes
         )
+        .bind(agreement_id)
+        .bind(period_start)
+        .bind(amount_kes)
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
@@ -143,7 +175,7 @@ impl BillingRepository for PgBillingRepo {
         agreement_id: Uuid,
         since: OffsetDateTime,
     ) -> Result<Decimal, AppError> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT COALESCE(SUM(amount_kes), 0) AS total
             FROM ledger_entries
@@ -151,13 +183,17 @@ impl BillingRepository for PgBillingRepo {
               AND entry_type   = 'payment'
               AND created_at  >= $2
             "#,
-            agreement_id,
-            since
         )
+        .bind(agreement_id)
+        .bind(since)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        Ok(row.total.unwrap_or(Decimal::ZERO))
+        use sqlx::Row;
+        Ok(row
+            .get::<Option<Decimal>, _>("total")
+            .unwrap_or(Decimal::ZERO))
     }
 
     async fn reminder_sent(
@@ -166,18 +202,19 @@ impl BillingRepository for PgBillingRepo {
         period_start: Date,
         channel: &str,
     ) -> Result<bool, AppError> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
-            SELECT 1 AS e
+            SELECT 1
             FROM rent_reminders_sent
             WHERE agreement_id = $1 AND period_start = $2 AND channel = $3
             "#,
-            agreement_id,
-            period_start,
-            channel
         )
+        .bind(agreement_id)
+        .bind(period_start)
+        .bind(channel)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.is_some())
     }
@@ -188,39 +225,42 @@ impl BillingRepository for PgBillingRepo {
         period_start: Date,
         channel: &str,
     ) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO rent_reminders_sent (id, agreement_id, period_start, channel)
             VALUES (uuidv7(), $1, $2, $3)
             ON CONFLICT (agreement_id, period_start, channel) DO NOTHING
             "#,
-            agreement_id,
-            period_start,
-            channel
         )
+        .bind(agreement_id)
+        .bind(period_start)
+        .bind(channel)
         .execute(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
 
     async fn load_late_fee_policy(&self) -> Result<LateFeePolicy, AppError> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT grace_period_days, flat_amount_kes, rate_percent
             FROM late_fee_policy
             ORDER BY created_at ASC
             LIMIT 1
-            "#
+            "#,
         )
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
+        use sqlx::Row;
         Ok(match row {
             Some(r) => LateFeePolicy {
-                grace_period_days: r.grace_period_days,
-                flat_amount_kes: r.flat_amount_kes,
-                rate_percent: r.rate_percent,
+                grace_period_days: r.get("grace_period_days"),
+                flat_amount_kes: r.get("flat_amount_kes"),
+                rate_percent: r.get("rate_percent"),
             },
             None => LateFeePolicy {
                 grace_period_days: 5,

@@ -180,18 +180,17 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         &self,
         agency_id: Uuid,
     ) -> Result<Option<AgencyEntitlements>, AppError> {
-        let feature_rows: Vec<FeatureRow> = sqlx::query_as!(
-            FeatureRow,
+        let feature_rows: Vec<FeatureRow> = sqlx::query_as::<_, FeatureRow>(
             r#"
             SELECT
-                COALESCE(fo.feature_key, pf.feature_key)  AS "feature_key!",
-                COALESCE(pf.value_type, 'boolean')        AS "value_type!",
-                COALESCE(fo.value, pf.value)              AS "value!",
+                COALESCE(fo.feature_key, pf.feature_key)  AS feature_key,
+                COALESCE(pf.value_type, 'boolean')        AS value_type,
+                COALESCE(fo.value, pf.value)              AS value,
                 CASE
                     WHEN fo.id IS NOT NULL THEN (fo.value = 'true')
                     ELSE pf.enabled
-                END                                       AS "enabled!",
-                (fo.id IS NOT NULL)                       AS "is_override!"
+                END                                       AS enabled,
+                (fo.id IS NOT NULL)                       AS is_override
             FROM subscriptions s
             JOIN subscription_plans sp  ON sp.id = s.plan_id
             JOIN plan_features      pf  ON pf.plan_id = sp.id
@@ -202,8 +201,8 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             WHERE s.agency_id = $1
               AND s.status IN ('active', 'trialing')
             "#,
-            agency_id
         )
+        .bind(agency_id)
         .fetch_all(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -212,19 +211,18 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             return Ok(None);
         }
 
-        let limit_rows: Vec<LimitRow> = sqlx::query_as!(
-            LimitRow,
+        let limit_rows: Vec<LimitRow> = sqlx::query_as::<_, LimitRow>(
             r#"
-            SELECT pl.limit_key  AS "limit_key!",
-                   pl.max_value  AS "max_value!"
+            SELECT pl.limit_key  AS limit_key,
+                   pl.max_value  AS max_value
             FROM subscriptions s
             JOIN subscription_plans sp ON sp.id = s.plan_id
             JOIN plan_limits        pl ON pl.plan_id = sp.id
             WHERE s.agency_id = $1
               AND s.status IN ('active', 'trialing')
             "#,
-            agency_id
         )
+        .bind(agency_id)
         .fetch_all(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -261,12 +259,11 @@ impl SubscriptionRepository for PgSubscriptionRepo {
     // ── State ────────────────────────────────────────────────────────────────
 
     async fn get_state(&self, agency_id: Uuid) -> Result<Option<SubscriptionState>, AppError> {
-        let row = sqlx::query_as!(
-            StateRow,
+        let row = sqlx::query_as::<_, StateRow>(
             r#"
-            SELECT s.status::TEXT              AS "status!",
-                   sp.slug              AS "plan_slug!",
-                   sp.name              AS "plan_name!",
+            SELECT s.status::TEXT              AS status,
+                   sp.slug              AS plan_slug,
+                   sp.name              AS plan_name,
                    s.trial_ends_at,
                    s.current_period_end,
                    s.grace_period_ends_at
@@ -276,8 +273,8 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             ORDER BY s.created_at DESC
             LIMIT 1
             "#,
-            agency_id
         )
+        .bind(agency_id)
         .fetch_optional(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -320,16 +317,15 @@ impl SubscriptionRepository for PgSubscriptionRepo {
     // ── Plans ────────────────────────────────────────────────────────────────
 
     async fn list_plans(&self) -> Result<Vec<SubscriptionPlan>, AppError> {
-        let rows: Vec<PlanRow> = sqlx::query_as!(
-            PlanRow,
+        let rows = sqlx::query_as::<_, PlanRow>(
             r#"
             SELECT id, slug, name, description, price_kes, yearly_price_kes,
-                   interval, is_active, is_public, sort_order, trial_days,
+                   interval::text AS interval, is_active, is_public, sort_order, trial_days,
                    metadata, created_at, updated_at
             FROM subscription_plans
             WHERE is_active = true AND is_public = true
             ORDER BY sort_order ASC
-            "#
+            "#,
         )
         .fetch_all(&self.platform)
         .await
@@ -339,16 +335,15 @@ impl SubscriptionRepository for PgSubscriptionRepo {
     }
 
     async fn get_plan_by_slug(&self, slug: &str) -> Result<Option<SubscriptionPlan>, AppError> {
-        let row = sqlx::query_as!(
-            PlanRow,
+        let row = sqlx::query_as::<_, PlanRow>(
             r#"
             SELECT id, slug, name, description, price_kes, yearly_price_kes,
-                   interval, is_active, is_public, sort_order, trial_days,
+                   interval::text AS interval, is_active, is_public, sort_order, trial_days,
                    metadata, created_at, updated_at
             FROM subscription_plans WHERE slug = $1
             "#,
-            slug
         )
+        .bind(slug)
         .fetch_optional(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -366,11 +361,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         mpesa_ref: Option<&str>,
         custom_price: Option<i32>,
     ) -> Result<(), AppError> {
-        // Double-cast $3::text::subscription_status:
-        //   - ::text  tells sqlx the parameter is a plain string (has a built-in mapping)
-        //   - ::subscription_status  tells Postgres to cast that text to the enum
-        // Using $3::subscription_status alone fails because sqlx has no Rust↔enum mapping.
-        sqlx::query!(
+        sqlx::query(
             r#"
             UPDATE subscriptions s
             SET plan_id               = sp.id,
@@ -385,17 +376,17 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             WHERE sp.slug     = $2
               AND s.agency_id = $1
             "#,
-            agency_id,
-            plan_slug,
-            status,
-            mpesa_ref,
-            custom_price
         )
+        .bind(agency_id)
+        .bind(plan_slug)
+        .bind(status)
+        .bind(mpesa_ref)
+        .bind(custom_price)
         .execute(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             UPDATE subscriptions
             SET plan_tier = CASE $1::text
@@ -406,9 +397,9 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             END
             WHERE agency_id = $2::uuid
             "#,
-            plan_slug,
-            agency_id
         )
+        .bind(plan_slug)
+        .bind(agency_id)
         .execute(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -421,7 +412,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         agency_id: Uuid,
         reason: Option<&str>,
     ) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             UPDATE subscriptions
             SET status               = 'cancelled',
@@ -432,9 +423,9 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             WHERE agency_id = $1
               AND status NOT IN ('cancelled')
             "#,
-            agency_id,
-            reason
         )
+        .bind(agency_id)
+        .bind(reason)
         .execute(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -450,12 +441,12 @@ impl SubscriptionRepository for PgSubscriptionRepo {
     /// caches the pool in `TenantPoolManager`'s DashMap for all future calls.
     async fn count_tenant_rows(&self, agency_id: Uuid, table_name: &str) -> Result<i32, AppError> {
         let pool = self.tenant_pool(agency_id).await?;
-        let row = sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM {table_name}"))
+        let row: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {table_name}"))
             .fetch_one(&pool)
             .await
             .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        Ok(row as i32)
+        Ok(row.0 as i32)
     }
 
     async fn count_platform_rows(
@@ -463,7 +454,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         agency_id: Uuid,
         table_name: &str,
     ) -> Result<i32, AppError> {
-        let row = sqlx::query_scalar::<_, i64>(&format!(
+        let row: (i64,) = sqlx::query_as(&format!(
             "SELECT COUNT(*) FROM {table_name} WHERE agency_id = $1"
         ))
         .bind(agency_id)
@@ -471,7 +462,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        Ok(row as i32)
+        Ok(row.0 as i32)
     }
 
     async fn check_limit_with_result(
@@ -480,7 +471,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         limit_key: &str,
         current_count: i32,
     ) -> Result<LimitCheckResult, AppError> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT pl.max_value, pl.soft_limit
             FROM subscriptions s
@@ -490,17 +481,24 @@ impl SubscriptionRepository for PgSubscriptionRepo {
               AND pl.limit_key = $2
               AND s.status IN ('active', 'trialing')
             "#,
-            agency_id,
-            limit_key
         )
+        .bind(agency_id)
+        .bind(limit_key)
         .fetch_optional(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        let (max, soft) = row
-            .map(|r| (r.max_value, r.soft_limit))
-            .unwrap_or((0, None));
-        let threshold = soft.unwrap_or_else(|| -> i32 { (max as f64 * 0.9) as i32 });
+        use sqlx::Row;
+        let (max, soft) = if let Some(r) = row {
+            (
+                r.get::<i32, _>("max_value"),
+                r.get::<Option<i32>, _>("soft_limit"),
+            )
+        } else {
+            (0, None)
+        };
+
+        let threshold = soft.unwrap_or_else(|| (max as f64 * 0.9) as i32);
 
         Ok(LimitCheckResult {
             allowed: max == -1 || current_count < max,
@@ -521,7 +519,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         created_by: Option<Uuid>,
         expires_at: Option<OffsetDateTime>,
     ) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO feature_overrides
                 (agency_id, feature_key, value, reason, created_by, expires_at)
@@ -532,13 +530,13 @@ impl SubscriptionRepository for PgSubscriptionRepo {
                     created_by = EXCLUDED.created_by,
                     expires_at = EXCLUDED.expires_at
             "#,
-            agency_id,
-            feature_key,
-            value,
-            reason,
-            created_by,
-            expires_at
         )
+        .bind(agency_id)
+        .bind(feature_key)
+        .bind(value)
+        .bind(reason)
+        .bind(created_by)
+        .bind(expires_at)
         .execute(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -550,14 +548,12 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         agency_id: Uuid,
         feature_key: &str,
     ) -> Result<(), AppError> {
-        sqlx::query!(
-            "DELETE FROM feature_overrides WHERE agency_id = $1 AND feature_key = $2",
-            agency_id,
-            feature_key
-        )
-        .execute(&self.platform)
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        sqlx::query("DELETE FROM feature_overrides WHERE agency_id = $1 AND feature_key = $2")
+            .bind(agency_id)
+            .bind(feature_key)
+            .execute(&self.platform)
+            .await
+            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
         Ok(())
     }
 
@@ -569,8 +565,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<SubscriptionInvoice>, AppError> {
-        let rows: Vec<InvoiceRow> = sqlx::query_as!(
-            InvoiceRow,
+        let rows: Vec<InvoiceRow> = sqlx::query_as::<_, InvoiceRow>(
             r#"
             SELECT id, agency_subscription_id, agency_id, amount_kes, status,
                    due_date, paid_at, mpesa_ref, mpesa_phone, receipt_url,
@@ -580,10 +575,10 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
             "#,
-            agency_id,
-            limit,
-            offset
         )
+        .bind(agency_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -614,15 +609,15 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         mpesa_ref: &str,
         mpesa_phone: Option<&str>,
     ) -> Result<Uuid, AppError> {
-        let sub_id: Uuid = sqlx::query_scalar!(
+        let sub_id: Uuid = sqlx::query_scalar::<_, Uuid>(
             "SELECT id FROM subscriptions WHERE agency_id = $1 ORDER BY created_at DESC LIMIT 1",
-            agency_id
         )
+        .bind(agency_id)
         .fetch_one(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        let invoice_id: Uuid = sqlx::query_scalar!(
+        let invoice_id: Uuid = sqlx::query_scalar::<_, Uuid>(
             r#"
             INSERT INTO subscription_invoices
                 (agency_subscription_id, agency_id, amount_kes, status, due_date, paid_at,
@@ -630,17 +625,17 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             VALUES ($1, $2, $3, 'paid', now(), now(), $4, $5)
             RETURNING id
             "#,
-            sub_id,
-            agency_id,
-            amount_kes,
-            mpesa_ref,
-            mpesa_phone
         )
+        .bind(sub_id)
+        .bind(agency_id)
+        .bind(amount_kes)
+        .bind(mpesa_ref)
+        .bind(mpesa_phone)
         .fetch_one(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             UPDATE subscriptions
             SET status                = 'active',
@@ -652,9 +647,9 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             WHERE agency_id = $1
               AND status IN ('past_due', 'trialing', 'active')
             "#,
-            agency_id,
-            mpesa_ref
         )
+        .bind(agency_id)
+        .bind(mpesa_ref)
         .execute(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -672,19 +667,19 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         checkout_request_id: &str,
         merchant_request_id: &str,
     ) -> Result<(), AppError> {
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO pending_mpesa_subscription_requests
                 (agency_id, plan_slug, amount_kes, checkout_request_id, merchant_request_id)
             VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (checkout_request_id) DO NOTHING
             "#,
-            agency_id,
-            plan_slug,
-            amount_kes,
-            checkout_request_id,
-            merchant_request_id,
         )
+        .bind(agency_id)
+        .bind(plan_slug)
+        .bind(amount_kes)
+        .bind(checkout_request_id)
+        .bind(merchant_request_id)
         .execute(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -696,19 +691,25 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         &self,
         checkout_request_id: &str,
     ) -> Result<Option<(Uuid, String)>, AppError> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             DELETE FROM pending_mpesa_subscription_requests
             WHERE checkout_request_id = $1
               AND expires_at > now()
             RETURNING agency_id, plan_slug
             "#,
-            checkout_request_id,
         )
+        .bind(checkout_request_id)
         .fetch_optional(&self.platform)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        Ok(row.map(|r| (r.agency_id, r.plan_slug)))
+        use sqlx::Row;
+        Ok(row.map(|r| {
+            (
+                r.get::<Uuid, _>("agency_id"),
+                r.get::<String, _>("plan_slug"),
+            )
+        }))
     }
 }

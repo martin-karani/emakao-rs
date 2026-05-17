@@ -1,5 +1,3 @@
-// src/application/ports/document_repository.rs
-
 use async_trait::async_trait;
 use uuid::Uuid;
 

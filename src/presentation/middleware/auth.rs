@@ -6,10 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::{
-    domain::auth::AuthenticatedUser, infrastructure::cache::token_blacklist::TokenBlacklist,
-    presentation::app_state::AppState,
-};
+use crate::{domain::auth::AuthenticatedUser, presentation::app_state::AppState};
 
 pub async fn require_auth(
     State(state): State<AppState>,
@@ -29,10 +26,10 @@ pub async fn require_auth(
     };
 
     // ── 2. Decode & validate JWT ───────────────────────────────────────────────
-    let claims = match state.jwt.decode(&token) {
+    let claims = match state.jwt.verify_token(&token) {
         Ok(c) => c,
         Err(e) => {
-            tracing::debug!(err = %e, "JWT decode failed");
+            tracing::debug!(err = %e, "JWT verification failed");
             return (StatusCode::UNAUTHORIZED, "invalid or expired token").into_response();
         }
     };
@@ -56,9 +53,10 @@ pub async fn require_auth(
         user_id: claims.sub,
         agency_id: claims.agency_id,
         role: claims.role,
-        portal: claims.portal_type,
+        portal: claims.portal,
     };
 
     req.extensions_mut().insert(user);
+    req.extensions_mut().insert(token);
     next.run(req).await
 }

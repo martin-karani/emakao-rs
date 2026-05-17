@@ -1,7 +1,6 @@
-// src/application/use_cases/accounting/create_account.rs
-
 use std::sync::Arc;
 
+use rust_decimal::Decimal;
 use uuid::Uuid;
 
 use crate::{
@@ -14,6 +13,8 @@ pub struct CreateAccountInput {
     pub code: String,
     pub name: String,
     pub account_type: AccountType,
+    pub vat_applicable: bool,
+    pub vat_rate: Option<Decimal>,
 }
 
 pub struct CreateAccountUseCase {
@@ -36,6 +37,8 @@ impl CreateAccountUseCase {
                 name: input.name.trim().to_string(),
                 account_type: input.account_type,
                 is_system: false, // only provisioning code sets this to true
+                vat_applicable: input.vat_applicable,
+                vat_rate: input.vat_rate,
             })
             .await
     }

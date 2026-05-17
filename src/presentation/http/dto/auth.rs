@@ -1,5 +1,5 @@
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]

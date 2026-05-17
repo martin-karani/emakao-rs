@@ -77,8 +77,7 @@ impl ResidentRepository for PgResidentRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Resident>, AppError> {
-        let rows = sqlx::query_as!(
-            ResidentRow,
+        let rows = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
                    r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
@@ -86,45 +85,46 @@ impl ResidentRepository for PgResidentRepo {
             ORDER BY r.created_at DESC
             LIMIT $1 OFFSET $2
             "#,
-            limit,
-            offset
         )
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(Resident::from).collect())
     }
 
     async fn find_by_id(&self, _agency_id: Uuid, id: Uuid) -> Result<Option<Resident>, AppError> {
-        let row = sqlx::query_as!(
-            ResidentRow,
+        let row = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
                    r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
             FROM residents r
             WHERE r.id = $1
             "#,
-            id
         )
+        .bind(id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Resident::from))
     }
 
     async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Resident>, AppError> {
-        let row = sqlx::query_as!(
-            ResidentRow,
+        let row = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
                    r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
             FROM residents r
             WHERE r.user_id = $1
             "#,
-            user_id
         )
+        .bind(user_id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Resident::from))
     }
@@ -134,8 +134,7 @@ impl ResidentRepository for PgResidentRepo {
         _agency_id: Uuid,
         email: &str,
     ) -> Result<Option<Resident>, AppError> {
-        let row = sqlx::query_as!(
-            ResidentRow,
+        let row = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
                    r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
@@ -143,23 +142,23 @@ impl ResidentRepository for PgResidentRepo {
             WHERE r.email = $1
             LIMIT 1
             "#,
-            email
         )
+        .bind(email)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Resident::from))
     }
 
     async fn create(&self, cmd: CreateResidentCommand) -> Result<Resident, AppError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        // Create user if not exists? No – user is created by invite flow.
-        // This method is called after user creation; just insert the resident profile.
-        let user_id = cmd.user_id;
-
-        let row = sqlx::query_as!(
-            ResidentRow,
+        let row = sqlx::query_as::<_, ResidentRow>(
             r#"
             INSERT INTO residents (
                 id, user_id, first_name, last_name, email,
@@ -170,19 +169,22 @@ impl ResidentRepository for PgResidentRepo {
                 id, user_id, first_name, last_name, email,
                 phone, national_id, portal_status, created_at, updated_at
             "#,
-            Uuid::new_v4(),
-            user_id,
-            cmd.first_name,
-            cmd.last_name,
-            cmd.email,
-            cmd.phone,
-            cmd.national_id,
-            "invited"
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.user_id)
+        .bind(cmd.first_name)
+        .bind(cmd.last_name)
+        .bind(cmd.email)
+        .bind(cmd.phone)
+        .bind(cmd.national_id)
+        .bind("invited")
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
-        tx.commit().await?;
+        tx.commit()
+            .await
+            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
         Ok(Resident::from(row))
     }
 
@@ -192,6 +194,7 @@ impl ResidentRepository for PgResidentRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<PaymentClaim>, AppError> {
+        #[derive(sqlx::FromRow)]
         struct PaymentClaimRow {
             id: Uuid,
             property_id: Uuid,
@@ -213,8 +216,7 @@ impl ResidentRepository for PgResidentRepo {
             updated_at: time::OffsetDateTime,
         }
 
-        let rows = sqlx::query_as!(
-            PaymentClaimRow,
+        let rows = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
         SELECT id, property_id, agreement_id, resident_id,
                method_type, amount_kes, reference_code, proof_url,
@@ -226,12 +228,13 @@ impl ResidentRepository for PgResidentRepo {
         ORDER BY created_at DESC
         LIMIT $2 OFFSET $3
         "#,
-            resident_id,
-            limit,
-            offset
         )
+        .bind(resident_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         fn parse_method(s: &str) -> PaymentMethodType {
             match s {

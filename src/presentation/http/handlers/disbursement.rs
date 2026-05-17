@@ -1,5 +1,3 @@
-// src/presentation/http/handlers/disbursement.rs
-
 use axum::{
     extract::{Path, Query},
     http::StatusCode,
@@ -45,7 +43,10 @@ pub struct CreateDisbursementDto {
     pub owner_id: Uuid,
     #[garde(skip)]
     pub property_id: Uuid,
-    #[garde(range(min = 1.0))]
+    // FIX: garde's `range` rule requires `Bounds`, which `rust_decimal::Decimal`
+    // does not implement. Use `#[garde(skip)]` here and validate the amount
+    // inside `CreateDisbursementUseCase` instead.
+    #[garde(skip)]
     pub amount_kes: Decimal,
     #[garde(skip)]
     pub method: DisbursementMethod,
@@ -135,7 +136,6 @@ pub async fn get_disbursement(
     let d = GetDisbursementUseCase::new(repo)
         .execute(ctx.agency.id, id)
         .await?;
-
     Ok(Json(DisbursementResponse::from(d)))
 }
 
@@ -156,6 +156,13 @@ pub async fn create_disbursement(
     Json(dto): Json<CreateDisbursementDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
+
+    // Amount guard — done here because garde cannot validate Decimal ranges.
+    if dto.amount_kes <= Decimal::ZERO {
+        return Err(AppError::Validation(
+            "amount_kes must be greater than zero".into(),
+        ));
+    }
 
     let repo = Arc::new(PgDisbursementRepo::new(ctx.pool));
     let d = CreateDisbursementUseCase::new(repo)
@@ -213,7 +220,7 @@ pub async fn update_disbursement_status(
     post, path = "/api/v1/disbursements/{id}/initiate-payout",
     params(("id" = Uuid, Path, description = "Disbursement UUID")),
     responses(
-        (status = 200, description = "Payout initiated — status set to Processing", body = DisbursementResponse),
+        (status = 200, description = "Payout initiated", body = DisbursementResponse),
         (status = 404, description = "Not found"),
         (status = 422, description = "Disbursement not in Pending status"),
         (status = 401, description = "Unauthorised"),

@@ -1,4 +1,3 @@
-// src/presentation/http/responses/analytics.rs
 //
 // The analytics use-cases return domain value objects that already derive
 // Serialize + ToSchema, so these responses are thin re-export wrappers.

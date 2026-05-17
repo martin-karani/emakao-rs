@@ -1,5 +1,3 @@
-// src/application/use_cases/invoice/list_invoices.rs
-
 use std::sync::Arc;
 use uuid::Uuid;
 

@@ -1,4 +1,3 @@
-// src/application/use_cases/document/upload_document.rs
 //
 // Upload a file and persist it to the `documents` table in one atomic operation:
 //   1. Validate MIME type and file size (shared helpers — same policy everywhere).

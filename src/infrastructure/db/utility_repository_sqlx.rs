@@ -158,18 +158,18 @@ impl From<BillRow> for UtilityBill {
 #[async_trait]
 impl UtilityRepository for PgUtilityRepo {
     async fn find_meter_by_id(&self, id: Uuid) -> Result<Option<UtilityMeter>, AppError> {
-        let row = sqlx::query_as!(
-            MeterRow,
+        let row = sqlx::query_as::<_, MeterRow>(
             r#"
             SELECT id, unit_id, meter_type, billing_mode,
                    meter_number, rate_per_unit, created_at
             FROM utility_meters
             WHERE id = $1
             "#,
-            id
         )
+        .bind(id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(UtilityMeter::from))
     }
@@ -185,7 +185,8 @@ impl UtilityRepository for PgUtilityRepo {
         )
         .bind(unit_id)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(UtilityMeter::from).collect())
     }
@@ -214,14 +215,14 @@ impl UtilityRepository for PgUtilityRepo {
         .bind(limit)
         .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(UtilityBill::from).collect())
     }
 
     async fn create_meter(&self, cmd: CreateMeterCommand) -> Result<UtilityMeter, AppError> {
-        let row = sqlx::query_as!(
-            MeterRow,
+        let row = sqlx::query_as::<_, MeterRow>(
             r#"
             INSERT INTO utility_meters (
                 id, unit_id, meter_type, billing_mode, meter_number, rate_per_unit
@@ -230,15 +231,16 @@ impl UtilityRepository for PgUtilityRepo {
             RETURNING id, unit_id, meter_type, billing_mode,
                       meter_number, rate_per_unit, created_at
             "#,
-            Uuid::new_v4(),
-            cmd.unit_id,
-            meter_type_str(&cmd.meter_type),
-            billing_mode_str(&cmd.billing_mode),
-            cmd.meter_number,
-            cmd.rate_per_unit
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.unit_id)
+        .bind(meter_type_str(&cmd.meter_type))
+        .bind(billing_mode_str(&cmd.billing_mode))
+        .bind(cmd.meter_number)
+        .bind(cmd.rate_per_unit)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(UtilityMeter::from(row))
     }
@@ -247,27 +249,26 @@ impl UtilityRepository for PgUtilityRepo {
         &self,
         cmd: CreateMeterReadingCommand,
     ) -> Result<MeterReading, AppError> {
-        let row = sqlx::query_as!(
-            ReadingRow,
+        let row = sqlx::query_as::<_, ReadingRow>(
             r#"
             INSERT INTO meter_readings (id, meter_id, reading_value, recorded_by)
             VALUES ($1, $2, $3, $4)
             RETURNING id, meter_id, reading_value, read_at, recorded_by
             "#,
-            Uuid::new_v4(),
-            cmd.meter_id,
-            cmd.reading_value,
-            cmd.recorded_by
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.meter_id)
+        .bind(cmd.reading_value)
+        .bind(cmd.recorded_by)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(MeterReading::from(row))
     }
 
     async fn last_two_readings(&self, meter_id: Uuid) -> Result<Vec<MeterReading>, AppError> {
-        let rows = sqlx::query_as!(
-            ReadingRow,
+        let rows = sqlx::query_as::<_, ReadingRow>(
             r#"
             SELECT id, meter_id, reading_value, read_at, recorded_by
             FROM meter_readings
@@ -275,17 +276,17 @@ impl UtilityRepository for PgUtilityRepo {
             ORDER BY read_at DESC
             LIMIT 2
             "#,
-            meter_id
         )
+        .bind(meter_id)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(MeterReading::from).collect())
     }
 
     async fn create_bill(&self, bill: UtilityBill) -> Result<UtilityBill, AppError> {
-        let row = sqlx::query_as!(
-            BillRow,
+        let row = sqlx::query_as::<_, BillRow>(
             r#"
             INSERT INTO utility_bills (
                 id, meter_id, unit_id, units_consumed, amount_kes, status
@@ -293,14 +294,15 @@ impl UtilityRepository for PgUtilityRepo {
             VALUES ($1, $2, $3, $4, $5, 'draft')
             RETURNING id, meter_id, unit_id, units_consumed, amount_kes, status, created_at
             "#,
-            bill.id,
-            bill.meter_id,
-            bill.unit_id,
-            bill.units_consumed,
-            bill.amount_kes
         )
+        .bind(bill.id)
+        .bind(bill.meter_id)
+        .bind(bill.unit_id)
+        .bind(bill.units_consumed)
+        .bind(bill.amount_kes)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(UtilityBill::from(row))
     }

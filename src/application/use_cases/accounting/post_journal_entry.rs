@@ -1,4 +1,3 @@
-// src/application/use_cases/accounting/post_journal_entry.rs
 //
 // Business rules enforced here (not in the DB or handler):
 //   1. An entry must have at least two lines.

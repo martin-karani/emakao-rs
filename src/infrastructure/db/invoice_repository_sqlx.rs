@@ -1,5 +1,3 @@
-// src/infrastructure/db/invoice_repository_sqlx.rs
-
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -96,12 +94,11 @@ impl InvoiceRepository for PgInvoiceRepo {
         agency_id: Uuid,
         filter: InvoiceFilter,
     ) -> Result<Vec<Invoice>, AppError> {
-        let rows = sqlx::query_as!(
-            InvoiceRow,
+        let rows = sqlx::query_as::<_, InvoiceRow>(
             r#"
             SELECT
                 id, agency_id, property_id, agreement_id, resident_id,
-                invoice_number, status, line_items,
+                invoice_number, status::text AS status, line_items,
                 subtotal_kes, tax_kes, total_kes,
                 due_date, notes, voided_at,
                 created_by, created_at, updated_at
@@ -114,38 +111,39 @@ impl InvoiceRepository for PgInvoiceRepo {
             ORDER BY created_at DESC
             LIMIT $6 OFFSET $7
             "#,
-            agency_id,
-            filter.property_id,
-            filter.agreement_id,
-            filter.resident_id,
-            filter.status.as_ref().map(invoice_status_str),
-            filter.limit,
-            filter.offset
         )
+        .bind(agency_id)
+        .bind(filter.property_id)
+        .bind(filter.agreement_id)
+        .bind(filter.resident_id)
+        .bind(filter.status.as_ref().map(invoice_status_str))
+        .bind(filter.limit)
+        .bind(filter.offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         rows.into_iter().map(Invoice::try_from).collect()
     }
 
     async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Invoice>, AppError> {
-        let row = sqlx::query_as!(
-            InvoiceRow,
+        let row = sqlx::query_as::<_, InvoiceRow>(
             r#"
             SELECT
                 id, agency_id, property_id, agreement_id, resident_id,
-                invoice_number, status, line_items,
+                invoice_number, status::text AS status, line_items,
                 subtotal_kes, tax_kes, total_kes,
                 due_date, notes, voided_at,
                 created_by, created_at, updated_at
             FROM invoices
             WHERE id = $1 AND agency_id = $2
             "#,
-            id,
-            agency_id
         )
+        .bind(id)
+        .bind(agency_id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         row.map(Invoice::try_from).transpose()
     }
@@ -163,8 +161,7 @@ impl InvoiceRepository for PgInvoiceRepo {
         let items_json = serde_json::to_value(&cmd.line_items)
             .map_err(|e| AppError::ExternalService(e.to_string()))?;
 
-        let row = sqlx::query_as!(
-            InvoiceRow,
+        let row = sqlx::query_as::<_, InvoiceRow>(
             r#"
             INSERT INTO invoices (
                 id, agency_id, property_id, agreement_id, resident_id,
@@ -182,56 +179,56 @@ impl InvoiceRepository for PgInvoiceRepo {
             )
             RETURNING
                 id, agency_id, property_id, agreement_id, resident_id,
-                invoice_number, status, line_items,
+                invoice_number, status::text AS status, line_items,
                 subtotal_kes, tax_kes, total_kes,
                 due_date, notes, voided_at,
                 created_by, created_at, updated_at
             "#,
-            cmd.agency_id,    // $1
-            cmd.property_id,  // $2
-            cmd.agreement_id, // $3
-            cmd.resident_id,  // $4
-            items_json,       // $5
-            subtotal,         // $6
-            tax,              // $7
-            total,            // $8
-            cmd.due_date,     // $9
-            cmd.notes,        // $10
-            cmd.created_by,   // $11
         )
+        .bind(cmd.agency_id)    // $1
+        .bind(cmd.property_id)  // $2
+        .bind(cmd.agreement_id) // $3
+        .bind(cmd.resident_id)  // $4
+        .bind(items_json)       // $5
+        .bind(subtotal)         // $6
+        .bind(tax)              // $7
+        .bind(total)            // $8
+        .bind(cmd.due_date)     // $9
+        .bind(cmd.notes)        // $10
+        .bind(cmd.created_by)   // $11
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Invoice::try_from(row)
     }
 
     async fn update_status(&self, id: Uuid, status: InvoiceStatus) -> Result<Invoice, AppError> {
-        let row = sqlx::query_as!(
-            InvoiceRow,
+        let row = sqlx::query_as::<_, InvoiceRow>(
             r#"
             UPDATE invoices
             SET status = $2::text::invoice_status, updated_at = now()
             WHERE id = $1
             RETURNING
                 id, agency_id, property_id, agreement_id, resident_id,
-                invoice_number, status, line_items,
+                invoice_number, status::text AS status, line_items,
                 subtotal_kes, tax_kes, total_kes,
                 due_date, notes, voided_at,
                 created_by, created_at, updated_at
             "#,
-            id,
-            invoice_status_str(&status)
         )
+        .bind(id)
+        .bind(invoice_status_str(&status))
         .fetch_optional(&self.pool)
-        .await?
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("invoice {id}")))?;
 
         Invoice::try_from(row)
     }
 
     async fn void(&self, id: Uuid) -> Result<Invoice, AppError> {
-        let row = sqlx::query_as!(
-            InvoiceRow,
+        let row = sqlx::query_as::<_, InvoiceRow>(
             r#"
             UPDATE invoices
             SET status     = 'void',
@@ -240,15 +237,16 @@ impl InvoiceRepository for PgInvoiceRepo {
             WHERE id = $1
             RETURNING
                 id, agency_id, property_id, agreement_id, resident_id,
-                invoice_number, status, line_items,
+                invoice_number, status::text AS status, line_items,
                 subtotal_kes, tax_kes, total_kes,
                 due_date, notes, voided_at,
                 created_by, created_at, updated_at
             "#,
-            id
         )
+        .bind(id)
         .fetch_optional(&self.pool)
-        .await?
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("invoice {id}")))?;
 
         Invoice::try_from(row)

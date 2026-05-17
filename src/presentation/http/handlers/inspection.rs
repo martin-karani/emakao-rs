@@ -1,4 +1,4 @@
-// src/presentation/http/handlers/inspection.rs
+use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
@@ -24,15 +24,16 @@ use crate::{
         },
     },
     domain::{
-        agency::ResolvedAgency,
         auth::AuthenticatedUser,
         enums::{InspectionStatus, InspectionType},
         inspection::{Inspection, InspectionItem},
     },
     infrastructure::db::inspection_repository_sqlx::PgInspectionRepo,
     presentation::{
-        app_state::AppState, extractors::AgencyContext,
-        http::responses::inspection::InspectionResponse,
+        app_state::AppState,
+        error::ErrorResponse,
+        extractors::AgencyContext,
+        http::{helpers::permission::check_permission, responses::inspection::InspectionResponse},
     },
 };
 
@@ -89,24 +90,32 @@ fn default_limit() -> i64 {
 
 /// GET /api/v1/inspections
 #[utoipa::path(
-    get,
-    path = "/api/v1/inspections",
+    get, path = "/api/v1/inspections",
     params(ListInspectionsParams),
     responses(
         (status = 200, description = "Inspection list", body = Vec<InspectionResponse>),
-        (status = 401, description = "Unauthorised"),
+        (status = 401, description = "Unauthorised",     body = ErrorResponse),
+        (status = 403, description = "Forbidden",        body = ErrorResponse),
     ),
-    tag = "Inspections",
-    security(("bearer_token" = []))
+    tag = "Inspections", security(("bearer_token" = []))
 )]
 pub async fn list_inspections(
+    State(state): State<AppState>,
     ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Query(params): Query<ListInspectionsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    let repo = PgInspectionRepo::new(ctx.pool);
-    let uc = ListInspectionsUseCase::new(std::sync::Arc::new(repo));
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "staff",
+        &format!("agency:{}", ctx.agency.id),
+    )
+    .await?;
 
-    let inspections: Vec<Inspection> = uc
+    let repo = Arc::new(PgInspectionRepo::new(ctx.pool));
+    let inspections: Vec<Inspection> = ListInspectionsUseCase::new(repo)
         .execute(ListInspectionsInput {
             property_id: params.property_id,
             unit_id: params.unit_id,
@@ -128,52 +137,64 @@ pub async fn list_inspections(
 
 /// GET /api/v1/inspections/:id
 #[utoipa::path(
-    get,
-    path = "/api/v1/inspections/{id}",
+    get, path = "/api/v1/inspections/{id}",
     params(("id" = Uuid, Path, description = "Inspection UUID")),
     responses(
         (status = 200, description = "Inspection found", body = InspectionResponse),
-        (status = 404, description = "Not found"),
+        (status = 404, description = "Not found",         body = ErrorResponse),
         (status = 401, description = "Unauthorised"),
     ),
-    tag = "Inspections",
-    security(("bearer_token" = []))
+    tag = "Inspections", security(("bearer_token" = []))
 )]
 pub async fn get_inspection(
+    State(state): State<AppState>,
     ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let repo = PgInspectionRepo::new(ctx.pool);
-    let uc = GetInspectionUseCase::new(std::sync::Arc::new(repo));
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "staff",
+        &format!("agency:{}", ctx.agency.id),
+    )
+    .await?;
 
-    let inspection = uc.execute(id).await?;
+    let repo = Arc::new(PgInspectionRepo::new(ctx.pool));
+    let inspection = GetInspectionUseCase::new(repo).execute(id).await?;
     Ok(Json(InspectionResponse::from(inspection)))
 }
 
 /// POST /api/v1/inspections
 #[utoipa::path(
-    post,
-    path = "/api/v1/inspections",
+    post, path = "/api/v1/inspections",
     request_body = CreateInspectionDto,
     responses(
         (status = 201, description = "Inspection scheduled", body = InspectionResponse),
-        (status = 422, description = "Validation error"),
+        (status = 422, description = "Validation error",      body = ErrorResponse),
         (status = 401, description = "Unauthorised"),
     ),
-    tag = "Inspections",
-    security(("bearer_token" = []))
+    tag = "Inspections", security(("bearer_token" = []))
 )]
 pub async fn create_inspection(
+    State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Json(dto): Json<CreateInspectionDto>,
 ) -> Result<impl IntoResponse, AppError> {
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "staff",
+        &format!("agency:{}", ctx.agency.id),
+    )
+    .await?;
     dto.validate()?;
 
-    let repo = PgInspectionRepo::new(ctx.pool);
-    let uc = CreateInspectionUseCase::new(std::sync::Arc::new(repo));
-
-    let inspection = uc
+    let repo = Arc::new(PgInspectionRepo::new(ctx.pool));
+    let inspection = CreateInspectionUseCase::new(repo)
         .execute(CreateInspectionInput {
             property_id: dto.property_id,
             unit_id: dto.unit_id,
@@ -192,30 +213,36 @@ pub async fn create_inspection(
 
 /// PATCH /api/v1/inspections/:id
 #[utoipa::path(
-    patch,
-    path = "/api/v1/inspections/{id}",
+    patch, path = "/api/v1/inspections/{id}",
     params(("id" = Uuid, Path, description = "Inspection UUID")),
     request_body = UpdateInspectionDto,
     responses(
         (status = 200, description = "Inspection updated", body = InspectionResponse),
-        (status = 404, description = "Not found"),
-        (status = 422, description = "Validation error"),
+        (status = 404, description = "Not found",           body = ErrorResponse),
+        (status = 422, description = "Validation error",    body = ErrorResponse),
         (status = 401, description = "Unauthorised"),
     ),
-    tag = "Inspections",
-    security(("bearer_token" = []))
+    tag = "Inspections", security(("bearer_token" = []))
 )]
 pub async fn update_inspection(
+    State(state): State<AppState>,
     ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateInspectionDto>,
 ) -> Result<impl IntoResponse, AppError> {
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "staff",
+        &format!("agency:{}", ctx.agency.id),
+    )
+    .await?;
     dto.validate()?;
 
-    let repo = PgInspectionRepo::new(ctx.pool);
-    let uc = UpdateInspectionUseCase::new(std::sync::Arc::new(repo));
-
-    let inspection = uc
+    let repo = Arc::new(PgInspectionRepo::new(ctx.pool));
+    let inspection = UpdateInspectionUseCase::new(repo)
         .execute(UpdateInspectionInput {
             id,
             status: dto.status,
@@ -232,23 +259,31 @@ pub async fn update_inspection(
 
 /// DELETE /api/v1/inspections/:id
 #[utoipa::path(
-    delete,
-    path = "/api/v1/inspections/{id}",
+    delete, path = "/api/v1/inspections/{id}",
     params(("id" = Uuid, Path, description = "Inspection UUID")),
     responses(
-        (status = 204, description = "Inspection deleted"),
-        (status = 404, description = "Not found"),
+        (status = 204, description = "Deleted"),
+        (status = 404, description = "Not found", body = ErrorResponse),
         (status = 401, description = "Unauthorised"),
     ),
-    tag = "Inspections",
-    security(("bearer_token" = []))
+    tag = "Inspections", security(("bearer_token" = []))
 )]
 pub async fn delete_inspection(
+    State(state): State<AppState>,
     ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "staff",
+        &format!("agency:{}", ctx.agency.id),
+    )
+    .await?;
+
     let repo = PgInspectionRepo::new(ctx.pool);
-    // Reuse find_by_id then delete — keeping logic flat rather than a dedicated UC
     repo.delete(id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

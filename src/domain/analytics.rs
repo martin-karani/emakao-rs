@@ -1,4 +1,3 @@
-// src/domain/analytics.rs
 //
 // Analytics & Reporting domain value objects.
 // These are read-model types returned by analytical queries — no mutations.

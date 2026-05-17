@@ -6,13 +6,10 @@ edition = "2021"
 [dependencies]
 tokio  = { version = "1", features = ["full"] }
 anyhow = "1"
-
-[dependencies.sqlx]
-version          = "0.8"          # ← must match root Cargo.toml exactly
-default-features = false          # ← disables sqlite, mysql, etc.
-features         = [
+sqlx = { version = "0.8", features = [
     "runtime-tokio-rustls",
     "postgres",
-    "migrate",
+    "migrate",    # ← add this
+    "time",
     "uuid",
-]
+] }

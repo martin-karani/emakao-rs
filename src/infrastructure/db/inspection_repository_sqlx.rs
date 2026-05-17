@@ -1,5 +1,3 @@
-// src/infrastructure/db/inspection_repository_sqlx.rs
-
 use async_trait::async_trait;
 use serde_json::Value;
 use sqlx::PgPool;
@@ -87,8 +85,7 @@ impl TryFrom<InspectionRow> for Inspection {
 #[async_trait]
 impl InspectionRepository for PgInspectionRepo {
     async fn find_all(&self, filter: InspectionFilter) -> Result<Vec<Inspection>, AppError> {
-        let rows = sqlx::query_as!(
-            InspectionRow,
+        let rows = sqlx::query_as::<_, InspectionRow>(
             r#"
             SELECT
                 id, property_id, unit_id, agreement_id,
@@ -105,23 +102,23 @@ impl InspectionRepository for PgInspectionRepo {
             ORDER BY scheduled_at DESC
             LIMIT $6 OFFSET $7
             "#,
-            filter.property_id,
-            filter.unit_id,
-            filter.agreement_id,
-            filter.status.as_ref().map(inspection_status_str),
-            filter.inspection_type.as_ref().map(inspection_type_str),
-            filter.limit,
-            filter.offset
         )
+        .bind(filter.property_id)
+        .bind(filter.unit_id)
+        .bind(filter.agreement_id)
+        .bind(filter.status.as_ref().map(inspection_status_str))
+        .bind(filter.inspection_type.as_ref().map(inspection_type_str))
+        .bind(filter.limit)
+        .bind(filter.offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         rows.into_iter().map(Inspection::try_from).collect()
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Inspection>, AppError> {
-        let row = sqlx::query_as!(
-            InspectionRow,
+        let row = sqlx::query_as::<_, InspectionRow>(
             r#"
             SELECT
                 id, property_id, unit_id, agreement_id,
@@ -132,25 +129,25 @@ impl InspectionRepository for PgInspectionRepo {
             FROM inspections
             WHERE id = $1
             "#,
-            id
         )
+        .bind(id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         row.map(Inspection::try_from).transpose()
     }
 
     async fn create(&self, cmd: CreateInspectionCommand) -> Result<Inspection, AppError> {
-        let row = sqlx::query_as!(
-            InspectionRow,
+        let row = sqlx::query_as::<_, InspectionRow>(
             r#"
             INSERT INTO inspections (
                 id, property_id, unit_id, agreement_id,
                 inspection_type, status, scheduled_at, created_by
             )
             VALUES (
-                uuidv7(), $1::uuid, $2::uuid, $3::uuid,
-                $4::text::inspection_type, 'scheduled', $5::timestamptz, $6::uuid
+                uuidv7(), $1, $2, $3,
+                $4::text::inspection_type, 'scheduled', $5, $6
             )
             RETURNING
                 id, property_id, unit_id, agreement_id,
@@ -159,15 +156,16 @@ impl InspectionRepository for PgInspectionRepo {
                 items, summary_notes,
                 created_by, created_at, updated_at
             "#,
-            cmd.property_id,
-            cmd.unit_id,
-            cmd.agreement_id,
-            inspection_type_str(&cmd.inspection_type),
-            cmd.scheduled_at,
-            cmd.created_by
         )
+        .bind(cmd.property_id)
+        .bind(cmd.unit_id)
+        .bind(cmd.agreement_id)
+        .bind(inspection_type_str(&cmd.inspection_type))
+        .bind(cmd.scheduled_at)
+        .bind(cmd.created_by)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Inspection::try_from(row)
     }
@@ -179,8 +177,7 @@ impl InspectionRepository for PgInspectionRepo {
             .as_ref()
             .map(|i| serde_json::to_value(i).unwrap_or(Value::Array(vec![])));
 
-        let row = sqlx::query_as!(
-            InspectionRow,
+        let row = sqlx::query_as::<_, InspectionRow>(
             r#"
             UPDATE inspections SET
                 status        = COALESCE($2::text::inspection_status, status),
@@ -190,7 +187,7 @@ impl InspectionRepository for PgInspectionRepo {
                 items         = COALESCE($8::jsonb, items),
                 summary_notes = COALESCE($9::text, summary_notes),
                 updated_at    = now()
-            WHERE id = $1::uuid
+            WHERE id = $1
             RETURNING
                 id, property_id, unit_id, agreement_id,
                 inspection_type, status,
@@ -198,27 +195,30 @@ impl InspectionRepository for PgInspectionRepo {
                 items, summary_notes,
                 created_by, created_at, updated_at
             "#,
-            cmd.id,                     // $1
-            status_s,                   // $2
-            cmd.scheduled_at,           // $3
-            cmd.completed_at.is_some(), // $4
-            cmd.completed_at,           // $5
-            cmd.conducted_by.is_some(), // $6
-            cmd.conducted_by.flatten(), // $7
-            items_json,                 // $8
-            cmd.summary_notes,          // $9
         )
+        .bind(cmd.id) // $1
+        .bind(status_s) // $2
+        .bind(cmd.scheduled_at) // $3
+        .bind(cmd.completed_at.is_some()) // $4
+        .bind(cmd.completed_at) // $5
+        .bind(cmd.conducted_by.is_some()) // $6
+        .bind(cmd.conducted_by.flatten()) // $7
+        .bind(items_json) // $8
+        .bind(cmd.summary_notes) // $9
         .fetch_optional(&self.pool)
-        .await?
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("inspection {}", cmd.id)))?;
 
         Inspection::try_from(row)
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        let result = sqlx::query!("DELETE FROM inspections WHERE id = $1", id)
+        let result = sqlx::query("DELETE FROM inspections WHERE id = $1")
+            .bind(id)
             .execute(&self.pool)
-            .await?;
+            .await
+            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(format!("inspection {id}")));

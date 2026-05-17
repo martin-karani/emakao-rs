@@ -1,19 +1,18 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::{
-    application::{
-        errors::AppError,
-        notifications::{
-            service::NotificationService,
-            templates::{EmailTemplate, SmsTemplate},
-        },
-        ports::maintenance_repository::MaintenanceRepository,
+use crate::application::{
+    errors::AppError,
+    notifications::{
+        contexts::WorkOrderUpdateCtx,
+        service::NotificationService,
+        templates::{EmailTemplate, SmsTemplate},
     },
-    domain::{
-        enums::{WorkOrderCategory, WorkOrderPriority, WorkOrderReporterType},
-        maintenance::{CreateWorkOrderCommand, WorkOrder, WorkOrderAttachment},
-    },
+    ports::maintenance_repository::MaintenanceRepository,
+};
+use crate::domain::{
+    enums::{WorkOrderCategory, WorkOrderPriority, WorkOrderReporterType},
+    maintenance::{CreateWorkOrderCommand, WorkOrder, WorkOrderAttachment},
 };
 use rust_decimal::Decimal;
 use time::{Date, OffsetDateTime};
@@ -39,10 +38,7 @@ pub struct CreateWorkOrderInput {
     pub unit_id: Option<Uuid>,
 
     // ── Reporter ──────────────────────────────────────────────────────────────
-    /// The platform user UUID of whoever is making this call.
     pub reported_by: Uuid,
-    /// Defaults to Staff when called from the staff API; overridden
-    /// by caretaker/resident portal handlers before reaching this use case.
     pub reporter_type: WorkOrderReporterType,
     pub reporter_resident_id: Option<Uuid>,
     pub reporter_caretaker_id: Option<Uuid>,
@@ -71,9 +67,7 @@ pub struct CreateWorkOrderInput {
     pub attachments: Vec<WorkOrderAttachment>,
 
     // ── Notification recipients (optional) ────────────────────────────────────
-    /// Send a creation notification to this resident email, if provided.
     pub notify_resident_email: Option<String>,
-    /// Send a creation SMS to this resident phone, if provided.
     pub notify_resident_phone: Option<String>,
 }
 
@@ -92,7 +86,6 @@ impl CreateWorkOrderUseCase {
             ));
         }
 
-        // A caretaker reporter must reference a known caretaker record.
         if input.reporter_type == WorkOrderReporterType::Caretaker
             && input.reporter_caretaker_id.is_none()
         {
@@ -101,7 +94,6 @@ impl CreateWorkOrderUseCase {
             ));
         }
 
-        // A resident reporter must reference a known resident record.
         if input.reporter_type == WorkOrderReporterType::Resident
             && input.reporter_resident_id.is_none()
         {
@@ -111,8 +103,6 @@ impl CreateWorkOrderUseCase {
         }
 
         // ── Persist ───────────────────────────────────────────────────────────
-        // The repo atomically increments the property's work_order_seq,
-        // computes the code (e.g. "MGRD-0042"), and inserts the row.
         let order = self
             .repo
             .create(CreateWorkOrderCommand {
@@ -147,28 +137,31 @@ impl CreateWorkOrderUseCase {
                 actor_type,
                 "created",
                 serde_json::json!({
-                    "code":     order.code,
+                    "work_order_ref": order.code,
                     "title":    order.title,
                     "priority": format!("{:?}", order.priority),
                     "category": format!("{:?}", order.category),
                 }),
             )
             .await
-            .ok(); // never fail the main flow on a log write
+            .ok();
 
         // ── Optional notification ─────────────────────────────────────────────
-        // Notify the resident/owner that their work order has been received.
         let should_notify = order.is_tenant_visible
             && (input.notify_resident_email.is_some() || input.notify_resident_phone.is_some());
 
         if should_notify {
-            let ctx = serde_json::json!({
-                "code":        order.code,
-                "title":       order.title,
-                "category":    format!("{:?}", order.category),
-                "priority":    format!("{:?}", order.priority),
-                "description": order.description,
-            });
+            // Work orders start in "open" status at creation — no status field
+            // on CreateWorkOrderCommand, so we derive the label here.
+            let ctx = WorkOrderUpdateCtx {
+                work_order_ref: order.code.clone(),
+                category: format!("{:?}", order.category),
+                status: "open".to_owned(),
+                scheduled_at: order.scheduled_at.map(|dt| dt.to_string()),
+                resident_name: None,
+                vendor_name: None,
+                description: order.description.clone(),
+            };
 
             if let Some(email) = &input.notify_resident_email {
                 let _ = self
@@ -186,8 +179,8 @@ impl CreateWorkOrderUseCase {
 
         tracing::info!(
             work_order_id = %order.id,
-            code           = %order.code,
-            reporter_type  = ?input.reporter_type,
+            code          = %order.code,
+            reporter_type = ?input.reporter_type,
             "work order created"
         );
 

@@ -1,5 +1,3 @@
-// src/infrastructure/db/disbursement_repository_sqlx.rs
-
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -119,12 +117,11 @@ impl DisbursementRepository for PgDisbursementRepo {
         agency_id: Uuid,
         filter: DisbursementFilter,
     ) -> Result<Vec<Disbursement>, AppError> {
-        let rows = sqlx::query_as!(
-            DisbursementRow,
+        let rows = sqlx::query_as::<_, DisbursementRow>(
             r#"
             SELECT
                 id, agency_id, owner_id, property_id, amount_kes,
-                method::text AS "method!", reference, status::text AS "status!",
+                method::text AS method, reference, status::text AS status,
                 period_start, period_end, notes,
                 created_by, created_at, updated_at
             FROM disbursements
@@ -135,15 +132,16 @@ impl DisbursementRepository for PgDisbursementRepo {
             ORDER BY created_at DESC
             LIMIT $5 OFFSET $6
             "#,
-            agency_id,
-            filter.owner_id,
-            filter.property_id,
-            filter.status.as_ref().map(status_str),
-            filter.limit,
-            filter.offset,
         )
+        .bind(agency_id)
+        .bind(filter.owner_id)
+        .bind(filter.property_id)
+        .bind(filter.status.as_ref().map(status_str))
+        .bind(filter.limit)
+        .bind(filter.offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(Disbursement::from).collect())
     }
@@ -153,29 +151,28 @@ impl DisbursementRepository for PgDisbursementRepo {
         agency_id: Uuid,
         id: Uuid,
     ) -> Result<Option<Disbursement>, AppError> {
-        let row = sqlx::query_as!(
-            DisbursementRow,
+        let row = sqlx::query_as::<_, DisbursementRow>(
             r#"
             SELECT
                 id, agency_id, owner_id, property_id, amount_kes,
-                method::text AS "method!", reference, status::text AS "status!",
+                method::text AS method, reference, status::text AS status,
                 period_start, period_end, notes,
                 created_by, created_at, updated_at
             FROM disbursements
             WHERE id = $1 AND agency_id = $2
             "#,
-            id,
-            agency_id,
         )
+        .bind(id)
+        .bind(agency_id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.map(Disbursement::from))
     }
 
     async fn create(&self, cmd: CreateDisbursementCommand) -> Result<Disbursement, AppError> {
-        let row = sqlx::query_as!(
-            DisbursementRow,
+        let row = sqlx::query_as::<_, DisbursementRow>(
             r#"
             INSERT INTO disbursements (
                 agency_id, owner_id, property_id,
@@ -184,27 +181,28 @@ impl DisbursementRepository for PgDisbursementRepo {
             )
             VALUES (
                 $1, $2, $3,
-                $4, $5::disbursement_method, $6::date, $7::date,
+                $4, $5::disbursement_method, $6, $7,
                 $8, $9
             )
             RETURNING
                 id, agency_id, owner_id, property_id, amount_kes,
-                method::text AS "method!", reference, status::text AS "status!",
+                method::text AS method, reference, status::text AS status,
                 period_start, period_end, notes,
                 created_by, created_at, updated_at
             "#,
-            cmd.agency_id,
-            cmd.owner_id,
-            cmd.property_id,
-            cmd.amount_kes,
-            method_str(&cmd.method),
-            cmd.period_start,
-            cmd.period_end,
-            cmd.notes,
-            cmd.created_by,
         )
+        .bind(cmd.agency_id)
+        .bind(cmd.owner_id)
+        .bind(cmd.property_id)
+        .bind(cmd.amount_kes)
+        .bind(method_str(&cmd.method))
+        .bind(cmd.period_start)
+        .bind(cmd.period_end)
+        .bind(cmd.notes)
+        .bind(cmd.created_by)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(Disbursement::from(row))
     }
@@ -216,8 +214,7 @@ impl DisbursementRepository for PgDisbursementRepo {
         status: DisbursementStatus,
         reference: Option<String>,
     ) -> Result<Disbursement, AppError> {
-        let row = sqlx::query_as!(
-            DisbursementRow,
+        let row = sqlx::query_as::<_, DisbursementRow>(
             r#"
             UPDATE disbursements
             SET status    = $3::disbursement_status,
@@ -226,17 +223,18 @@ impl DisbursementRepository for PgDisbursementRepo {
             WHERE id = $1 AND agency_id = $2
             RETURNING
                 id, agency_id, owner_id, property_id, amount_kes,
-                method::text AS "method!", reference, status::text AS "status!",
+                method::text AS method, reference, status::text AS status,
                 period_start, period_end, notes,
                 created_by, created_at, updated_at
             "#,
-            id,
-            agency_id,
-            status_str(&status),
-            reference,
         )
+        .bind(id)
+        .bind(agency_id)
+        .bind(status_str(&status))
+        .bind(reference)
         .fetch_optional(&self.pool)
-        .await?
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound(format!("disbursement {id}")))?;
 
         Ok(Disbursement::from(row))

@@ -1,5 +1,3 @@
-// src/application/use_cases/dashboard/get_dashboard.rs
-
 use std::sync::Arc;
 
 use uuid::Uuid;

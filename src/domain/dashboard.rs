@@ -1,4 +1,3 @@
-// src/domain/dashboard.rs
 //
 // Portfolio-level dashboard aggregates. These types are assembled by
 // `DashboardRepository::get_summary` via a set of SQL queries and returned

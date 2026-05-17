@@ -1,6 +1,6 @@
 use crate::{
     application::{errors::AppError, ports::message_repository::MessageRepository},
-    domain::message::{CreateMessageCommand, Message},
+    domain::{enums::SenderType, message::{CreateMessageCommand, Message}},
 };
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -27,7 +27,7 @@ struct MessageRow {
     id: Uuid,
     conversation_id: Uuid,
     sender_id: Uuid,
-    sender_type: String,
+    sender_type: SenderType,
     body: String,
     created_at: time::OffsetDateTime,
 }
@@ -48,19 +48,20 @@ impl From<MessageRow> for Message {
 #[async_trait]
 impl MessageRepository for PgMessageRepo {
     async fn create(&self, cmd: CreateMessageCommand) -> Result<Message, AppError> {
-        let row = sqlx::query_as!(
-            MessageRow,
+        let row = sqlx::query_as::<_, MessageRow>(
             r#"INSERT INTO messages (id, conversation_id, sender_id, sender_type, body)
                VALUES ($1, $2, $3, $4, $5)
                RETURNING id, conversation_id, sender_id, sender_type, body, created_at"#,
-            Uuid::new_v4(),
-            cmd.conversation_id,
-            cmd.sender_id,
-            cmd.sender_type,
-            cmd.body,
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.conversation_id)
+        .bind(cmd.sender_id)
+        .bind(cmd.sender_type)
+        .bind(cmd.body)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
         Ok(Message::from(row))
     }
 
@@ -70,16 +71,17 @@ impl MessageRepository for PgMessageRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Message>, AppError> {
-        let rows = sqlx::query_as!(
-            MessageRow,
-            "SELECT id, conversation_id, sender_id, sender_type, body, created_at
-             FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3",
-            conversation_id,
-            limit,
-            offset
+        let rows = sqlx::query_as::<_, MessageRow>(
+            r#"SELECT id, conversation_id, sender_id, sender_type, body, created_at
+               FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3"#,
         )
+        .bind(conversation_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
         Ok(rows.into_iter().map(Message::from).collect())
     }
 }

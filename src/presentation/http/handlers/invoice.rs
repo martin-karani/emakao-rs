@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
@@ -162,6 +162,7 @@ pub async fn create_invoice(
             description: li.description,
             quantity: li.quantity,
             unit_price_kes: li.unit_price_kes,
+            total_kes: li.quantity * li.unit_price_kes,
         })
         .collect();
 

@@ -1,4 +1,3 @@
-// src/application/helpers/upload.rs
 //
 // Canonical shared helpers for every file-upload flow in the application.
 //

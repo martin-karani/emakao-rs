@@ -1,5 +1,3 @@
-// src/application/use_cases/inspection/get_inspection.rs
-
 use std::sync::Arc;
 use uuid::Uuid;
 

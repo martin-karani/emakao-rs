@@ -1,12 +1,12 @@
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::{Date, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::enums::InvoiceStatus;
 
-#[derive(Clone, Debug, Serialize, ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct InvoiceLineItem {
     pub description: String,
     pub quantity: Decimal,

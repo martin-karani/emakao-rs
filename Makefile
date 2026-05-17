@@ -13,6 +13,7 @@ help:
 	@echo "  make migrate     Run all migrations (platform + agency)"
 	@echo "  make prepare     Generate .sqlx offline cache"
 	@echo "  make build       Build the main crate (no DB needed)"
+	@echo "  make dev         Run with hot-reload (requires cargo-watch)"
 	@echo "  make setup       Fresh setup: up + migrate + prepare + build"
 	@echo "  make reset       Wipe volumes, then full setup"
 	@echo ""
@@ -59,6 +60,15 @@ build:
 .PHONY: build-release
 build-release:
 	cargo build --release
+
+# ── Development ───────────────────────────────────────────────────────────────
+
+# requires cargo-watch: cargo install cargo-watch
+.PHONY: dev
+dev:
+	PLATFORM_DATABASE_URL="$(PLATFORM_URL)" \
+	AGENCY_DATABASE_URL="$(AGENCY_URL)" \
+	cargo watch -x run
 
 # ── Full setup (new machine / fresh clone) ────────────────────────────────────
 

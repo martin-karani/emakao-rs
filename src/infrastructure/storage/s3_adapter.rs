@@ -1,4 +1,3 @@
-// src/infrastructure/storage/s3_adapter.rs
 //
 // AWS S3 / MinIO storage adapter.
 //
@@ -20,6 +19,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
     config::{Credentials, Region},
     presigning::PresigningConfig,
+    primitives::ByteStream,
     Client,
 };
 use std::time::Duration;
@@ -90,5 +90,44 @@ impl S3Storage {
             .to_string();
 
         Ok(url)
+    }
+}
+
+#[async_trait]
+impl StoragePort for S3Storage {
+    async fn upload(
+        &self,
+        key: &str,
+        data: Vec<u8>,
+        content_type: &str,
+    ) -> Result<String, AppError> {
+        self.client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .body(ByteStream::from(data))
+            .content_type(content_type)
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalService(format!("S3 upload failed: {e}")))?;
+
+        Ok(key.to_string())
+    }
+
+    async fn get_url(&self, key: &str) -> Result<String, AppError> {
+        // Default to 15-minute presigned URLs for all storage operations.
+        self.presigned_url(key, 900).await
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), AppError> {
+        self.client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalService(format!("S3 delete failed: {e}")))?;
+
+        Ok(())
     }
 }

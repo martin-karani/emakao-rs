@@ -1,4 +1,3 @@
-// src/presentation/http/handlers/upload.rs
 //
 // Generic multipart file upload endpoint for **ephemeral attachments**.
 //
@@ -163,7 +162,7 @@ pub async fn upload_file(
     validate_size(&bytes)?;
 
     // ── Build canonical S3 key ────────────────────────────────────────────────
-    let agency_id = user.agency_id.unwrap_or_else(Uuid::nil);
+    let agency_id = user.agency_id;
     let ext = ext_from_mime(&ct);
     let key = attachment_s3_key(agency_id, &context, entity_id, ext);
 

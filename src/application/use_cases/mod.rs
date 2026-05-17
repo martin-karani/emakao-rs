@@ -1,8 +1,10 @@
+pub mod accounting;
 pub mod agency;
 pub mod agreement;
-pub mod ai_insights;
+pub mod insights;
 pub mod analytics;
 pub mod auth;
+pub mod bank_reconciliation;
 pub mod dashboard;
 pub mod disbursement;
 pub mod document;

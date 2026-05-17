@@ -46,29 +46,31 @@ impl From<ConversationRow> for Conversation {
 #[async_trait]
 impl ConversationRepository for PgConversationRepo {
     async fn create(&self, cmd: CreateConversationCommand) -> Result<Conversation, AppError> {
-        let row = sqlx::query_as!(
-            ConversationRow,
+        let row = sqlx::query_as::<_, ConversationRow>(
             r#"INSERT INTO conversations (id, agency_id, participant_ids, subject)
                VALUES ($1, $2, $3, $4)
                RETURNING id, agency_id, participant_ids, subject, created_at"#,
-            Uuid::new_v4(),
-            cmd.agency_id,
-            &cmd.participant_ids,
-            cmd.subject,
         )
+        .bind(Uuid::new_v4())
+        .bind(cmd.agency_id)
+        .bind(&cmd.participant_ids)
+        .bind(cmd.subject)
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
         Ok(Conversation::from(row))
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Conversation>, AppError> {
-        let row = sqlx::query_as!(
-            ConversationRow,
+        let row = sqlx::query_as::<_, ConversationRow>(
             "SELECT id, agency_id, participant_ids, subject, created_at FROM conversations WHERE id = $1",
-            id
         )
+        .bind(id)
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
         Ok(row.map(Conversation::from))
     }
 }

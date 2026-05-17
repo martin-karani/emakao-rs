@@ -1,4 +1,3 @@
-// src/presentation/http/responses/dashboard.rs
 //
 // The dashboard handler returns `DashboardSummary` directly (it already
 // derives Serialize + ToSchema), so this module provides a re-export alias

@@ -1,4 +1,3 @@
-// src/domain/billing.rs
 //
 // Pure domain types for the billing automation scheduler.
 // No I/O, no framework dependencies — plain data + enums.
