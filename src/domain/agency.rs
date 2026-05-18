@@ -1,16 +1,18 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::domain::enums::AgencyStatus;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Agency {
-    pub id:            Uuid,
-    pub name:          String,
-    pub slug:          String,
-    pub schema_name:   String,
-    pub country_code:  String,
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub schema_name: String,
+    pub country_code: String,
     pub currency_code: String,
-    pub fga_store_id:  Option<String>,
-    pub status:        String,
+    pub fga_store_id: Option<String>,
+    pub status: AgencyStatus,
 }
 
 /// Injected by `resolve_agency_context` into every authenticated request's extensions.
@@ -20,9 +22,9 @@ pub struct Agency {
 /// same agency.
 #[derive(Clone, Debug)]
 pub struct ResolvedAgency {
-    pub id:           Uuid,
-    pub name:         String,
-    pub slug:         String,
-    pub schema_name:  String,
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub schema_name: String,
     pub fga_store_id: Option<String>,
 }

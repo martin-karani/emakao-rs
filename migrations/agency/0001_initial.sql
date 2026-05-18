@@ -647,6 +647,7 @@ CREATE TABLE invoices (
     due_date       DATE           NOT NULL,
     status         invoice_status NOT NULL DEFAULT 'draft',
     notes          TEXT,
+    voided_at      TIMESTAMPTZ,
     created_by     UUID           NOT NULL,
     created_at     TIMESTAMPTZ    NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ    NOT NULL DEFAULT now()
@@ -885,3 +886,112 @@ LEFT JOIN ledger_entries le ON le.agreement_id = a.id
 LEFT JOIN late_fee_charges lfc ON lfc.agreement_id = a.id
 WHERE a.status = 'active'
 GROUP BY a.id, a.resident_id, a.unit_id, a.property_id, a.rent_amount_kes, a.end_date;
+
+-- ── Double-entry accounting (from 0002, 0003) ────────────────────────────────
+
+CREATE TYPE account_category AS ENUM (
+    'asset',
+    'liability',
+    'equity',
+    'revenue',
+    'expense'
+);
+
+CREATE TYPE journal_entry_status AS ENUM (
+    'draft',
+    'posted',
+    'voided'
+);
+
+CREATE TABLE accounts (
+    id           UUID              NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    agency_id    UUID              NOT NULL,
+    code         TEXT              NOT NULL,           -- e.g. "1010", "4001"
+    name         TEXT              NOT NULL,
+    account_type account_category  NOT NULL,
+    balance      NUMERIC(18, 2)    NOT NULL DEFAULT 0, -- running balance, updated on post
+    is_system    BOOLEAN           NOT NULL DEFAULT false, -- system accounts cannot be deleted
+    vat_applicable BOOLEAN         NOT NULL DEFAULT false,
+    vat_rate       NUMERIC(5, 4)            DEFAULT 0.1600,
+    created_at   TIMESTAMPTZ       NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ       NOT NULL DEFAULT now(),
+    UNIQUE (agency_id, code)
+);
+
+CREATE INDEX idx_accounts_agency ON accounts (agency_id, account_type);
+
+COMMENT ON COLUMN accounts.vat_applicable IS
+    'True for accounts that generate output VAT (revenue) or input VAT (expense) entries.';
+COMMENT ON COLUMN accounts.vat_rate IS
+    'Fractional VAT rate, e.g. 0.1600 = 16 %. NULL when vat_applicable = false.';
+
+CREATE TABLE journal_entries (
+    id          UUID                  NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    agency_id   UUID                  NOT NULL,
+    reference   TEXT                  NOT NULL,           -- human-readable ref, e.g. "JE-2025-001"
+    description TEXT,
+    status      journal_entry_status  NOT NULL DEFAULT 'draft',
+    posted_by   UUID                  NOT NULL,
+    posted_at   TIMESTAMPTZ           NOT NULL DEFAULT now(),
+    created_at  TIMESTAMPTZ           NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_journal_entries_agency  ON journal_entries (agency_id, posted_at DESC);
+CREATE INDEX idx_journal_entries_status  ON journal_entries (agency_id, status);
+
+CREATE TABLE journal_lines (
+    id               UUID           NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    journal_entry_id UUID           NOT NULL REFERENCES journal_entries (id) ON DELETE CASCADE,
+    account_id       UUID           NOT NULL REFERENCES accounts (id),
+    debit_kes        NUMERIC(18, 2) NOT NULL DEFAULT 0 CHECK (debit_kes  >= 0),
+    credit_kes       NUMERIC(18, 2) NOT NULL DEFAULT 0 CHECK (credit_kes >= 0),
+    description      TEXT,
+    created_at       TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    -- Each line is either a pure debit or a pure credit, never both.
+    CHECK (
+        (debit_kes > 0 AND credit_kes = 0) OR
+        (credit_kes > 0 AND debit_kes = 0)
+    )
+);
+
+CREATE INDEX idx_journal_lines_entry   ON journal_lines (journal_entry_id);
+CREATE INDEX idx_journal_lines_account ON journal_lines (account_id);
+
+CREATE TRIGGER trg_accounts_updated_at
+    BEFORE UPDATE ON accounts
+    FOR EACH ROW EXECUTE FUNCTION tenant_set_updated_at();
+
+-- ── Bank reconciliation (from 0003) ──────────────────────────────────────────
+
+CREATE TABLE bank_statements (
+    id              UUID           NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    agency_id       UUID           NOT NULL,
+    bank_name       TEXT           NOT NULL,
+    account_number  TEXT           NOT NULL,
+    statement_date  DATE           NOT NULL,
+    opening_balance NUMERIC(18, 2) NOT NULL,
+    closing_balance NUMERIC(18, 2) NOT NULL,
+    created_by      UUID           NOT NULL,
+    created_at      TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_bank_statements_agency ON bank_statements (agency_id, statement_date DESC);
+
+CREATE TABLE bank_statement_lines (
+    id               UUID           NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    statement_id     UUID           NOT NULL REFERENCES bank_statements (id) ON DELETE CASCADE,
+    value_date       DATE           NOT NULL,
+    description      TEXT           NOT NULL,
+    -- Positive = credit / money in.  Negative = debit / money out.
+    amount           NUMERIC(18, 2) NOT NULL,
+    reference        TEXT,
+    -- Set when this line is matched to a posted journal entry.
+    matched_entry_id UUID           REFERENCES journal_entries (id) ON DELETE SET NULL,
+    created_at       TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_bsl_statement    ON bank_statement_lines (statement_id);
+CREATE INDEX idx_bsl_matched      ON bank_statement_lines (matched_entry_id)
+    WHERE matched_entry_id IS NOT NULL;
+CREATE INDEX idx_bsl_unreconciled ON bank_statement_lines (statement_id)
+    WHERE matched_entry_id IS NULL;

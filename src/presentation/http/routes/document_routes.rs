@@ -17,7 +17,7 @@ pub fn routes() -> Router<AppState> {
             get(document::list_documents).post(document::upload_document),
         )
         .route(
-            "/api/v1/documents/:id",
+            "/api/v1/documents/{id}",
             get(document::get_document).delete(document::delete_document),
         )
 }

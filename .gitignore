@@ -9,4 +9,4 @@
 .vscode/
 Cargo.lock
 combine.py
-emakao_rust_new_structure.txt
+emakao_rust_new_structure.txt.sqlx/

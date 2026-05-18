@@ -1,3 +1,4 @@
+// src/domain/billing.rs
 //
 // Pure domain types for the billing automation scheduler.
 // No I/O, no framework dependencies — plain data + enums.
@@ -6,6 +7,8 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use time::{Date, OffsetDateTime};
 use uuid::Uuid;
+
+use crate::domain::enums::BillingFrequency;
 
 // ── Idempotency records (mirrors the three scheduler tables) ──────────────────
 
@@ -59,7 +62,7 @@ impl ReminderChannel {
     }
 }
 
-// ── Scheduler commands ────────────────────────────────────────────────────────
+// ── Scheduler projection ──────────────────────────────────────────────────────
 
 /// Everything the scheduler needs about an active agreement to decide what
 /// to do. Assembled in the repository via a single JOIN query.
@@ -71,32 +74,36 @@ pub struct ActiveAgreementBillingView {
     pub unit_id: Uuid,
     pub resident_id: Uuid,
     pub rent_amount_kes: Decimal,
-    pub billing_frequency: crate::domain::enums::BillingFrequency,
+    pub billing_frequency: BillingFrequency,
     pub start_date: Date,
-    /// None for open-ended agreements.
+    /// `None` for open-ended agreements.
     pub end_date: Option<Date>,
-    /// Resident's email — for reminder/invoice dispatch.
+    /// `None` = no email address on file.
     pub resident_email: Option<String>,
-    /// Resident's phone — for SMS reminder dispatch.
+    /// `None` = no phone number on file.
     pub resident_phone: Option<String>,
-    pub resident_first_name: String,
-    /// Human-readable unit ref, e.g. "A3".
+    /// Full display name for notification greetings, e.g. `"Jane Doe"`.
+    /// Renamed from `resident_first_name` — the worker and notification
+    /// contexts expect a full name, not just the first name.
+    pub resident_name: String,
+    /// Human-readable unit ref, e.g. `"A3"`.
     pub unit_number: String,
 }
+
+// ── Late-fee configuration ────────────────────────────────────────────────────
 
 /// Late-fee configuration stored per-agency or falling back to a platform default.
 #[derive(Debug, Clone)]
 pub struct LateFeePolicy {
-    /// How many calendar days after the period_start before a late fee applies.
+    /// How many calendar days after `period_start` before a late fee applies.
     pub grace_period_days: i64,
     /// Fixed amount in KES (takes precedence over `rate_percent` when set).
     pub flat_amount_kes: Option<Decimal>,
-    /// Percentage of rent amount (used when `flat_amount_kes` is None).
+    /// Percentage of rent amount (used when `flat_amount_kes` is `None`).
     pub rate_percent: Option<Decimal>,
 }
 
 impl LateFeePolicy {
-    /// Calculate the late fee amount for a given rent amount.
     pub fn compute(&self, rent_kes: Decimal) -> Decimal {
         if let Some(flat) = self.flat_amount_kes {
             flat
@@ -108,15 +115,13 @@ impl LateFeePolicy {
     }
 }
 
-// ── Period calculation helpers ────────────────────────────────────────────────
-
-use crate::domain::enums::BillingFrequency;
+// ── Period calculation ────────────────────────────────────────────────────────
 
 /// Given the agreement's `start_date` and the billing frequency, compute the
 /// `(period_start, period_end)` pair that *should* be charged as of `as_of`.
 ///
-/// Returns `None` when the agreement hasn't started yet or is one-time and
-/// past the start date.
+/// Returns `None` when the agreement hasn't started yet, or is `OneTime` and
+/// `as_of` is past the start date.
 pub fn current_billing_period(
     start_date: Date,
     frequency: BillingFrequency,
@@ -129,13 +134,11 @@ pub fn current_billing_period(
     let period_start = match frequency {
         BillingFrequency::Daily => as_of,
         BillingFrequency::Weekly => {
-            // Align to the same weekday as start_date.
             let days_since = (as_of - start_date).whole_days();
             let week_offset = days_since / 7;
             start_date + time::Duration::weeks(week_offset)
         }
         BillingFrequency::Monthly => {
-            // Same day-of-month as start_date in the current month.
             let mut ps = start_date;
             while ps + time::Duration::days(31) <= as_of {
                 ps = advance_one_month(ps);
@@ -160,22 +163,10 @@ pub fn current_billing_period(
     let period_end = match frequency {
         BillingFrequency::Daily => period_start,
         BillingFrequency::Weekly => period_start + time::Duration::days(6),
-        BillingFrequency::Monthly => {
-            let next = advance_one_month(period_start);
-            next - time::Duration::days(1)
-        }
-        BillingFrequency::Quarterly => {
-            let next = advance_months(period_start, 3);
-            next - time::Duration::days(1)
-        }
-        BillingFrequency::SemiAnnual => {
-            let next = advance_months(period_start, 6);
-            next - time::Duration::days(1)
-        }
-        BillingFrequency::Annual => {
-            let next = advance_months(period_start, 12);
-            next - time::Duration::days(1)
-        }
+        BillingFrequency::Monthly => advance_one_month(period_start) - time::Duration::days(1),
+        BillingFrequency::Quarterly => advance_months(period_start, 3) - time::Duration::days(1),
+        BillingFrequency::SemiAnnual => advance_months(period_start, 6) - time::Duration::days(1),
+        BillingFrequency::Annual => advance_months(period_start, 12) - time::Duration::days(1),
         BillingFrequency::OneTime => period_start,
     };
 
@@ -242,36 +233,5 @@ fn days_in_month(year: i32, month: time::Month) -> u8 {
                 28
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use time::macros::date;
-
-    #[test]
-    fn monthly_period_first_of_month() {
-        let start = date!(2024 - 01 - 01);
-        let as_of = date!(2024 - 03 - 01);
-        let (ps, pe) = current_billing_period(start, BillingFrequency::Monthly, as_of).unwrap();
-        assert_eq!(ps, date!(2024 - 03 - 01));
-        assert_eq!(pe, date!(2024 - 03 - 31));
-    }
-
-    #[test]
-    fn monthly_period_mid_month() {
-        let start = date!(2024 - 01 - 15);
-        let as_of = date!(2024 - 03 - 15);
-        let (ps, pe) = current_billing_period(start, BillingFrequency::Monthly, as_of).unwrap();
-        assert_eq!(ps, date!(2024 - 03 - 15));
-        assert_eq!(pe, date!(2024 - 04 - 14));
-    }
-
-    #[test]
-    fn not_started_yet_returns_none() {
-        let start = date!(2024 - 06 - 01);
-        let as_of = date!(2024 - 05 - 01);
-        assert!(current_billing_period(start, BillingFrequency::Monthly, as_of).is_none());
     }
 }

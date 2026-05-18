@@ -27,7 +27,7 @@ pub fn routes() -> Router<AppState> {
             get(insights::expense_forecast),
         )
         .route(
-            "/api/v1/insights/vendor-allocation/:work_order_id",
+            "/api/v1/insights/vendor-allocation/{work_order_id}",
             get(insights::vendor_allocation),
         )
 }

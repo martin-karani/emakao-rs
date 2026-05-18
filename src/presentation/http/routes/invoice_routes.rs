@@ -12,6 +12,6 @@ use crate::presentation::{
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/invoices", get(list_invoices).post(create_invoice))
-        .route("/api/v1/invoices/:id", get(get_invoice))
-        .route("/api/v1/invoices/:id/status", patch(update_invoice_status))
+        .route("/api/v1/invoices/{id}", get(get_invoice))
+        .route("/api/v1/invoices/{id}/status", patch(update_invoice_status))
 }

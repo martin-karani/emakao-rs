@@ -13,24 +13,21 @@ use crate::presentation::{
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        // Statement CRUD
         .route(
             "/api/v1/bank-statements",
             get(list_statements).post(import_statement),
         )
-        .route("/api/v1/bank-statements/:id", get(get_statement))
-        // Line matching
+        .route("/api/v1/bank-statements/{id}", get(get_statement)) // :id → {id}
         .route(
-            "/api/v1/bank-statements/:id/lines/:line_id/match",
+            "/api/v1/bank-statements/{id}/lines/{line_id}/match",
             post(match_line),
         )
         .route(
-            "/api/v1/bank-statements/:id/lines/:line_id/unmatch",
+            "/api/v1/bank-statements/{id}/lines/{line_id}/unmatch",
             post(unmatch_line),
         )
-        // Reconciliation report
         .route(
-            "/api/v1/bank-statements/:id/reconciliation",
+            "/api/v1/bank-statements/{id}/reconciliation",
             get(get_reconciliation_report),
         )
 }

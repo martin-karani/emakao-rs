@@ -18,6 +18,14 @@ use utoipa::OpenApi;
         crate::presentation::http::handlers::agency::write_permission_tuple,
         crate::presentation::http::handlers::agency::delete_permission_tuple,
         crate::presentation::http::handlers::agency::update_auth_model,
+        crate::presentation::http::handlers::agency::create_staff_user,
+
+          // ── Staff management ──────────────────────────────────────────────────
+        crate::presentation::http::handlers::staff::invite_staff,
+        crate::presentation::http::handlers::staff::list_staff,
+        crate::presentation::http::handlers::staff::get_staff_member,
+        crate::presentation::http::handlers::staff::deactivate_staff,
+        
 
         // ── Properties ────────────────────────────────────────────────────────
         crate::presentation::http::handlers::property::list_properties,
@@ -209,6 +217,14 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::openfga::UpdateAuthModelDto,
         crate::presentation::http::responses::agency::AgencyResponse,
         crate::presentation::http::responses::openfga::ModelVersionResponse,
+
+        // ── Staff ─────────────────────────────────────────────────────────────
+        crate::presentation::http::dto::staff::CreateStaffUserDto,
+        crate::presentation::http::dto::staff::InviteStaffDto,
+        crate::presentation::http::dto::staff::ListStaffParams,
+        crate::presentation::http::responses::staff::StaffUserResponse,
+        crate::presentation::http::responses::staff::CreatedStaffUserResponse,
+        crate::presentation::http::responses::staff::InviteStaffResponse,
 
         // ── Properties ────────────────────────────────────────────────────────
         crate::presentation::http::dto::property::CreatePropertyDto,

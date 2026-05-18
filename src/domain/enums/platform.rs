@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// agencies.status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "agency_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum AgencyStatus {
@@ -13,7 +13,7 @@ pub enum AgencyStatus {
 }
 
 /// users / user_agency_roles.role  +  invite_tokens.role  +  refresh_tokens.role
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[sqlx(type_name = "user_role", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum UserRole {

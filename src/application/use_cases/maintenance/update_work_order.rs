@@ -1,19 +1,18 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::{
-    application::{
-        errors::AppError,
-        notifications::{
-            service::NotificationService,
-            templates::{EmailTemplate, SmsTemplate},
-        },
-        ports::maintenance_repository::MaintenanceRepository,
+use crate::application::{
+    errors::AppError,
+    notifications::{
+        contexts::WorkOrderUpdateCtx,
+        service::NotificationService,
+        templates::{EmailTemplate, SmsTemplate},
     },
-    domain::{
-        enums::{WorkOrderCategory, WorkOrderPriority, WorkOrderStatus},
-        maintenance::{UpdateWorkOrderCommand, WorkOrder, WorkOrderAttachment},
-    },
+    ports::maintenance_repository::MaintenanceRepository,
+};
+use crate::domain::{
+    enums::{WorkOrderCategory, WorkOrderPriority, WorkOrderStatus},
+    maintenance::{UpdateWorkOrderCommand, WorkOrder, WorkOrderAttachment},
 };
 use rust_decimal::Decimal;
 use time::{Date, OffsetDateTime};
@@ -103,9 +102,6 @@ impl UpdateWorkOrderUseCase {
             .await?;
 
         // ── 3. Diff-based activity log ────────────────────────────────────────
-        // Write one log entry per meaningful field change so the timeline is
-        // granular enough to be useful.
-
         if let Some(ref new_status) = input.status {
             if before.status != *new_status {
                 self.repo
@@ -228,14 +224,18 @@ impl UpdateWorkOrderUseCase {
             && (input.notify_resident_email.is_some() || input.notify_resident_phone.is_some());
 
         if should_notify {
-            let ctx = serde_json::json!({
-                "code":         after.code,
-                "title":        after.title,
-                "category":     format!("{:?}", after.category),
-                "status":       format!("{:?}", after.status),
-                "scheduled_at": after.scheduled_at,
-                "description":  after.description,
-            });
+            // Previously passed `code` — templates expect `work_order_ref`.
+            // `vendor_name` is `None` here; the handler would need to resolve
+            // the vendor display name separately if that field is wanted.
+            let ctx = WorkOrderUpdateCtx {
+                work_order_ref: after.code.clone(),
+                category: format!("{:?}", after.category),
+                status: format!("{:?}", after.status),
+                scheduled_at: after.scheduled_at.map(|dt| dt.to_string()),
+                resident_name: None,
+                vendor_name: None,
+                description: after.description.clone(),
+            };
 
             if let Some(email) = &input.notify_resident_email {
                 let _ = self

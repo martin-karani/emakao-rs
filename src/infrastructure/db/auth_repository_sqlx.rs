@@ -3,7 +3,7 @@ use crate::{
         errors::AppError,
         ports::auth_repository::{
             AuthRepository, ConsumedInvite, CreateInviteTokenCommand, CreateMembershipCommand,
-            CreateUserCommand, PasswordResetToken, PortalIdentity, SlimAgency,
+            CreateUserCommand, PasswordResetToken, PortalIdentity, SlimAgency, StaffMember,
             UpsertPortalIndexCommand,
         },
     },
@@ -34,7 +34,7 @@ impl AuthRepository for PgAuthRepo {
         let row = sqlx::query(
             r#"
             SELECT u.id, u.email, u.phone, u.password_hash, u.is_active,
-                   u.must_change_password, uar.role, uar.agency_id
+                   u.must_change_password, uar.role::text, uar.agency_id
             FROM users u
             JOIN user_agency_roles uar ON uar.user_id = u.id
             WHERE uar.agency_id = $1
@@ -104,7 +104,7 @@ impl AuthRepository for PgAuthRepo {
             r#"
             SELECT user_id, agency_id, membership_id
             FROM portal_user_index
-            WHERE contact = $1 AND contact_type = $2 AND portal = $3
+            WHERE contact = $1 AND contact_type = $2::contact_type AND portal = $3::portal_type
             "#,
         )
         .bind(contact)
@@ -154,7 +154,7 @@ impl AuthRepository for PgAuthRepo {
     ) -> Result<Option<(String, bool)>, AppError> {
         let row = sqlx::query(
             r#"
-            SELECT role, is_active FROM user_agency_roles
+            SELECT role::text, is_active FROM user_agency_roles
             WHERE user_id = $1 AND agency_id = $2
             LIMIT 1
             "#,
@@ -228,9 +228,9 @@ impl AuthRepository for PgAuthRepo {
                 FROM portal_user_index pui
                 JOIN user_agency_roles uar ON uar.id = pui.membership_id
                 WHERE pui.contact = $1
-                  AND pui.contact_type = $2
+                  AND pui.contact_type = $2::contact_type
                   AND uar.agency_id = $3
-                  AND uar.role = $4
+                  AND uar.role = $4::user_role
             )
             "#,
         )
@@ -281,7 +281,7 @@ impl AuthRepository for PgAuthRepo {
         let row = sqlx::query(
             r#"
             INSERT INTO user_agency_roles (user_id, agency_id, role)
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2, $3::user_role)
             RETURNING id
             "#,
         )
@@ -325,14 +325,14 @@ impl AuthRepository for PgAuthRepo {
         sqlx::query(
             r#"
             INSERT INTO portal_user_index (contact, contact_type, portal, agency_id, user_id, membership_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2::contact_type, $3::portal_type, $4, $5, $6)
             ON CONFLICT (contact, contact_type, portal) DO UPDATE
             SET agency_id = EXCLUDED.agency_id, user_id = EXCLUDED.user_id, membership_id = EXCLUDED.membership_id
             "#,
         )
         .bind(cmd.contact)
         .bind(cmd.contact_type)
-        .bind(cmd.portal)
+        .bind(cmd.portal)      
         .bind(cmd.agency_id)
         .bind(cmd.user_id)
         .bind(cmd.membership_id)
@@ -349,7 +349,7 @@ impl AuthRepository for PgAuthRepo {
         portal: &str,
     ) -> Result<(), AppError> {
         sqlx::query(
-            "DELETE FROM portal_user_index WHERE contact=$1 AND contact_type=$2 AND portal=$3",
+            "DELETE FROM portal_user_index WHERE contact=$1 AND contact_type=$2::contact_type AND portal=$3::portal_type",
         )
         .bind(contact)
         .bind(contact_type)
@@ -365,16 +365,16 @@ impl AuthRepository for PgAuthRepo {
             r#"
             INSERT INTO invite_tokens
                 (token, user_id, agency_id, role, portal, contact, contact_type, temp_password, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4::user_role, $5::portal_type, $6, $7::contact_type, $8, $9)
             "#,
         )
         .bind(cmd.token)
         .bind(cmd.user_id)
         .bind(cmd.agency_id)
-        .bind(cmd.role)
-        .bind(cmd.portal)
+        .bind(cmd.role.as_str())     
+        .bind(cmd.portal.as_str())    
         .bind(cmd.contact)
-        .bind(cmd.contact_type)
+        .bind(cmd.contact_type)      
         .bind(cmd.temp_password)
         .bind(cmd.expires_at)
         .execute(&self.pool)
@@ -388,7 +388,7 @@ impl AuthRepository for PgAuthRepo {
             r#"
             DELETE FROM invite_tokens
             WHERE token = $1 AND expires_at > now()
-            RETURNING user_id, agency_id, role, portal, contact, contact_type
+            RETURNING user_id, agency_id, role::text, portal::text, contact, contact_type::text
             "#,
         )
         .bind(token)
@@ -396,7 +396,7 @@ impl AuthRepository for PgAuthRepo {
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("Invalid or expired invite token".into()))?;
-
+    
         use sqlx::Row;
         Ok(ConsumedInvite {
             user_id: row.get("user_id"),
@@ -486,6 +486,145 @@ impl AuthRepository for PgAuthRepo {
         tx.commit()
             .await
             .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        Ok(())
+    }
+
+    // ── Staff listing / lookup ────────────────────────────────────────────────
+
+    async fn staff_email_in_agency(&self, agency_id: Uuid, email: &str) -> Result<bool, AppError> {
+        let exists: Option<bool> = sqlx::query_scalar(
+            r#"
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM users u
+                    JOIN user_agency_roles uar ON uar.user_id = u.id
+                    WHERE u.email      = $1
+                      AND uar.agency_id = $2
+                      AND uar.role      IN ('admin', 'manager', 'agent')
+                )
+                "#,
+        )
+        .bind(email)
+        .bind(agency_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        Ok(exists.unwrap_or(false))
+    }
+
+    async fn list_staff(
+        &self,
+        agency_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<StaffMember>, AppError> {
+        let rows = sqlx::query(
+            r#"
+                SELECT
+                    u.id                    AS user_id,
+                    uar.id                  AS membership_id,
+                    u.email,
+                    uar.role::TEXT          AS role,
+                    u.is_active,
+                    u.must_change_password,
+                    u.created_at
+                FROM users u
+                JOIN user_agency_roles uar ON uar.user_id = u.id
+                WHERE uar.agency_id = $1
+                  AND uar.role IN ('admin', 'manager', 'agent')
+                ORDER BY u.created_at DESC
+                LIMIT $2 OFFSET $3
+                "#,
+        )
+        .bind(agency_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        use sqlx::Row;
+        Ok(rows
+            .into_iter()
+            .map(|r| StaffMember {
+                user_id: r.get("user_id"),
+                membership_id: r.get("membership_id"),
+                email: r.get::<Option<String>, _>("email").unwrap_or_default(),
+                role: r.get("role"),
+                is_active: r.get("is_active"),
+                must_change_password: r.get("must_change_password"),
+                created_at: r.get("created_at"),
+            })
+            .collect())
+    }
+
+    async fn find_staff_member(
+        &self,
+        agency_id: Uuid,
+        membership_id: Uuid,
+    ) -> Result<Option<StaffMember>, AppError> {
+        let row = sqlx::query(
+            r#"
+                SELECT
+                    u.id                    AS user_id,
+                    uar.id                  AS membership_id,
+                    u.email,
+                    uar.role::TEXT          AS role,
+                    u.is_active,
+                    u.must_change_password,
+                    u.created_at
+                FROM users u
+                JOIN user_agency_roles uar ON uar.user_id = u.id
+                WHERE uar.id        = $1
+                  AND uar.agency_id = $2
+                  AND uar.role IN ('admin', 'manager', 'agent')
+                LIMIT 1
+                "#,
+        )
+        .bind(membership_id)
+        .bind(agency_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        use sqlx::Row;
+        Ok(row.map(|r| StaffMember {
+            user_id: r.get("user_id"),
+            membership_id: r.get("membership_id"),
+            email: r.get::<Option<String>, _>("email").unwrap_or_default(),
+            role: r.get("role"),
+            is_active: r.get("is_active"),
+            must_change_password: r.get("must_change_password"),
+            created_at: r.get("created_at"),
+        }))
+    }
+
+    async fn deactivate_staff_member(
+        &self,
+        agency_id: Uuid,
+        membership_id: Uuid,
+    ) -> Result<(), AppError> {
+        let result = sqlx::query(
+            r#"
+                UPDATE user_agency_roles
+                SET    is_active = false
+                WHERE  id        = $1
+                  AND  agency_id = $2
+                  AND  role IN ('admin', 'manager', 'agent')
+                "#,
+        )
+        .bind(membership_id)
+        .bind(agency_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound(format!(
+                "staff member {membership_id} not found in this agency"
+            )));
+        }
         Ok(())
     }
 }

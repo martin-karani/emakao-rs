@@ -116,8 +116,6 @@ pub trait AuthRepository: Send + Sync + 'static {
 
     async fn find_agency_by_id(&self, id: Uuid) -> Result<Option<SlimAgency>, AppError>;
 
-    // ── Existence guards ──────────────────────────────────────────────────────
-
     async fn contact_exists_for_agency(
         &self,
         agency_id: Uuid,
@@ -125,8 +123,6 @@ pub trait AuthRepository: Send + Sync + 'static {
         contact_type: &str,
         role: &str,
     ) -> Result<bool, AppError>;
-
-    // ── Writes ────────────────────────────────────────────────────────────────
 
     async fn create_user(&self, cmd: CreateUserCommand) -> Result<StoredUser, AppError>;
 
@@ -182,9 +178,51 @@ pub trait AuthRepository: Send + Sync + 'static {
         password_hash: &str,
         token_hash: &str,
     ) -> Result<(), AppError>;
+
+    /// Return `true` if *any* staff role (admin / manager / agent) is already
+    /// registered for `email` in this agency.  Used as a duplicate guard before
+    /// issuing an invite.
+    async fn staff_email_in_agency(&self, agency_id: Uuid, email: &str) -> Result<bool, AppError>;
+
+    /// List all staff members (admin / manager / agent) for an agency,
+    /// ordered by creation date descending.
+    async fn list_staff(
+        &self,
+        agency_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<StaffMember>, AppError>;
+
+    /// Find a single staff member by their `user_agency_roles.id` (membership_id)
+    /// scoped to the agency to prevent cross-tenant leakage.
+    async fn find_staff_member(
+        &self,
+        agency_id: Uuid,
+        membership_id: Uuid,
+    ) -> Result<Option<StaffMember>, AppError>;
+
+    /// Deactivate a staff membership.  Sets `user_agency_roles.is_active = false`.
+    /// Does NOT delete — keeps the audit trail.
+    async fn deactivate_staff_member(
+        &self,
+        agency_id: Uuid,
+        membership_id: Uuid,
+    ) -> Result<(), AppError>;
 }
 
 pub struct PasswordResetToken {
     pub user_id: Uuid,
     pub expires_at: OffsetDateTime,
+}
+
+pub struct StaffMember {
+    pub user_id: Uuid,
+    pub membership_id: Uuid,
+    pub email: String,
+    pub role: String,
+    /// Mirror of `users.is_active`.
+    pub is_active: bool,
+    /// Mirror of `users.must_change_password`.
+    pub must_change_password: bool,
+    pub created_at: time::OffsetDateTime,
 }

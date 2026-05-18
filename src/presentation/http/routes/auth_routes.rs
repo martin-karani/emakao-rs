@@ -15,6 +15,8 @@ use crate::{
     },
 };
 
+/// Staff login — POST /api/v1/auth/login  (requires agency_slug in body)
+/// Also registers the shared refresh + accept-invite endpoints (registered once here).
 pub fn staff_login_routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/auth/login", post(staff_login))
@@ -22,54 +24,43 @@ pub fn staff_login_routes() -> Router<AppState> {
         .route("/api/v1/auth/accept-invite", post(accept_invite))
 }
 
+/// Resident portal login — POST /api/v1/auth/resident/login
 pub fn resident_login_routes() -> Router<AppState> {
-    Router::new()
-        .route(
-            "/api/v1/auth/login",
-            post(
-                |State(s): State<AppState>, Json(dto): Json<PortalLoginDto>| async move {
-                    portal_login(PortalType::Resident, s, dto).await
-                },
-            ),
-        )
-        .route("/api/v1/auth/refresh", post(refresh))
-        .route("/api/v1/auth/accept-invite", post(accept_invite))
+    Router::new().route(
+        "/api/v1/auth/resident/login",
+        post(
+            |State(s): State<AppState>, Json(dto): Json<PortalLoginDto>| async move {
+                portal_login(PortalType::Resident, s, dto).await
+            },
+        ),
+    )
 }
 
+/// Owner portal login — POST /api/v1/auth/owner/login
 pub fn owner_login_routes() -> Router<AppState> {
-    Router::new()
-        .route(
-            "/api/v1/auth/login",
-            post(
-                |State(s): State<AppState>, Json(dto): Json<PortalLoginDto>| async move {
-                    portal_login(PortalType::Owner, s, dto).await
-                },
-            ),
-        )
-        .route("/api/v1/auth/refresh", post(refresh))
-        .route("/api/v1/auth/accept-invite", post(accept_invite))
+    Router::new().route(
+        "/api/v1/auth/owner/login",
+        post(
+            |State(s): State<AppState>, Json(dto): Json<PortalLoginDto>| async move {
+                portal_login(PortalType::Owner, s, dto).await
+            },
+        ),
+    )
 }
 
+/// Vendor portal login — POST /api/v1/auth/vendor/login
 pub fn vendor_login_routes() -> Router<AppState> {
-    Router::new()
-        .route(
-            "/api/v1/auth/login",
-            post(
-                |State(s): State<AppState>, Json(dto): Json<PortalLoginDto>| async move {
-                    portal_login(PortalType::Vendor, s, dto).await
-                },
-            ),
-        )
-        .route("/api/v1/auth/refresh", post(refresh))
-        .route("/api/v1/auth/accept-invite", post(accept_invite))
+    Router::new().route(
+        "/api/v1/auth/vendor/login",
+        post(
+            |State(s): State<AppState>, Json(dto): Json<PortalLoginDto>| async move {
+                portal_login(PortalType::Vendor, s, dto).await
+            },
+        ),
+    )
 }
 
-pub fn change_password_routes(state: AppState) -> Router<AppState> {
-    Router::new()
-        .route("/api/v1/auth/change-password", post(change_password))
-        .layer(middleware::from_fn_with_state(state, require_auth))
-}
-
+/// Caretaker portal login — POST /api/v1/auth/caretaker/login
 pub fn caretaker_login_routes() -> Router<AppState> {
     Router::new().route(
         "/api/v1/auth/caretaker/login",
@@ -81,6 +72,12 @@ pub fn caretaker_login_routes() -> Router<AppState> {
     )
 }
 
+pub fn change_password_routes(state: AppState) -> Router<AppState> {
+    Router::new()
+        .route("/api/v1/auth/change-password", post(change_password))
+        .layer(middleware::from_fn_with_state(state, require_auth))
+}
+
 /// Public routes — no JWT required.
 pub fn password_reset_routes() -> Router<AppState> {
     Router::new()
@@ -89,10 +86,6 @@ pub fn password_reset_routes() -> Router<AppState> {
 }
 
 /// Protected session route — JWT required (checked by `with_auth_stack`).
-/// Mounted in `build_staff_api` so the `require_auth` layer runs first.
-///
-/// Note: logout intentionally skips `resolve_agency_context` because
-/// revoking a token doesn't need the tenant DB pool.
 pub fn session_routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/auth/logout", post(logout))
 }

@@ -183,9 +183,24 @@ pub struct OwnerInviteSmsCtx {
 
 /// `SmsTemplate::VendorInvite`
 ///
-/// SMS keys : `portal_url`, `temp_password`
 #[derive(Debug, Clone, Serialize)]
 pub struct VendorInviteSmsCtx {
     pub portal_url: String,
     pub temp_password: String,
+}
+
+/// Sent when a platform-admin or agency-admin invites a new staff member
+/// (admin / manager / agent) to the staff dashboard.
+#[derive(Debug, Clone, Serialize)]
+pub struct StaffInviteEmailCtx {
+    pub first_name: String,
+    pub last_name: String,
+    /// Human-readable role label, e.g. `"admin"`, `"manager"`, `"agent"`.
+    pub role: String,
+    /// Full HTTPS invite URL including the one-time token.
+    pub invite_url: String,
+    /// Display name of the person who sent the invite.
+    pub inviter_name: String,
+    /// Agency display name; falls back to `"Emakao"` in the template when `None`.
+    pub agency_name: Option<String>,
 }

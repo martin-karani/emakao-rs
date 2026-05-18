@@ -5,16 +5,19 @@ use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::application::{
-    notifications::{
-        service::NotificationService,
-        templates::{EmailTemplate, SmsTemplate},
-    },
-    ports::billing_repository::BillingRepository,
-};
-use crate::domain::billing::current_billing_period;
 use crate::infrastructure::db::billing_repository_sqlx::PgBillingRepo;
 use crate::infrastructure::db::pool::AgencyPoolManager;
+use crate::{
+    application::{
+        notifications::{
+            contexts::RentDueCtx,
+            service::NotificationService,
+            templates::{EmailTemplate, SmsTemplate},
+        },
+        ports::billing_repository::BillingRepository,
+    },
+    domain::billing::current_billing_period,
+};
 
 // ── Worker context ─────────────────────────────────────────────────────────
 
@@ -53,7 +56,7 @@ pub async fn charge_rent_worker(
         .await
         .map_err(|e| anyhow::anyhow!("pool error: {e}"))?;
 
-    let repo = PgBillingRepo::new(pool);
+    let repo = PgBillingRepo::for_agency(pool, job.agency_id);
     let today = OffsetDateTime::now_utc().date();
 
     let agreements = repo
@@ -64,7 +67,7 @@ pub async fn charge_rent_worker(
     for ag in agreements {
         let (period_start, period_end) =
             match current_billing_period(ag.start_date, ag.billing_frequency, today) {
-                Some((ps, pe)) => (ps, pe),
+                Some(p) => p,
                 None => continue,
             };
 
@@ -72,22 +75,35 @@ pub async fn charge_rent_worker(
             continue;
         }
 
-        if !repo
+        if repo
             .rent_charge_exists(ag.agreement_id, period_start)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?
         {
-            repo.record_rent_charge(
-                ag.agreement_id,
-                period_start,
-                period_end,
-                ag.rent_amount_kes,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to record rent charge: {e}"))?;
-
-            tracing::info!(agreement_id = %ag.agreement_id, "rent charged for period {} to {}", period_start, period_end);
+            tracing::debug!(
+                agreement_id = %ag.agreement_id,
+                period_start = %period_start,
+                "rent charge already exists — skipping"
+            );
+            continue;
         }
+
+        repo.record_rent_charge(
+            ag.agreement_id,
+            period_start,
+            period_end,
+            ag.rent_amount_kes,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to record rent charge: {e}"))?;
+
+        tracing::info!(
+            agreement_id = %ag.agreement_id,
+            period_start = %period_start,
+            period_end   = %period_end,
+            amount_kes   = %ag.rent_amount_kes,
+            "rent charged"
+        );
     }
 
     Ok(())
@@ -97,7 +113,7 @@ pub async fn apply_late_fees_worker(
     job: ApplyLateFeesJob,
     _ctx: Data<BillingContext>,
 ) -> Result<(), anyhow::Error> {
-    // TODO: Implement late fee logic
+    // TODO: implement late fee logic
     tracing::info!(agency_id = %job.agency_id, "apply_late_fees_worker stub called");
     Ok(())
 }
@@ -112,7 +128,7 @@ pub async fn send_reminders_worker(
         .await
         .map_err(|e| anyhow::anyhow!("pool error: {e}"))?;
 
-    let repo = PgBillingRepo::new(pool);
+    let repo = PgBillingRepo::for_agency(pool, job.agency_id);
     let today = OffsetDateTime::now_utc().date();
 
     let agreements = repo
@@ -123,12 +139,12 @@ pub async fn send_reminders_worker(
     for ag in agreements {
         let (period_start, _) =
             match current_billing_period(ag.start_date, ag.billing_frequency, today) {
-                Some((ps, pe)) => (ps, pe),
+                Some(p) => p,
                 None => continue,
             };
 
-        let remind_on = period_start - Duration::days(3);
-        if today != remind_on {
+        // Send reminder 3 days before the period start.
+        if today != period_start - Duration::days(3) {
             continue;
         }
 
@@ -145,13 +161,13 @@ pub async fn send_reminders_worker(
                     .email(
                         email,
                         EmailTemplate::RentDue,
-                        serde_json::json!({
-                            "resident_name": ag.resident_first_name,
-                            "amount_kes":    ag.rent_amount_kes.to_string(),
-                            "unit_ref":      ag.unit_number,
-                            "due_date":      period_start.to_string(),
-                            "payment_url":   "",
-                        }),
+                        RentDueCtx {
+                            resident_name: ag.resident_name.clone(),
+                            amount_kes: ag.rent_amount_kes.to_string(),
+                            unit_ref: ag.unit_number.clone(),
+                            due_date: period_start.to_string(),
+                            payment_url: String::new(),
+                        },
                     )
                     .await;
 
@@ -160,10 +176,19 @@ pub async fn send_reminders_worker(
                         repo.record_reminder_sent(ag.agreement_id, period_start, "email")
                             .await
                             .map_err(|e| anyhow::anyhow!("{e}"))?;
-                        tracing::info!(agreement_id = %ag.agreement_id, channel = "email", "rent reminder enqueued");
+                        tracing::info!(
+                            agreement_id = %ag.agreement_id,
+                            channel      = "email",
+                            "rent reminder enqueued"
+                        );
                     }
                     Err(e) => {
-                        tracing::warn!(agreement_id = %ag.agreement_id, err = %e, "failed to enqueue email reminder");
+                        // Soft failure — a missed reminder must not abort the whole run.
+                        tracing::warn!(
+                            agreement_id = %ag.agreement_id,
+                            err          = %e,
+                            "failed to enqueue email reminder"
+                        );
                     }
                 }
             }
@@ -182,13 +207,13 @@ pub async fn send_reminders_worker(
                     .sms(
                         phone,
                         SmsTemplate::RentDue,
-                        serde_json::json!({
-                            "resident_name": ag.resident_first_name,
-                            "amount_kes":    ag.rent_amount_kes.to_string(),
-                            "unit_ref":      ag.unit_number,
-                            "due_date":      period_start.to_string(),
-                            "payment_url":   "",
-                        }),
+                        RentDueCtx {
+                            resident_name: ag.resident_name.clone(),
+                            amount_kes: ag.rent_amount_kes.to_string(),
+                            unit_ref: ag.unit_number.clone(),
+                            due_date: period_start.to_string(),
+                            payment_url: String::new(),
+                        },
                     )
                     .await;
 
@@ -197,10 +222,18 @@ pub async fn send_reminders_worker(
                         repo.record_reminder_sent(ag.agreement_id, period_start, "sms")
                             .await
                             .map_err(|e| anyhow::anyhow!("{e}"))?;
-                        tracing::info!(agreement_id = %ag.agreement_id, channel = "sms", "rent reminder enqueued");
+                        tracing::info!(
+                            agreement_id = %ag.agreement_id,
+                            channel      = "sms",
+                            "rent reminder enqueued"
+                        );
                     }
                     Err(e) => {
-                        tracing::warn!(agreement_id = %ag.agreement_id, err = %e, "failed to enqueue sms reminder");
+                        tracing::warn!(
+                            agreement_id = %ag.agreement_id,
+                            err          = %e,
+                            "failed to enqueue sms reminder"
+                        );
                     }
                 }
             }

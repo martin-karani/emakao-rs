@@ -48,7 +48,7 @@ impl IntoResponse for AppError {
                 (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone())
             }
 
-            //  422 domain rules
+            // 422 domain rules
             AppError::Domain(DomainError::PropertyNameEmpty)
             | AppError::Domain(DomainError::InvalidInput(_))
             | AppError::Domain(DomainError::AgreementNotActive(_))
@@ -59,7 +59,7 @@ impl IntoResponse for AppError {
                 self.to_string(),
             ),
 
-            // 500
+            // 500 - Database
             AppError::Database(e) => {
                 tracing::error!(error = %e, "database error");
                 (
@@ -68,6 +68,7 @@ impl IntoResponse for AppError {
                     "a database error occurred".into(),
                 )
             }
+            // 500 - External service
             AppError::ExternalService(msg) => {
                 tracing::error!(error = %msg, "external service error");
                 (
@@ -76,6 +77,16 @@ impl IntoResponse for AppError {
                     "an external service error occurred".into(),
                 )
             }
+            // 500 - InternalServer (with inner message)
+            AppError::InternalServer(msg) => {
+                tracing::error!(error = %msg, "internal server error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR",
+                    msg.clone(),
+                )
+            }
+            // catch-all for any other variant (should not happen)
             _ => {
                 tracing::error!(error = %self, "unhandled error");
                 (

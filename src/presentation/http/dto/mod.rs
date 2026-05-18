@@ -13,5 +13,6 @@ pub mod pagination;
 pub mod payment;
 pub mod property;
 pub mod resident;
+pub mod staff;
 pub mod utility;
 pub mod vendor;

@@ -74,8 +74,10 @@ impl ProvisionAgencyUseCase {
         self.pool_manager
             .provision_new_schema(&schema_name)
             .await
-            .map_err(|e| AppError::InternalServer(format!("schema provisioning failed: {e}")))?;
-
+            .map_err(|e| {
+                tracing::error!(error = %e, "schema provisioning failed");
+                AppError::InternalServer(format!("schema provisioning failed: {e}"))
+            })?;
         // ── Step 3: Create OpenFGA store ───────────────────────────────────────
         let store_id = self.openfga.create_store(&input.slug).await?;
 

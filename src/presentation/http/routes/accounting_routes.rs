@@ -19,16 +19,16 @@ use crate::presentation::{
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        // Chart of accounts
         .route("/api/v1/accounts", get(list_accounts).post(create_account))
-        .route("/api/v1/accounts/:id", delete(delete_account))
-        // Journal entries
+        .route("/api/v1/accounts/{id}", delete(delete_account))
         .route(
             "/api/v1/journal-entries",
             get(list_journal_entries).post(post_journal_entry),
         )
-        .route("/api/v1/journal-entries/:id", get(get_journal_entry))
-        .route("/api/v1/journal-entries/:id/void", post(void_journal_entry))
-        // Reports
+        .route("/api/v1/journal-entries/{id}", get(get_journal_entry))
+        .route(
+            "/api/v1/journal-entries/{id}/void",
+            post(void_journal_entry),
+        )
         .route("/api/v1/accounting/trial-balance", get(get_trial_balance))
 }

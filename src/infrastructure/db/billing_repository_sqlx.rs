@@ -1,24 +1,38 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
-    application::{
-        errors::AppError,
-        ports::billing_repository::{BillingRepository, LateFeePolicy},
+    application::{errors::AppError, ports::billing_repository::BillingRepository},
+    domain::{
+        billing::{ActiveAgreementBillingView, LateFeePolicy},
+        enums::BillingFrequency,
     },
-    domain::billing::ActiveAgreementBillingView,
 };
 
 pub struct PgBillingRepo {
     pool: PgPool,
+    agency_id: Uuid,
+    schema_name: String,
 }
 
 impl PgBillingRepo {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, agency_id: Uuid, schema_name: String) -> Self {
+        Self {
+            pool,
+            agency_id,
+            schema_name,
+        }
+    }
+
+    /// Convenience constructor that derives `schema_name` from `agency_id`.
+    /// Schema name format: `agency_<uuid_simple>` — must match the convention
+    /// used by `AgencyPoolManager` when provisioning per-tenant schemas.
+    pub fn for_agency(pool: PgPool, agency_id: Uuid) -> Self {
+        let schema_name = format!("agency_{}", agency_id.simple());
+        Self::new(pool, agency_id, schema_name)
     }
 }
 
@@ -28,65 +42,70 @@ impl BillingRepository for PgBillingRepo {
         &self,
         _agency_id: Uuid,
     ) -> Result<Vec<ActiveAgreementBillingView>, AppError> {
-        // We use a custom query since the struct has fields from both agreement and resident.
+        // Per-agency pool already scopes to the right schema.
+        // query_as! is skipped: multi-table JOIN over per-tenant schemas
+        // cannot be verified at compile time.
         let rows = sqlx::query(
             r#"
             SELECT
-                a.id              AS agreement_id,
+                a.id                                   AS agreement_id,
                 a.unit_id,
                 a.resident_id,
                 a.rent_amount_kes,
                 a.billing_frequency,
                 a.start_date,
                 a.end_date,
-                r.email           AS resident_email,
-                r.phone           AS resident_phone,
-                r.first_name      AS resident_first_name,
-                u.unit_number,
-                p.id              AS property_id
+                r.email                                AS resident_email,
+                r.phone                                AS resident_phone,
+                (r.first_name || ' ' || r.last_name)   AS resident_name,
+                u.unit_number
             FROM agreements a
             JOIN residents r ON r.id = a.resident_id
             JOIN units     u ON u.id = a.unit_id
-            JOIN properties p ON p.id = a.property_id
             WHERE a.status = 'active'
               AND (a.end_date IS NULL OR a.end_date >= CURRENT_DATE)
             "#,
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
-        use crate::domain::enums::BillingFrequency;
-        use sqlx::Row;
+        let agency_id = self.agency_id;
+        let schema_name = self.schema_name.clone();
 
-        let mut results = Vec::new();
-        for r in rows {
-            let freq_str: String = r.get("billing_frequency");
-            let billing_frequency = match freq_str.as_str() {
-                "quarterly" => BillingFrequency::Quarterly,
-                "semi_annual" => BillingFrequency::SemiAnnual,
-                "annual" => BillingFrequency::Annual,
-                _ => BillingFrequency::Monthly,
-            };
+        let views = rows
+            .into_iter()
+            .map(|r| {
+                let freq_str: String = r.get("billing_frequency");
+                let billing_frequency = match freq_str.as_str() {
+                    "daily" => BillingFrequency::Daily,
+                    "weekly" => BillingFrequency::Weekly,
+                    "quarterly" => BillingFrequency::Quarterly,
+                    "semi_annual" => BillingFrequency::SemiAnnual,
+                    "annual" => BillingFrequency::Annual,
+                    "one_time" => BillingFrequency::OneTime,
+                    _ => BillingFrequency::Monthly,
+                };
 
-            results.push(ActiveAgreementBillingView {
-                agreement_id: r.get("agreement_id"),
-                agency_id: _agency_id,             // Passed in
-                schema_name: "public".to_string(), // Default if not known
-                unit_id: r.get("unit_id"),
-                resident_id: r.get("resident_id"),
-                rent_amount_kes: r.get("rent_amount_kes"),
-                billing_frequency,
-                start_date: r.get("start_date"),
-                end_date: r.get("end_date"),
-                resident_email: r.get("resident_email"),
-                resident_phone: r.get("resident_phone"),
-                resident_first_name: r.get("resident_first_name"),
-                unit_number: r.get("unit_number"),
-            });
-        }
+                ActiveAgreementBillingView {
+                    agreement_id: r.get("agreement_id"),
+                    agency_id,
+                    schema_name: schema_name.clone(),
+                    unit_id: r.get("unit_id"),
+                    resident_id: r.get("resident_id"),
+                    rent_amount_kes: r.get("rent_amount_kes"),
+                    billing_frequency,
+                    start_date: r.get("start_date"),
+                    end_date: r.get("end_date"),
+                    resident_email: r.get("resident_email"),
+                    resident_phone: r.get("resident_phone"),
+                    resident_name: r.get("resident_name"),
+                    unit_number: r.get("unit_number"),
+                }
+            })
+            .collect();
 
-        Ok(results)
+        Ok(views)
     }
 
     async fn rent_charge_exists(
@@ -100,7 +119,7 @@ impl BillingRepository for PgBillingRepo {
                 .bind(period_start)
                 .fetch_optional(&self.pool)
                 .await
-                .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+                .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.is_some())
     }
@@ -125,9 +144,36 @@ impl BillingRepository for PgBillingRepo {
         .bind(amount_kes)
         .execute(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
+    }
+
+    async fn load_late_fee_policy(&self) -> Result<LateFeePolicy, AppError> {
+        let row = sqlx::query(
+            r#"
+            SELECT grace_period_days, flat_amount_kes, rate_percent
+            FROM late_fee_policy
+            ORDER BY created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        Ok(match row {
+            Some(r) => LateFeePolicy {
+                grace_period_days: r.get("grace_period_days"),
+                flat_amount_kes: r.get("flat_amount_kes"),
+                rate_percent: r.get("rate_percent"),
+            },
+            None => LateFeePolicy {
+                grace_period_days: 5,
+                flat_amount_kes: None,
+                rate_percent: Some(Decimal::from(5)),
+            },
+        })
     }
 
     async fn late_fee_exists(
@@ -142,7 +188,7 @@ impl BillingRepository for PgBillingRepo {
         .bind(period_start)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.is_some())
     }
@@ -165,7 +211,7 @@ impl BillingRepository for PgBillingRepo {
         .bind(amount_kes)
         .execute(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
     }
@@ -188,9 +234,8 @@ impl BillingRepository for PgBillingRepo {
         .bind(since)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
-        use sqlx::Row;
         Ok(row
             .get::<Option<Decimal>, _>("total")
             .unwrap_or(Decimal::ZERO))
@@ -206,7 +251,9 @@ impl BillingRepository for PgBillingRepo {
             r#"
             SELECT 1
             FROM rent_reminders_sent
-            WHERE agreement_id = $1 AND period_start = $2 AND channel = $3
+            WHERE agreement_id = $1
+              AND period_start  = $2
+              AND channel       = $3
             "#,
         )
         .bind(agreement_id)
@@ -214,7 +261,7 @@ impl BillingRepository for PgBillingRepo {
         .bind(channel)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
         Ok(row.is_some())
     }
@@ -237,36 +284,8 @@ impl BillingRepository for PgBillingRepo {
         .bind(channel)
         .execute(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
-    }
-
-    async fn load_late_fee_policy(&self) -> Result<LateFeePolicy, AppError> {
-        let row = sqlx::query(
-            r#"
-            SELECT grace_period_days, flat_amount_kes, rate_percent
-            FROM late_fee_policy
-            ORDER BY created_at ASC
-            LIMIT 1
-            "#,
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
-
-        use sqlx::Row;
-        Ok(match row {
-            Some(r) => LateFeePolicy {
-                grace_period_days: r.get("grace_period_days"),
-                flat_amount_kes: r.get("flat_amount_kes"),
-                rate_percent: r.get("rate_percent"),
-            },
-            None => LateFeePolicy {
-                grace_period_days: 5,
-                flat_amount_kes: None,
-                rate_percent: Some(Decimal::from(5)),
-            },
-        })
     }
 }

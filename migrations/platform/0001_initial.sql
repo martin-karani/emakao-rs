@@ -229,6 +229,22 @@ CREATE INDEX idx_rt_user_id  ON refresh_tokens (user_id);
 CREATE INDEX idx_rt_expires  ON refresh_tokens (expires_at);
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 6.5 password_reset_tokens
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE password_reset_tokens (
+    id         UUID        NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    user_id    UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    token_hash TEXT        NOT NULL UNIQUE,   -- SHA-256 hex of the raw token
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at    TIMESTAMPTZ,                   -- set when consumed; NULL = unused
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_prt_token_hash ON password_reset_tokens (token_hash);
+CREATE INDEX idx_prt_user_id    ON password_reset_tokens (user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 7. subscription_plans
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -239,7 +255,7 @@ CREATE TABLE subscription_plans (
     description      TEXT,
     price_kes        INTEGER          NOT NULL CHECK (price_kes >= 0),
     yearly_price_kes INTEGER          CHECK (yearly_price_kes IS NULL OR yearly_price_kes >= 0),
-    billing_interval billing_interval NOT NULL DEFAULT 'monthly',
+    interval         billing_interval NOT NULL DEFAULT 'monthly',
     trial_days       INTEGER          NOT NULL DEFAULT 14 CHECK (trial_days >= 0),
     is_active        BOOLEAN          NOT NULL DEFAULT true,
     is_public        BOOLEAN          NOT NULL DEFAULT true,
@@ -262,6 +278,7 @@ CREATE TABLE plan_features (
     plan_id     UUID    NOT NULL REFERENCES subscription_plans (id) ON DELETE CASCADE,
     feature_key TEXT    NOT NULL CHECK (char_length(trim(feature_key)) > 0),
     value       TEXT    NOT NULL DEFAULT 'false',
+    value_type  TEXT    NOT NULL DEFAULT 'boolean',
     enabled     BOOLEAN NOT NULL DEFAULT false,
 
     UNIQUE (plan_id, feature_key)
@@ -295,6 +312,7 @@ CREATE TABLE subscriptions (
     agency_id            UUID                NOT NULL REFERENCES agencies          (id) ON DELETE CASCADE,
     plan_id              UUID                NOT NULL REFERENCES subscription_plans (id),
     status               subscription_status NOT NULL DEFAULT 'trialing',
+    plan_tier            TEXT,
 
     started_at           TIMESTAMPTZ         NOT NULL DEFAULT now(),
     ends_at              TIMESTAMPTZ,
@@ -350,9 +368,9 @@ CREATE INDEX idx_feature_overrides_expiry
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE TABLE subscription_invoices (
-    id              UUID           NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    subscription_id UUID           NOT NULL REFERENCES subscriptions (id) ON DELETE CASCADE,
-    agency_id       UUID           NOT NULL REFERENCES agencies       (id) ON DELETE CASCADE,
+    id                       UUID           NOT NULL PRIMARY KEY DEFAULT uuidv7(),
+    agency_subscription_id  UUID           NOT NULL REFERENCES subscriptions (id) ON DELETE CASCADE,
+    agency_id                UUID           NOT NULL REFERENCES agencies       (id) ON DELETE CASCADE,
     amount_kes      INTEGER        NOT NULL CHECK (amount_kes > 0),
     status          invoice_status NOT NULL DEFAULT 'draft',
     due_date        TIMESTAMPTZ    NOT NULL,
@@ -385,6 +403,19 @@ CREATE TABLE agency_usage_counters (
 );
 
 CREATE INDEX idx_usage_agency_id ON agency_usage_counters (agency_id);
+
+
+CREATE TABLE IF NOT EXISTS pending_mpesa_subscription_requests (
+    id                  UUID PRIMARY KEY DEFAULT uuidv7(),
+    agency_id           UUID NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+    plan_slug           TEXT NOT NULL,
+    amount_kes          INTEGER NOT NULL,
+    checkout_request_id TEXT NOT NULL UNIQUE,
+    merchant_request_id TEXT NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at          TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '5 minutes'
+);
+
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- FUNCTIONS & TRIGGERS

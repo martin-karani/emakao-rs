@@ -91,7 +91,7 @@ impl AgencyPoolManager {
         let provision_pool = PgPoolOptions::new()
             .max_connections(2)
             .after_connect({
-                let s = schema.clone();
+                let s: String = schema.clone();
                 move |conn, _| {
                     let s = s.clone();
                     Box::pin(async move {

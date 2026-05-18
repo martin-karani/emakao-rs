@@ -243,3 +243,50 @@ pub async fn initiate_payout(
 
     Ok(Json(DisbursementResponse::from(d)))
 }
+
+/// GET /portal/disbursements
+/// Lists disbursements that belong to the calling owner.
+pub async fn list_my_disbursements(
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Query(p): Query<ListDisbursementsParams>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo = std::sync::Arc::new(PgDisbursementRepo::new(ctx.pool));
+    let disbursements = ListDisbursementsUseCase::new(repo)
+        .execute(ListDisbursementsInput {
+            agency_id: ctx.agency.id,
+            // Force filter to the JWT owner — ignores any owner_id in query params
+            owner_id: Some(user.user_id),
+            property_id: p.property_id,
+            status: p.status,
+            limit: p.limit,
+            offset: p.offset,
+        })
+        .await?;
+
+    Ok(Json(
+        disbursements
+            .into_iter()
+            .map(DisbursementResponse::from)
+            .collect::<Vec<_>>(),
+    ))
+}
+
+/// GET /portal/disbursements/:id
+pub async fn get_my_disbursement(
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo = std::sync::Arc::new(PgDisbursementRepo::new(ctx.pool));
+    let d = GetDisbursementUseCase::new(repo)
+        .execute(ctx.agency.id, id)
+        .await?;
+
+    // Ownership check — owners can only see their own disbursements
+    if d.owner_id != user.user_id {
+        return Err(AppError::NotFound(format!("disbursement {id}")));
+    }
+
+    Ok(Json(DisbursementResponse::from(d)))
+}

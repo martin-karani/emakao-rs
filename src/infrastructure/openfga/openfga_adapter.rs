@@ -21,6 +21,11 @@ pub struct OpenFgaAdapter {
     store_cache: Arc<DashMap<String, String>>,
 }
 
+#[derive(serde::Deserialize)]
+struct StoreResp {
+    id: String,
+}
+
 impl OpenFgaAdapter {
     pub fn new(base_url: String) -> Self {
         Self {
@@ -76,11 +81,6 @@ impl OpenFgaPort for OpenFgaAdapter {
             return Err(AppError::ExternalService(format!(
                 "OpenFGA create_store HTTP {status}: {text}"
             )));
-        }
-
-        #[derive(serde::Deserialize)]
-        struct StoreResp {
-            id: String,
         }
 
         let store: StoreResp = resp

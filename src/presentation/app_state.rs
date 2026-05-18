@@ -403,6 +403,11 @@ impl AppState {
             websocket_channels: Arc::new(DashMap::new()),
         });
 
+        tracing::info!(
+            "Notification workers started with concurrency = {}",
+            cfg.notification_worker_concurrency.unwrap_or(4)
+        );
+
         tracing::info!("AppState built successfully ✓");
 
         Ok(Self {

@@ -1,0 +1,49 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}You've Been Invited to the Emakao Staff Dashboard{% endblock %}
+
+{% block content %}
+<h2>Welcome to the Team, {{ first_name }}!</h2>
+<p>Hi {{ first_name }},</p>
+<p>
+  <strong>{{ inviter_name }}</strong> has invited you to join
+  <strong>{{ agency_name | default("Emakao") }}</strong> as a
+  <strong>{{ role | title }}</strong> on the Emakao Property Management platform.
+</p>
+
+<div class="highlight-box">
+  <strong>What you can do in the Staff Dashboard:</strong><br>
+  {% if role == "admin" %}
+    Manage properties, residents, owners, vendors, and staff. Full access to
+    financial reports, lease agreements, maintenance workflows, and agency settings.
+  {% elif role == "manager" %}
+    Oversee properties and units, manage lease agreements, review maintenance
+    requests, track payments, and generate reports.
+  {% else %}
+    View and manage assigned properties, communicate with residents,
+    process maintenance requests, and handle day-to-day operations.
+  {% endif %}
+</div>
+
+<p>
+  Click the button below to activate your account and set your password.
+  This link expires in <strong>48 hours</strong>.
+</p>
+
+<p>
+  <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
+</p>
+
+<p style="font-size:13px;color:#888888;">
+  If you were not expecting this invitation, please contact
+  <strong>{{ agency_name | default("Emakao") }}</strong> or ignore this email —
+  your account will not be activated unless you click the link above.
+</p>
+
+<hr class="divider">
+
+<p style="font-size:13px;color:#555555;">
+  Having trouble with the button? Copy and paste this link into your browser:<br>
+  <a href="{{ invite_url }}" style="color:#1a3c5e;">{{ invite_url }}</a>
+</p>
+{% endblock %}

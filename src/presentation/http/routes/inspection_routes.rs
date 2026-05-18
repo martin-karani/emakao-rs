@@ -1,7 +1,4 @@
-use axum::{
-    routing::get,
-    Router,
-};
+use axum::{routing::get, Router};
 
 use crate::presentation::{
     app_state::AppState,
@@ -18,7 +15,7 @@ pub fn routes() -> Router<AppState> {
             get(list_inspections).post(create_inspection),
         )
         .route(
-            "/api/v1/inspections/:id",
+            "/api/v1/inspections/{id}",
             get(get_inspection)
                 .patch(update_inspection)
                 .delete(delete_inspection),

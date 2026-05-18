@@ -10,8 +10,8 @@ use crate::{
             bank_reconciliation_routes, dashboard_routes, disbursement_routes, document_routes,
             health_routes, insights_routes, inspection_routes, invoice_routes, ledger_routes,
             maintenance_routes, owner_routes, payment_routes, property_routes, resident_routes,
-            subscription_routes, upload_routes, utility_routes, vendor_routes, webhook_routes,
-            websocket_routes,
+            staff_routes, subscription_routes, upload_routes, utility_routes, vendor_routes,
+            webhook_routes, websocket_routes,
         },
         middleware::{
             admin_auth::require_admin, agency_context::resolve_agency_context, auth::require_auth,
@@ -95,6 +95,7 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
         // via the `acct_double_entry` feature entitlement check)
         .merge(accounting_routes::routes())
         .merge(bank_reconciliation_routes::routes())
+        .merge(staff_routes::staff_routes())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             subscription_middleware,
