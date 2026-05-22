@@ -96,8 +96,8 @@ impl AnalyticsRepository for PgAnalyticsRepo {
             r#"
             SELECT
                 COUNT(*)::BIGINT                                            AS total,
-                COUNT(*) FILTER (WHERE status NOT IN ('completed','cancelled'))::BIGINT AS open,
-                COUNT(*) FILTER (WHERE status = 'completed')::BIGINT        AS completed,
+                COUNT(*) FILTER (WHERE status::text NOT IN ('completed','cancelled'))::BIGINT AS open,
+                COUNT(*) FILTER (WHERE status::text = 'completed')::BIGINT        AS completed,
                 COALESCE(AVG(
                     CASE WHEN completed_at IS NOT NULL
                     THEN EXTRACT(EPOCH FROM (completed_at - created_at))/86400
@@ -159,12 +159,12 @@ impl AnalyticsRepository for PgAnalyticsRepo {
                 p.name                  AS property_name,
                 p.city,
                 COUNT(u.id)::BIGINT     AS units,
-                COUNT(u.id) FILTER (WHERE u.status = 'occupied')::BIGINT AS occupied_units,
+                COUNT(u.id) FILTER (WHERE u.status::text = 'occupied')::BIGINT AS occupied_units,
                 COALESCE(
                     (SELECT SUM(le.amount_kes) FROM ledger_entries le
                      JOIN agreements a ON a.id = le.agreement_id
                      WHERE a.property_id = p.id
-                       AND le.entry_type = 'payment'
+                       AND le.entry_type::text = 'payment'
                        AND le.posted_at BETWEEN $1 AND $2), 0
                 ) AS revenue_kes,
                 COALESCE(
@@ -172,19 +172,19 @@ impl AnalyticsRepository for PgAnalyticsRepo {
                      FROM ledger_entries le
                      JOIN agreements a ON a.id = le.agreement_id
                      WHERE a.property_id = p.id
-                       AND le.entry_type IN ('rent_charge','late_fee')
+                       AND le.entry_type::text IN ('rent_charge','late_fee')
                     ) -
                     (SELECT COALESCE(SUM(le.amount_kes), 0)
                      FROM ledger_entries le
                      JOIN agreements a ON a.id = le.agreement_id
                      WHERE a.property_id = p.id
-                       AND le.entry_type IN ('payment','credit','waiver')
+                       AND le.entry_type::text IN ('payment','credit','waiver')
                     ), 0
                 ) AS outstanding_kes,
                 COALESCE(
                     (SELECT SUM(wo.actual_cost_kes) FROM work_orders wo
                      WHERE wo.property_id = p.id
-                       AND wo.status = 'completed'
+                       AND wo.status::text = 'completed'
                        AND wo.completed_at BETWEEN $1 AND $2), 0
                 ) AS maintenance_cost_kes
             FROM properties p
@@ -391,9 +391,9 @@ impl PgAnalyticsRepo {
             r#"
             SELECT
                 DATE_TRUNC('month', le.posted_at)::DATE  AS month,
-                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'rent_charge'), 0) AS charged_kes,
-                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'payment'), 0)     AS collected_kes,
-                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type = 'late_fee'), 0)    AS late_fees_kes
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type::text = 'rent_charge'), 0) AS charged_kes,
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type::text = 'payment'), 0)     AS collected_kes,
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type::text = 'late_fee'), 0)    AS late_fees_kes
             FROM   ledger_entries le
             LEFT JOIN agreements a ON a.id = le.agreement_id
             WHERE  le.posted_at BETWEEN $1 AND $2
@@ -425,7 +425,7 @@ impl PgAnalyticsRepo {
                  WHERE ($3::uuid IS NULL OR p.id = $3)) AS total_units,
                 (SELECT COUNT(*)::BIGINT FROM units u
                  JOIN properties p ON p.id = u.property_id
-                 WHERE u.status = 'occupied'
+                 WHERE u.status::text = 'occupied'
                    AND ($3::uuid IS NULL OR p.id = $3)) AS occupied_units
             FROM (
                 SELECT generate_series(

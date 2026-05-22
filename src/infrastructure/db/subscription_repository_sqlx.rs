@@ -136,34 +136,12 @@ type TenantPoolFn =
     Box<dyn Fn(Uuid) -> Pin<Box<dyn Future<Output = anyhow::Result<PgPool>> + Send>> + Send + Sync>;
 
 pub struct PgSubscriptionRepo {
-    platform: PgPool,
-    tenant_pool_fn: TenantPoolFn,
+    pool: PgPool,
 }
 
 impl PgSubscriptionRepo {
-    /// * `platform`       — platform (public schema) pool.
-    /// * `tenant_pool_fn` — async closure: given an agency UUID returns the
-    ///   schema-scoped pool for that agency.
-    ///
-    /// Typical wiring in `AppState::build`:
-    /// ```rust
-    /// let pools = tenant_pools.clone();
-    /// PgSubscriptionRepo::new(platform_pool.clone(), move |agency_id| {
-    ///     let pools = pools.clone();
-    ///     Box::pin(async move { pools.for_agency(agency_id).await })
-    /// })
-    /// ```
-    pub fn new(
-        platform: PgPool,
-        tenant_pool_fn: impl Fn(Uuid) -> Pin<Box<dyn Future<Output = anyhow::Result<PgPool>> + Send>>
-            + Send
-            + Sync
-            + 'static,
-    ) -> Self {
-        Self {
-            platform,
-            tenant_pool_fn: Box::new(tenant_pool_fn),
-        }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 
     /// Resolves the agency pool for `agency_id` asynchronously.
@@ -199,7 +177,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
                   AND fo.feature_key  = pf.feature_key
                   AND (fo.expires_at IS NULL OR fo.expires_at > now())
             WHERE s.agency_id = $1
-              AND s.status IN ('active', 'trialing')
+              AND s.status::text IN ('active', 'trialing')
             "#,
         )
         .bind(agency_id)
@@ -219,7 +197,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             JOIN subscription_plans sp ON sp.id = s.plan_id
             JOIN plan_limits        pl ON pl.plan_id = sp.id
             WHERE s.agency_id = $1
-              AND s.status IN ('active', 'trialing')
+              AND s.status::text IN ('active', 'trialing')
             "#,
         )
         .bind(agency_id)
@@ -479,7 +457,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             JOIN plan_limits        pl ON pl.plan_id = sp.id
             WHERE s.agency_id = $1
               AND pl.limit_key = $2
-              AND s.status IN ('active', 'trialing')
+              AND s.status::text IN ('active', 'trialing')
             "#,
         )
         .bind(agency_id)
@@ -567,7 +545,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
     ) -> Result<Vec<SubscriptionInvoice>, AppError> {
         let rows: Vec<InvoiceRow> = sqlx::query_as::<_, InvoiceRow>(
             r#"
-            SELECT id, agency_subscription_id, agency_id, amount_kes, status,
+            SELECT id, agency_subscription_id, agency_id, amount_kes, status::text,
                    due_date, paid_at, mpesa_ref, mpesa_phone, receipt_url,
                    notes, created_at
             FROM subscription_invoices
@@ -622,7 +600,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             INSERT INTO subscription_invoices
                 (agency_subscription_id, agency_id, amount_kes, status, due_date, paid_at,
                  mpesa_ref, mpesa_phone)
-            VALUES ($1, $2, $3, 'paid', now(), now(), $4, $5)
+            VALUES ($1, $2, $3, 'paid'::invoice_status, now(), now(), $4, $5)
             RETURNING id
             "#,
         )
@@ -645,7 +623,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
                 payment_failure_count = 0,
                 updated_at            = now()
             WHERE agency_id = $1
-              AND status IN ('past_due', 'trialing', 'active')
+              AND status::text IN ('past_due', 'trialing', 'active')
             "#,
         )
         .bind(agency_id)

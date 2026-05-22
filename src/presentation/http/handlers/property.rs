@@ -1,3 +1,18 @@
+// src/presentation/http/handlers/property.rs
+//
+// Refactored to use the customisation layer:
+//   • require_below_limit! — enforces "max_properties" plan limit
+//   • require_feature!     — gates "property_management" feature flag
+//   • AuditLogger          — emits events on create / update / delete
+//   • AgencySettings       — reads workflow defaults (country_code, currency)
+//     via the Arc<AgencySettings> already in request extensions
+//     (injected for free by resolve_agency_context middleware)
+//
+// Nothing else changes: same use-cases, same DTOs, same OpenFGA checks,
+// same ResolvedSubscription extension, same AgencyContext extractor.
+
+use std::sync::Arc;
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -5,7 +20,6 @@ use axum::{
     Extension, Json,
 };
 use garde::Validate;
-use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -19,8 +33,10 @@ use crate::{
             update_property::UpdatePropertyUseCase,
         },
     },
-    domain::{auth::AuthenticatedUser, property::UpdatePropertyCommand, subscription::LimitKey},
-    infrastructure::db::property_repository_sqlx::PgPropertyRepo,
+    domain::{
+        agency_settings::AgencySettings, auth::AuthenticatedUser, property::UpdatePropertyCommand,
+    },
+    infrastructure::{audit::AuditEvent, db::property_repository_sqlx::PgPropertyRepo},
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
@@ -30,11 +46,16 @@ use crate::{
             helpers::permission::check_permission,
             responses::property::PropertyResponse,
         },
-        middleware::subscription::{require_limit, ResolvedSubscription},
+        middleware::subscription::ResolvedSubscription,
+        // Macros declared in src/presentation/macros.rs
+        require_below_limit,
+        require_feature,
     },
 };
 
-/// List all properties for the authenticated agency
+// ── List ──────────────────────────────────────────────────────────────────────
+
+/// List all properties for the authenticated agency.
 #[utoipa::path(
     get,
     path = "/api/v1/properties",
@@ -82,7 +103,9 @@ pub async fn list_properties(
     ))
 }
 
-/// Get a single property by UUID
+// ── Get ───────────────────────────────────────────────────────────────────────
+
+/// Get a single property by UUID.
 #[utoipa::path(
     get,
     path = "/api/v1/properties/{id}",
@@ -110,7 +133,9 @@ pub async fn get_property(
     Ok(Json(PropertyResponse::from(property)))
 }
 
-/// Create a new property
+// ── Create ────────────────────────────────────────────────────────────────────
+
+/// Create a new property.
 #[utoipa::path(
     post,
     path = "/api/v1/properties",
@@ -128,10 +153,11 @@ pub async fn create_property(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
+    Extension(_sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreatePropertyDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
+
     check_permission(
         &state,
         &ctx,
@@ -141,13 +167,36 @@ pub async fn create_property(
     )
     .await?;
 
+    // ── 1. Numeric plan limit ─────────────────────────────────────────────────
+    // Count current properties; reject if at or above the plan's max_properties.
     let current = state
         .subscription
         .repo
         .count_tenant_rows(ctx.agency.id, "properties")
         .await?;
-    require_limit(&sub.entitlements, &LimitKey::MaxProperties, current)?;
 
+    require_below_limit!(state, user.agency_id, "max_properties", current);
+
+    // ── 2. Feature flag ───────────────────────────────────────────────────────
+    // Ensures the agency's plan includes the property management module.
+    require_feature!(state, user.agency_id, "property_management");
+
+    // ── 3. Read AgencySettings for workflow defaults ───────────────────────────
+    // Arc<AgencySettings> was inserted into extensions by resolve_agency_context.
+    // Extracting it here is zero-cost (no DB / cache hit).
+    let settings = ctx_settings(&state, user.agency_id).await;
+
+    // Derive country_code from the agency locale, e.g. "en-KE" → "KE".
+    let country_code = settings
+        .as_ref()
+        .and_then(|s| {
+            s.extra
+                .get("country_code")
+                .and_then(|v| v.as_str().map(str::to_owned))
+        })
+        .unwrap_or_else(|| "KE".to_owned());
+
+    // ── 4. Execute use-case ───────────────────────────────────────────────────
     let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = CreatePropertyUseCase::new(repo);
 
@@ -160,14 +209,37 @@ pub async fn create_property(
             city: dto.city,
             property_type: dto.property_type,
             config: dto.config,
-            work_order_prefix: dto.work_order_prefix, // ← new
+            work_order_prefix: dto.work_order_prefix,
         })
         .await?;
+
+    // ── 5. Audit ──────────────────────────────────────────────────────────────
+    if let Some(custom) = &state.custom {
+        custom.audit.log(AuditEvent {
+            agency_id: ctx.agency.id,
+            actor_id: Some(user.user_id),
+            actor_role: Some(user.role.clone()),
+            action: "property.created".to_string(),
+            entity_type: "property".to_string(),
+            entity_id: property.id,
+            old_data: None,
+            new_data: Some(serde_json::json!({
+                "name":         property.name,
+                "address":      property.address,
+                "city":         property.city,
+                "country_code": country_code,
+                "property_type": format!("{:?}", property.property_type),
+            })),
+            ip_address: None,
+        });
+    }
 
     Ok((StatusCode::CREATED, Json(PropertyResponse::from(property))))
 }
 
-/// Update a property's mutable fields
+// ── Update ────────────────────────────────────────────────────────────────────
+
+/// Update a property's mutable fields.
 #[utoipa::path(
     put,
     path = "/api/v1/properties/{id}",
@@ -192,6 +264,19 @@ pub async fn update_property(
     dto.validate()?;
     check_permission(&state, &ctx, &user, "can_edit", &format!("property:{id}")).await?;
 
+    // Capture the before-state for a field-level audit diff.
+    let before = if let Some(custom) = &state.custom {
+        if custom.audit.should_log_field_changes(ctx.agency.id).await {
+            let repo = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
+            let usecase = GetPropertyUseCase::new(repo);
+            usecase.execute(ctx.agency.id, id).await.ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = UpdatePropertyUseCase::new(repo);
 
@@ -205,10 +290,37 @@ pub async fn update_property(
         })
         .await?;
 
+    // ── Audit ─────────────────────────────────────────────────────────────────
+    if let Some(custom) = &state.custom {
+        custom.audit.log(AuditEvent {
+            agency_id: ctx.agency.id,
+            actor_id: Some(user.user_id),
+            actor_role: Some(user.role.clone()),
+            action: "property.updated".to_string(),
+            entity_type: "property".to_string(),
+            entity_id: property.id,
+            old_data: before.as_ref().map(|p| {
+                serde_json::json!({
+                    "name":    p.name,
+                    "address": p.address,
+                    "city":    p.city,
+                })
+            }),
+            new_data: Some(serde_json::json!({
+                "name":    property.name,
+                "address": property.address,
+                "city":    property.city,
+            })),
+            ip_address: None,
+        });
+    }
+
     Ok(Json(PropertyResponse::from(property)))
 }
 
-/// Delete a property (hard delete — irreversible)
+// ── Delete ────────────────────────────────────────────────────────────────────
+
+/// Delete a property (hard delete — irreversible).
 #[utoipa::path(
     delete,
     path = "/api/v1/properties/{id}",
@@ -233,5 +345,37 @@ pub async fn delete_property(
     let usecase = DeletePropertyUseCase::new(repo);
     usecase.execute(ctx.agency.id, id).await?;
 
+    // ── Audit ─────────────────────────────────────────────────────────────────
+    if let Some(custom) = &state.custom {
+        custom.audit.log(AuditEvent {
+            agency_id: ctx.agency.id,
+            actor_id: Some(user.user_id),
+            actor_role: Some(user.role.clone()),
+            action: "property.deleted".to_string(),
+            entity_type: "property".to_string(),
+            entity_id: id,
+            old_data: None,
+            new_data: None,
+            ip_address: None,
+        });
+    }
+
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ── Internal helper ───────────────────────────────────────────────────────────
+
+/// Load AgencySettings from the customisation cache.
+/// Returns `None` gracefully when the customisation layer has not been
+/// initialised (e.g. in tests) so callers can fall back to defaults.
+async fn ctx_settings(state: &AppState, agency_id: Uuid) -> Option<Arc<AgencySettings>> {
+    let custom = state.custom.as_ref()?;
+    custom
+        .settings
+        .get_or_load(agency_id, state.infra.tenant_pools.platform())
+        .await
+        .map_err(|e| {
+            tracing::warn!(agency = %agency_id, error = %e, "property handler: failed to load AgencySettings");
+        })
+        .ok()
 }

@@ -80,7 +80,7 @@ impl ResidentRepository for PgResidentRepo {
         let rows = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
-                   r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
+                   r.phone, r.national_id, r.portal_status::text, r.created_at, r.updated_at
             FROM residents r
             ORDER BY r.created_at DESC
             LIMIT $1 OFFSET $2
@@ -99,7 +99,7 @@ impl ResidentRepository for PgResidentRepo {
         let row = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
-                   r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
+                   r.phone, r.national_id, r.portal_status::text, r.created_at, r.updated_at
             FROM residents r
             WHERE r.id = $1
             "#,
@@ -116,7 +116,7 @@ impl ResidentRepository for PgResidentRepo {
         let row = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
-                   r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
+                   r.phone, r.national_id, r.portal_status::text, r.created_at, r.updated_at
             FROM residents r
             WHERE r.user_id = $1
             "#,
@@ -137,7 +137,7 @@ impl ResidentRepository for PgResidentRepo {
         let row = sqlx::query_as::<_, ResidentRow>(
             r#"
             SELECT r.id, r.user_id, r.first_name, r.last_name, r.email,
-                   r.phone, r.national_id, r.portal_status, r.created_at, r.updated_at
+                   r.phone, r.national_id, r.portal_status::text, r.created_at, r.updated_at
             FROM residents r
             WHERE r.email = $1
             LIMIT 1
@@ -164,10 +164,10 @@ impl ResidentRepository for PgResidentRepo {
                 id, user_id, first_name, last_name, email,
                 phone, national_id, portal_status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::portal_status)
             RETURNING
                 id, user_id, first_name, last_name, email,
-                phone, national_id, portal_status, created_at, updated_at
+                phone, national_id, portal_status::text, created_at, updated_at
             "#,
         )
         .bind(Uuid::new_v4())
@@ -219,8 +219,8 @@ impl ResidentRepository for PgResidentRepo {
         let rows = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
         SELECT id, property_id, agreement_id, resident_id,
-               method_type, amount_kes, reference_code, proof_url,
-               notes, status, reviewed_by, reviewed_at,
+               method_type::text, amount_kes, reference_code, proof_url,
+               notes, status::text, reviewed_by, reviewed_at,
                review_notes, rejection_reason, ledger_entry_id,
                submitted_by, created_at, updated_at
         FROM payment_claims

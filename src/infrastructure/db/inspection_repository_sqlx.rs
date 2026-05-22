@@ -89,7 +89,7 @@ impl InspectionRepository for PgInspectionRepo {
             r#"
             SELECT
                 id, property_id, unit_id, agreement_id,
-                inspection_type, status,
+                inspection_type::text, status::text,
                 scheduled_at, completed_at, conducted_by,
                 items, summary_notes,
                 created_by, created_at, updated_at
@@ -122,7 +122,7 @@ impl InspectionRepository for PgInspectionRepo {
             r#"
             SELECT
                 id, property_id, unit_id, agreement_id,
-                inspection_type, status,
+                inspection_type::text, status::text,
                 scheduled_at, completed_at, conducted_by,
                 items, summary_notes,
                 created_by, created_at, updated_at
@@ -147,11 +147,11 @@ impl InspectionRepository for PgInspectionRepo {
             )
             VALUES (
                 uuidv7(), $1, $2, $3,
-                $4::text::inspection_type, 'scheduled', $5, $6
+                $4::text::inspection_type, 'scheduled'::inspection_status, $5, $6
             )
             RETURNING
                 id, property_id, unit_id, agreement_id,
-                inspection_type, status,
+                inspection_type::text, status::text,
                 scheduled_at, completed_at, conducted_by,
                 items, summary_notes,
                 created_by, created_at, updated_at
@@ -190,7 +190,7 @@ impl InspectionRepository for PgInspectionRepo {
             WHERE id = $1
             RETURNING
                 id, property_id, unit_id, agreement_id,
-                inspection_type, status,
+                inspection_type::text, status::text,
                 scheduled_at, completed_at, conducted_by,
                 items, summary_notes,
                 created_by, created_at, updated_at

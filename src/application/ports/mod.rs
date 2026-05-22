@@ -25,5 +25,6 @@ pub mod resident_repository;
 pub mod sms_port;
 pub mod storage_port;
 pub mod subscription_repository;
+pub mod tax_repository;
 pub mod utility_repository;
 pub mod vendor_repository;

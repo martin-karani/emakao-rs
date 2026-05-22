@@ -38,7 +38,7 @@ impl AuthRepository for PgAuthRepo {
             FROM users u
             JOIN user_agency_roles uar ON uar.user_id = u.id
             WHERE uar.agency_id = $1
-              AND uar.role IN ('admin','manager','agent','platform_admin')
+              AND uar.role::text IN ('admin','manager','agent','platform_admin')
               AND uar.is_active = true
               AND (
                   ($2 = 'email' AND u.email = $3) OR
@@ -173,7 +173,7 @@ impl AuthRepository for PgAuthRepo {
         let row = sqlx::query(
             r#"
             SELECT id, name, slug, schema_name, fga_store_id
-            FROM agencies WHERE slug = $1 AND status = 'active'
+            FROM agencies WHERE slug = $1 AND status::text = 'active'
             "#,
         )
         .bind(slug)
@@ -195,7 +195,7 @@ impl AuthRepository for PgAuthRepo {
         let row = sqlx::query(
             r#"
             SELECT id, name, slug, schema_name, fga_store_id
-            FROM agencies WHERE id = $1 AND status = 'active'
+            FROM agencies WHERE id = $1 AND status::text = 'active'
             "#,
         )
         .bind(id)
@@ -500,7 +500,7 @@ impl AuthRepository for PgAuthRepo {
                     JOIN user_agency_roles uar ON uar.user_id = u.id
                     WHERE u.email      = $1
                       AND uar.agency_id = $2
-                      AND uar.role      IN ('admin', 'manager', 'agent')
+                      AND uar.role::text IN ('admin', 'manager', 'agent')
                 )
                 "#,
         )
@@ -532,7 +532,7 @@ impl AuthRepository for PgAuthRepo {
                 FROM users u
                 JOIN user_agency_roles uar ON uar.user_id = u.id
                 WHERE uar.agency_id = $1
-                  AND uar.role IN ('admin', 'manager', 'agent')
+                  AND uar.role::text IN ('admin', 'manager', 'agent')
                 ORDER BY u.created_at DESC
                 LIMIT $2 OFFSET $3
                 "#,
@@ -578,7 +578,7 @@ impl AuthRepository for PgAuthRepo {
                 JOIN user_agency_roles uar ON uar.user_id = u.id
                 WHERE uar.id        = $1
                   AND uar.agency_id = $2
-                  AND uar.role IN ('admin', 'manager', 'agent')
+                  AND uar.role::text IN ('admin', 'manager', 'agent')
                 LIMIT 1
                 "#,
         )
@@ -611,7 +611,7 @@ impl AuthRepository for PgAuthRepo {
                 SET    is_active = false
                 WHERE  id        = $1
                   AND  agency_id = $2
-                  AND  role IN ('admin', 'manager', 'agent')
+                  AND  role::text IN ('admin', 'manager', 'agent')
                 "#,
         )
         .bind(membership_id)

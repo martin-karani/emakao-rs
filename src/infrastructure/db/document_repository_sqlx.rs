@@ -78,7 +78,7 @@ impl DocumentRepository for PgDocumentRepo {
         let rows = sqlx::query_as::<_, DocumentRow>(
             r#"
             SELECT id, agency_id, s3_key, file_name, mime_type, size_bytes,
-                   document_type, title, notes,
+                   document_type::text, title, notes,
                    property_id, unit_id, resident_id, agreement_id, work_order_id,
                    uploaded_by, created_at
             FROM   documents
@@ -88,7 +88,7 @@ impl DocumentRepository for PgDocumentRepo {
               AND ($4::uuid IS NULL OR resident_id    = $4)
               AND ($5::uuid IS NULL OR agreement_id   = $5)
               AND ($6::uuid IS NULL OR work_order_id  = $6)
-              AND ($7::text IS NULL OR document_type  = $7)
+              AND ($7::text IS NULL OR document_type::text  = $7)
             ORDER BY created_at DESC
             LIMIT $8 OFFSET $9
             "#,
@@ -113,7 +113,7 @@ impl DocumentRepository for PgDocumentRepo {
         let row = sqlx::query_as::<_, DocumentRow>(
             r#"
             SELECT id, agency_id, s3_key, file_name, mime_type, size_bytes,
-                   document_type, title, notes,
+                   document_type::text, title, notes,
                    property_id, unit_id, resident_id, agreement_id, work_order_id,
                    uploaded_by, created_at
             FROM   documents
@@ -140,12 +140,12 @@ impl DocumentRepository for PgDocumentRepo {
             )
             VALUES (
                 uuidv7(), $1, $2, $3, $4, $5,
-                $6, $7, $8,
+                $6::document_type, $7, $8,
                 $9, $10, $11, $12, $13,
                 $14
             )
             RETURNING id, agency_id, s3_key, file_name, mime_type, size_bytes,
-                      document_type, title, notes,
+                      document_type::text, title, notes,
                       property_id, unit_id, resident_id, agreement_id, work_order_id,
                       uploaded_by, created_at
             "#,

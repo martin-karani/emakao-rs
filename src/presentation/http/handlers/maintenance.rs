@@ -32,7 +32,6 @@ use crate::{
     domain::{
         auth::AuthenticatedUser,
         enums::{WorkOrderCommentAuthorType, WorkOrderReporterType},
-        subscription::FeatureKey,
     },
     infrastructure::db::maintenance_repository_sqlx::PgMaintenanceRepo,
     presentation::{
@@ -40,15 +39,12 @@ use crate::{
         error::ErrorResponse,
         extractors::AgencyContext,
         http::{dto::maintenance::*, responses::maintenance::*},
-        middleware::subscription::{require_feature, ResolvedSubscription},
+        require_feature,
     },
 };
 
-// ── Shared repo builder ───────────────────────────────────────────────────────
-//
-// Every handler builds a repo from the pool and wraps it in an Arc.
-// Defined as a macro rather than a function so the pool is moved in the same
-// expression without needing an extra clone at each call site.
+// ── Shared repo macro ─────────────────────────────────────────────────────────
+// Moves ctx.pool — store agency_id separately before calling this.
 
 macro_rules! repo {
     ($ctx:expr) => {
@@ -60,7 +56,6 @@ macro_rules! repo {
 // CARETAKERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// List caretakers (optionally filtered by property)
 #[utoipa::path(
     get, path = "/api/v1/caretakers",
     params(ListCaretakersParams),
@@ -71,11 +66,12 @@ macro_rules! repo {
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn list_caretakers(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListCaretakersParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let items = ListCaretakersUseCase::new(repo!(ctx))
         .execute(
@@ -93,7 +89,6 @@ pub async fn list_caretakers(
     ))
 }
 
-/// Create a caretaker for a property
 #[utoipa::path(
     post, path = "/api/v1/caretakers",
     request_body = CreateCaretakerDto,
@@ -105,13 +100,14 @@ pub async fn list_caretakers(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn create_caretaker(
+    State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateCaretakerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let ct = CreateCaretakerUseCase::new(repo!(ctx))
         .execute(CreateCaretakerInput {
@@ -127,7 +123,6 @@ pub async fn create_caretaker(
     Ok((StatusCode::CREATED, Json(CaretakerResponse::from(ct))))
 }
 
-/// Update a caretaker
 #[utoipa::path(
     patch, path = "/api/v1/caretakers/{id}",
     params(("id" = Uuid, Path, description = "Caretaker UUID")),
@@ -140,13 +135,14 @@ pub async fn create_caretaker(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn update_caretaker(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateCaretakerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let ct = UpdateCaretakerUseCase::new(repo!(ctx))
         .execute(UpdateCaretakerInput {
@@ -166,7 +162,6 @@ pub async fn update_caretaker(
 // WORK ORDERS — staff routes
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// List work orders with rich filters
 #[utoipa::path(
     get, path = "/api/v1/work-orders",
     params(ListWorkOrdersParams),
@@ -177,15 +172,16 @@ pub async fn update_caretaker(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn list_work_orders(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListWorkOrdersParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let items = ListWorkOrdersUseCase::new(repo!(ctx))
         .execute(ListWorkOrdersInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             property_id: params.property_id,
             unit_id: params.unit_id,
             status: params.status,
@@ -206,7 +202,6 @@ pub async fn list_work_orders(
     ))
 }
 
-/// Get a single work order by UUID
 #[utoipa::path(
     get, path = "/api/v1/work-orders/{id}",
     params(("id" = Uuid, Path, description = "Work order UUID")),
@@ -217,20 +212,19 @@ pub async fn list_work_orders(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn get_work_order(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let order = GetWorkOrderUseCase::new(repo!(ctx))
-        .execute(ctx.agency.id, id)
+        .execute(agency_id, id)
         .await?;
-
     Ok(Json(WorkOrderResponse::from(order)))
 }
 
-/// Get a work order by its human-readable code (e.g. MGRD-0042)
 #[utoipa::path(
     get, path = "/api/v1/work-orders/by-code/{code}",
     params(("code" = String, Path, description = "Work order code, e.g. MGRD-0042")),
@@ -241,20 +235,19 @@ pub async fn get_work_order(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn get_work_order_by_code(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(code): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let order = GetWorkOrderByCodeUseCase::new(repo!(ctx))
-        .execute(ctx.agency.id, &code)
+        .execute(agency_id, &code)
         .await?;
-
     Ok(Json(WorkOrderResponse::from(order)))
 }
 
-/// Create a work order — staff route (reporter_type defaults to Staff)
 #[utoipa::path(
     post, path = "/api/v1/work-orders",
     request_body = CreateWorkOrderDto,
@@ -268,18 +261,19 @@ pub async fn create_work_order(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateWorkOrderDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
     if dto.vendor_id.is_some() {
-        require_feature(&sub.entitlements, FeatureKey::MaintVendorPortal)?;
+        require_feature!(state, agency_id, "maint_vendor_portal");
     }
+
     let uc = CreateWorkOrderUseCase::new(repo!(ctx), state.notifications.clone());
     let order = uc
         .execute(CreateWorkOrderInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             property_id: dto.property_id,
             unit_id: dto.unit_id,
             reported_by: user.user_id,
@@ -307,7 +301,6 @@ pub async fn create_work_order(
     Ok((StatusCode::CREATED, Json(WorkOrderResponse::from(order))))
 }
 
-/// Update a work order — staff route (full field access)
 #[utoipa::path(
     patch, path = "/api/v1/work-orders/{id}",
     params(("id" = Uuid, Path, description = "Work order UUID")),
@@ -323,19 +316,20 @@ pub async fn update_work_order(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateWorkOrderDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
     if dto.vendor_id.as_ref().and_then(|v| v.as_ref()).is_some() {
-        require_feature(&sub.entitlements, FeatureKey::MaintVendorPortal)?;
+        require_feature!(state, agency_id, "maint_vendor_portal");
     }
+
     let uc = UpdateWorkOrderUseCase::new(repo!(ctx), state.notifications.clone());
     let order = uc
         .execute(UpdateWorkOrderInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             work_order_id: id,
             actor_id: user.user_id,
             actor_type: "staff".to_string(),
@@ -367,32 +361,31 @@ pub async fn update_work_order(
 // PORTAL ROUTES — caretaker + resident
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Caretaker creates a work order (reporter_type forced to Caretaker)
 pub async fn caretaker_create_work_order(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateWorkOrderDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let uc = CreateWorkOrderUseCase::new(repo!(ctx), state.notifications.clone());
     let order = uc
         .execute(CreateWorkOrderInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             property_id: dto.property_id,
             unit_id: dto.unit_id,
             reported_by: user.user_id,
-            reporter_type: WorkOrderReporterType::Caretaker, // forced
+            reporter_type: WorkOrderReporterType::Caretaker,
             reporter_resident_id: None,
             reporter_caretaker_id: dto.reporter_caretaker_id,
             title: dto.title,
             description: dto.description,
             category: dto.category,
             priority: dto.priority,
-            vendor_id: None, // caretakers cannot assign vendors
+            vendor_id: None,
             assigned_to: None,
             assigned_caretaker_id: None,
             due_date: dto.due_date,
@@ -409,15 +402,14 @@ pub async fn caretaker_create_work_order(
     Ok((StatusCode::CREATED, Json(WorkOrderResponse::from(order))))
 }
 
-/// List work orders assigned to or reported by the calling caretaker
 pub async fn caretaker_list_work_orders(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListWorkOrdersParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
-    // reporter_caretaker_id must be passed as a query param by the portal
     let caretaker_id = params.assigned_caretaker_id.ok_or_else(|| {
         AppError::Validation("assigned_caretaker_id is required on this route".into())
     })?;
@@ -438,32 +430,30 @@ pub async fn caretaker_list_work_orders(
     ))
 }
 
-/// Resident creates a work order from their portal (reporter_type forced to Resident)
 pub async fn resident_create_work_order(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateWorkOrderDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let uc = CreateWorkOrderUseCase::new(repo!(ctx), state.notifications.clone());
     let order = uc
         .execute(CreateWorkOrderInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             property_id: dto.property_id,
             unit_id: dto.unit_id,
             reported_by: user.user_id,
-            reporter_type: WorkOrderReporterType::Resident, // forced
+            reporter_type: WorkOrderReporterType::Resident,
             reporter_resident_id: dto.reporter_resident_id,
             reporter_caretaker_id: None,
             title: dto.title,
             description: dto.description,
             category: dto.category,
             priority: dto.priority,
-            // residents cannot set scheduling, cost, or internal data
             vendor_id: None,
             assigned_to: None,
             assigned_caretaker_id: None,
@@ -478,29 +468,25 @@ pub async fn resident_create_work_order(
         })
         .await?;
 
-    // Residents get the public response — no internal fields exposed
     Ok((
         StatusCode::CREATED,
         Json(WorkOrderPublicResponse::from(order)),
     ))
 }
 
-/// List work orders visible to the calling resident
 pub async fn resident_list_work_orders(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListWorkOrdersParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
-    // The resident UUID is carried in the query param from the portal
     let resident_id = params.reporter_resident_id.ok_or_else(|| {
         AppError::Validation("reporter_resident_id is required on this route".into())
     })?;
 
-    let uc = GetWorkOrdersForResidentUseCase::new(repo!(ctx));
-
-    let items = uc
+    let items = GetWorkOrdersForResidentUseCase::new(repo!(ctx))
         .execute(
             resident_id,
             params.limit.unwrap_or(20),
@@ -520,7 +506,6 @@ pub async fn resident_list_work_orders(
 // COMMENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// List comments on a work order (staff — sees internal comments)
 #[utoipa::path(
     get, path = "/api/v1/work-orders/{id}/comments",
     params(
@@ -534,18 +519,19 @@ pub async fn resident_list_work_orders(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn list_work_order_comments(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
     Query(params): Query<ListWorkOrderCommentsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let items = ListWorkOrderCommentsUseCase::new(repo!(ctx))
         .execute(ListWorkOrderCommentsInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             work_order_id: id,
-            include_internal: true, // staff route — internal comments visible
+            include_internal: true,
             top_level_only: params.top_level_only.unwrap_or(false),
             limit: params.limit.unwrap_or(50),
             offset: params.offset.unwrap_or(0),
@@ -560,20 +546,20 @@ pub async fn list_work_order_comments(
     ))
 }
 
-/// List comments visible to a resident (internal comments hidden)
 pub async fn resident_list_work_order_comments(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
     Query(params): Query<ListWorkOrderCommentsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let items = ListWorkOrderCommentsUseCase::new(repo!(ctx))
         .execute(ListWorkOrderCommentsInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             work_order_id: id,
-            include_internal: false, // resident route — strip internal comments
+            include_internal: false,
             top_level_only: params.top_level_only.unwrap_or(false),
             limit: params.limit.unwrap_or(50),
             offset: params.offset.unwrap_or(0),
@@ -588,27 +574,25 @@ pub async fn resident_list_work_order_comments(
     ))
 }
 
-/// List replies for a specific comment
 #[utoipa::path(
     get, path = "/api/v1/work-orders/{id}/comments/{comment_id}/replies",
     params(
         ("id" = Uuid, Path, description = "Work order UUID"),
         ("comment_id" = Uuid, Path, description = "Parent comment UUID"),
     ),
-    responses(
-        (status = 200, body = Vec<WorkOrderCommentResponse>),
-    ),
+    responses((status = 200, body = Vec<WorkOrderCommentResponse>)),
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn list_comment_replies(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path((work_order_id, comment_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let items = ListCommentRepliesUseCase::new(repo!(ctx))
-        .execute(ctx.agency.id, work_order_id, comment_id, true, 100, 0)
+        .execute(agency_id, work_order_id, comment_id, true, 100, 0)
         .await?;
 
     Ok(Json(
@@ -619,7 +603,6 @@ pub async fn list_comment_replies(
     ))
 }
 
-/// Add a comment — staff / caretaker / vendor
 #[utoipa::path(
     post, path = "/api/v1/work-orders/{id}/comments",
     params(("id" = Uuid, Path, description = "Work order UUID")),
@@ -632,18 +615,19 @@ pub async fn list_comment_replies(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn create_work_order_comment(
+    State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(work_order_id): Path<Uuid>,
     Json(dto): Json<CreateWorkOrderCommentDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let comment = AddWorkOrderCommentUseCase::new(repo!(ctx))
         .execute(AddWorkOrderCommentInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             work_order_id,
             parent_comment_id: dto.parent_comment_id,
             author_id: user.user_id,
@@ -662,28 +646,28 @@ pub async fn create_work_order_comment(
     ))
 }
 
-/// Add a comment — resident portal (is_internal always false, enforced by use case)
 pub async fn resident_create_work_order_comment(
+    State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(work_order_id): Path<Uuid>,
     Json(dto): Json<CreateWorkOrderCommentDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let comment = AddWorkOrderCommentUseCase::new(repo!(ctx))
         .execute(AddWorkOrderCommentInput {
-            agency_id: ctx.agency.id,
+            agency_id,
             work_order_id,
             parent_comment_id: dto.parent_comment_id,
             author_id: user.user_id,
-            author_type: WorkOrderCommentAuthorType::Resident, // forced
+            author_type: WorkOrderCommentAuthorType::Resident,
             author_resident_id: dto.author_resident_id,
             author_caretaker_id: None,
             body: dto.body,
-            is_internal: false, // use case also enforces this; belt-and-suspenders
+            is_internal: false,
             attachments: dto.attachments.unwrap_or_default(),
         })
         .await?;
@@ -698,7 +682,6 @@ pub async fn resident_create_work_order_comment(
 // ACTIVITY LOG
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Get the activity timeline for a work order (staff only)
 #[utoipa::path(
     get, path = "/api/v1/work-orders/{id}/activity",
     params(("id" = Uuid, Path, description = "Work order UUID")),
@@ -709,14 +692,15 @@ pub async fn resident_create_work_order_comment(
     tag = "Maintenance", security(("bearer_token" = []))
 )]
 pub async fn get_work_order_activity(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintWorkOrders)?;
+    let agency_id = ctx.agency.id;
+    require_feature!(state, agency_id, "maint_work_orders");
 
     let items = GetWorkOrderActivityUseCase::new(repo!(ctx))
-        .execute(ctx.agency.id, id, 200, 0)
+        .execute(agency_id, id, 200, 0)
         .await?;
 
     Ok(Json(

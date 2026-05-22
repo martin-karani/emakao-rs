@@ -52,7 +52,7 @@ impl BillingRepository for PgBillingRepo {
                 a.unit_id,
                 a.resident_id,
                 a.rent_amount_kes,
-                a.billing_frequency,
+                a.billing_frequency::text,
                 a.start_date,
                 a.end_date,
                 r.email                                AS resident_email,
@@ -62,7 +62,7 @@ impl BillingRepository for PgBillingRepo {
             FROM agreements a
             JOIN residents r ON r.id = a.resident_id
             JOIN units     u ON u.id = a.unit_id
-            WHERE a.status = 'active'
+            WHERE a.status::text = 'active'
               AND (a.end_date IS NULL OR a.end_date >= CURRENT_DATE)
             "#,
         )
@@ -226,7 +226,7 @@ impl BillingRepository for PgBillingRepo {
             SELECT COALESCE(SUM(amount_kes), 0) AS total
             FROM ledger_entries
             WHERE agreement_id = $1
-              AND entry_type   = 'payment'
+              AND entry_type::text   = 'payment'
               AND created_at  >= $2
             "#,
         )

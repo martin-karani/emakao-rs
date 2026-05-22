@@ -122,8 +122,8 @@ impl PaymentRepository for PgPaymentRepo {
         let rows = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
             SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id,
-                   pc.method_type, pc.amount_kes, pc.reference_code,
-                   pc.proof_url, pc.notes, pc.status,
+                   pc.method_type::text, pc.amount_kes, pc.reference_code,
+                   pc.proof_url, pc.notes, pc.status::text,
                    pc.reviewed_by, pc.reviewed_at, pc.review_notes,
                    pc.rejection_reason, pc.ledger_entry_id,
                    pc.submitted_by, pc.created_at, pc.updated_at
@@ -131,7 +131,7 @@ impl PaymentRepository for PgPaymentRepo {
             JOIN properties p ON p.id = pc.property_id
             WHERE p.agency_id = $1
               AND ($2::uuid IS NULL OR pc.property_id = $2)
-              AND ($3::text IS NULL OR pc.status = $3)
+              AND ($3::text IS NULL OR pc.status::text = $3)
             ORDER BY pc.created_at DESC
             LIMIT $4 OFFSET $5
             "#,
@@ -156,8 +156,8 @@ impl PaymentRepository for PgPaymentRepo {
         let row = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
             SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id,
-                   pc.method_type, pc.amount_kes, pc.reference_code,
-                   pc.proof_url, pc.notes, pc.status,
+                   pc.method_type::text, pc.amount_kes, pc.reference_code,
+                   pc.proof_url, pc.notes, pc.status::text,
                    pc.reviewed_by, pc.reviewed_at, pc.review_notes,
                    pc.rejection_reason, pc.ledger_entry_id,
                    pc.submitted_by, pc.created_at, pc.updated_at
@@ -183,10 +183,10 @@ impl PaymentRepository for PgPaymentRepo {
                 method_type, amount_kes, reference_code, proof_url,
                 notes, status, submitted_by
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_review', $10)
+            VALUES ($1, $2, $3, $4, $5::payment_method_type, $6, $7, $8, $9, 'pending_review'::claim_status, $10)
             RETURNING
                 id, property_id, agreement_id, resident_id,
-                method_type, amount_kes, reference_code, proof_url, notes, status,
+                method_type::text, amount_kes, reference_code, proof_url, notes, status::text,
                 reviewed_by, reviewed_at, review_notes, rejection_reason,
                 ledger_entry_id, submitted_by, created_at, updated_at
             "#,
@@ -220,7 +220,7 @@ impl PaymentRepository for PgPaymentRepo {
             r#"
             UPDATE payment_claims
             SET
-                status           = $2,
+                status           = $2::claim_status,
                 reviewed_by      = $3,
                 reviewed_at      = now(),
                 review_notes     = $4,
@@ -229,7 +229,7 @@ impl PaymentRepository for PgPaymentRepo {
             WHERE id = $1
             RETURNING
                 id, property_id, agreement_id, resident_id,
-                method_type, amount_kes, reference_code, proof_url, notes, status,
+                method_type::text, amount_kes, reference_code, proof_url, notes, status::text,
                 reviewed_by, reviewed_at, review_notes, rejection_reason,
                 ledger_entry_id, submitted_by, created_at, updated_at
             "#,

@@ -1,3 +1,10 @@
+// src/presentation/http/handlers/vendor.rs
+// REFACTORED: replaced `require_feature(&sub.entitlements, …)` with
+// `require_feature!(state, ctx.agency.id, "maint_vendor_portal")` and
+// `require_limit(&sub.entitlements, &LimitKey::MaxVendors, …)` with
+// `require_below_limit!(state, ctx.agency.id, "max_vendors", …)`.
+// Dropped `Extension(sub)` and all subscription domain imports.
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -19,11 +26,7 @@ use crate::{
             update_vendor::UpdateVendorUseCase,
         },
     },
-    domain::{
-        auth::AuthenticatedUser,
-        subscription::{FeatureKey, LimitKey},
-        vendor::UpdateVendorCommand,
-    },
+    domain::{auth::AuthenticatedUser, vendor::UpdateVendorCommand},
     infrastructure::db::vendor_repository_sqlx::PgVendorRepo,
     presentation::{
         app_state::AppState,
@@ -36,15 +39,12 @@ use crate::{
             },
             responses::{maintenance::WorkOrderResponse, vendor::VendorResponse},
         },
-        middleware::subscription::{require_feature, require_limit, ResolvedSubscription},
+        require_below_limit, require_feature,
     },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Staff Handlers
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── List vendors ──────────────────────────────────────────────────────────────
 
-/// List vendors (staff)
 #[utoipa::path(
     get,
     path = "/api/v1/vendors",
@@ -57,17 +57,13 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_vendors(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListVendorsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintVendorPortal)?;
+    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
 
-    let repo = Arc::new(PgVendorRepo::from(ctx.pool));
-    let usecase = ListVendorsUseCase::new(repo);
-
-    let items = usecase
+    let items = ListVendorsUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
         .execute(
             ctx.agency.id,
             params.limit.unwrap_or(20).min(100),
@@ -83,37 +79,36 @@ pub async fn list_vendors(
     ))
 }
 
-/// Get vendor by ID (staff)
+// ── Get vendor ────────────────────────────────────────────────────────────────
+
 #[utoipa::path(
     get,
     path = "/api/v1/vendors/{id}",
-    params(
-        ("id" = Uuid, Path, description = "Vendor UUID")
-    ),
+    params(("id" = Uuid, Path, description = "Vendor UUID")),
     responses(
         (status = 200, description = "Vendor found", body = VendorResponse),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 404, description = "Vendor not found", body = ErrorResponse),
+        (status = 404, description = "Vendor not found",       body = ErrorResponse),
     ),
     tag = "Vendors",
     security(("bearer_token" = []))
 )]
 pub async fn get_vendor(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::MaintVendorPortal)?;
+    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
 
-    let repo = Arc::new(PgVendorRepo::from(ctx.pool));
-    let usecase = GetVendorUseCase::new(repo);
+    let vendor = GetVendorUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
+        .execute(ctx.agency.id, id)
+        .await?;
 
-    let vendor = usecase.execute(ctx.agency.id, id).await?;
     Ok(Json(VendorResponse::from(vendor)))
 }
 
-/// Create a new vendor (staff)
+// ── Create vendor ─────────────────────────────────────────────────────────────
+
 #[utoipa::path(
     post,
     path = "/api/v1/vendors",
@@ -121,7 +116,8 @@ pub async fn get_vendor(
     responses(
         (status = 201, description = "Vendor created", body = VendorResponse),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 422, description = "Validation error", body = ErrorResponse),
+        (status = 402, description = "Plan limit reached",     body = ErrorResponse),
+        (status = 422, description = "Validation error",       body = ErrorResponse),
     ),
     tag = "Vendors",
     security(("bearer_token" = []))
@@ -129,22 +125,19 @@ pub async fn get_vendor(
 pub async fn create_vendor(
     State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateVendorDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintVendorPortal)?;
+    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
 
     let current = state
         .subscription
         .repo
         .count_tenant_rows(ctx.agency.id, "vendors")
         .await?;
-    require_limit(&sub.entitlements, &LimitKey::MaxVendors, current)?;
+    require_below_limit!(state, ctx.agency.id, "max_vendors", current);
 
-    let repo = Arc::new(PgVendorRepo::from(ctx.pool));
-    let usecase = CreateVendorUseCase::new(repo);
-    let vendor = usecase
+    let vendor = CreateVendorUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
         .execute(CreateVendorInput {
             agency_id: ctx.agency.id,
             name: dto.name,
@@ -155,40 +148,36 @@ pub async fn create_vendor(
             notes: dto.notes,
         })
         .await?;
+
     Ok((StatusCode::CREATED, Json(VendorResponse::from(vendor))))
 }
 
-/// Update vendor details (staff)
+// ── Update vendor ─────────────────────────────────────────────────────────────
+
 #[utoipa::path(
     patch,
     path = "/api/v1/vendors/{id}",
-    params(
-        ("id" = Uuid, Path, description = "Vendor UUID")
-    ),
+    params(("id" = Uuid, Path, description = "Vendor UUID")),
     request_body = UpdateVendorDto,
     responses(
         (status = 200, description = "Vendor updated", body = VendorResponse),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 404, description = "Vendor not found", body = ErrorResponse),
-        (status = 422, description = "Validation error", body = ErrorResponse),
+        (status = 404, description = "Vendor not found",       body = ErrorResponse),
+        (status = 422, description = "Validation error",       body = ErrorResponse),
     ),
     tag = "Vendors",
     security(("bearer_token" = []))
 )]
 pub async fn update_vendor(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateVendorDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::MaintVendorPortal)?;
+    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
 
-    let repo = Arc::new(PgVendorRepo::from(ctx.pool));
-    let usecase = UpdateVendorUseCase::new(repo);
-
-    let vendor = usecase
+    let vendor = UpdateVendorUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
         .execute(UpdateVendorCommand {
             id,
             agency_id: ctx.agency.id,
@@ -205,17 +194,21 @@ pub async fn update_vendor(
     Ok(Json(VendorResponse::from(vendor)))
 }
 
-/// Get own profile (using JWT user_id)
+// ── Portal: get own profile ───────────────────────────────────────────────────
+
 pub async fn get_my_profile(
     Extension(user): Extension<AuthenticatedUser>,
-    _ctx: AgencyContext,
+    ctx: AgencyContext,
 ) -> Result<impl IntoResponse, AppError> {
-    let repo = Arc::new(PgVendorRepo::from(_ctx.pool));
+    let repo = Arc::new(PgVendorRepo::from(ctx.pool));
     let vendor = VendorRepository::find_by_user_id(repo.as_ref(), user.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Vendor profile not found".into()))?;
+
     Ok(Json(VendorResponse::from(vendor)))
 }
+
+// ── Portal: list own work orders ──────────────────────────────────────────────
 
 pub async fn list_my_work_orders(
     Extension(user): Extension<AuthenticatedUser>,
@@ -227,11 +220,17 @@ pub async fn list_my_work_orders(
         .find_by_user_id(user.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Vendor profile not found".into()))?;
+
     let limit = params.limit.unwrap_or(20).min(100);
     let offset = params.offset.unwrap_or(0);
     let work_orders = repo
         .find_work_orders_by_vendor_id(vendor.id, limit, offset)
         .await?;
-    let responses: Vec<WorkOrderResponse> = work_orders.into_iter().map(Into::into).collect();
-    Ok(Json(responses))
+
+    Ok(Json(
+        work_orders
+            .into_iter()
+            .map(WorkOrderResponse::from)
+            .collect::<Vec<_>>(),
+    ))
 }

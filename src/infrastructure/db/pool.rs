@@ -1,3 +1,8 @@
+// src/infrastructure/db/pool.rs
+// UPDATED: added `platform_pool()` — a cloning accessor for the platform
+// PgPool used by the customisation components in `main.rs`.
+// All existing methods are unchanged.
+
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -36,9 +41,21 @@ impl AgencyPoolManager {
         }
     }
 
-    /// Returns the platform pool (emakao_platform, public schema).
+    // ── Existing accessors (UNCHANGED) ────────────────────────────────────────
+
+    /// Returns a reference to the platform pool (emakao_platform, public schema).
     pub fn platform(&self) -> &PgPool {
         &self.platform_pool
+    }
+
+    /// NEW — returns a *clone* of the platform pool.
+    ///
+    /// Use this when you need to hand ownership to a component that is
+    /// constructed once and kept alive independently (e.g. `SettingsCache`,
+    /// `EntitlementCache`, `AuditLogger`).  Cloning a `PgPool` is cheap —
+    /// it shares the same internal connection pool via `Arc`.
+    pub fn platform_pool(&self) -> PgPool {
+        self.platform_pool.clone()
     }
 
     pub fn cached_agency_pools(&self) -> usize {
@@ -46,7 +63,6 @@ impl AgencyPoolManager {
     }
 
     /// Returns (or lazily creates) a schema-scoped agency pool.
-    /// Called by `resolve_agency_context` on every authenticated request.
     pub async fn for_tenant(&self, schema_name: &str) -> Result<PgPool> {
         if let Some(pool) = self.agency_pools.get(schema_name) {
             return Ok(pool.clone());
@@ -78,8 +94,7 @@ impl AgencyPoolManager {
         self.for_tenant(&schema_name).await
     }
 
-    /// Call this exactly once during agency provisioning, before the first
-    /// `for_tenant` call so that tables exist when the pool is used.
+    /// Call once during agency provisioning before the first `for_tenant`.
     pub async fn provision_new_schema(&self, schema_name: &str) -> Result<()> {
         let schema = schema_name.to_owned();
 
@@ -95,7 +110,6 @@ impl AgencyPoolManager {
                 move |conn, _| {
                     let s = s.clone();
                     Box::pin(async move {
-                        // Idempotent: CREATE SCHEMA IF NOT EXISTS
                         sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS \"{s}\""))
                             .execute(&mut *conn)
                             .await?;
@@ -119,6 +133,8 @@ impl AgencyPoolManager {
         tracing::info!(schema = schema_name, "agency schema provisioned ✓");
         Ok(())
     }
+
+    // ── Private ───────────────────────────────────────────────────────────────
 
     async fn build_tenant_pool(&self, schema_name: &str) -> Result<PgPool> {
         let schema = schema_name.to_owned();

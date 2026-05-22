@@ -1,3 +1,60 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// src/domain/accounting.rs  — PATCH (add to end of system_accounts() vec)
+//
+// These five new SystemAccountSeed entries must be appended to the existing
+// `system_accounts()` function.  The rest of the file is unchanged.
+//
+// NEW ACCOUNTS:
+//   2040  MRI Tax Payable          Liability — 7.5 % MRI collected, not yet remitted
+//   2050  WHT Payable to KRA       Liability — 5 % WHT deducted from agency fee
+//   2060  VAT Control              Liability — net VAT balance (output − input)
+//   1050  WHT Receivable           Asset — 5 % WHT certificate receivable from owner
+//   5100  MRI Expense (owner)      Expense — owner's MRI when agency is NOT WHT agent
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Append these entries inside system_accounts() after the "5090 Other Expenses" entry:
+//
+//     // ── Tax control accounts (Kenya-specific) ────────────────────────────
+//     SystemAccountSeed {
+//         code: "2040",
+//         name: "MRI Tax Payable",
+//         account_type: AccountType::Liability,
+//         vat_applicable: false,
+//         vat_rate: None,
+//     },
+//     SystemAccountSeed {
+//         code: "2050",
+//         name: "Withholding Tax Payable — KRA",
+//         account_type: AccountType::Liability,
+//         vat_applicable: false,
+//         vat_rate: None,
+//     },
+//     SystemAccountSeed {
+//         code: "2060",
+//         name: "VAT Control Account",
+//         account_type: AccountType::Liability,
+//         vat_applicable: false,
+//         vat_rate: None,
+//     },
+//     SystemAccountSeed {
+//         code: "1050",
+//         name: "WHT Receivable (WHT Certificate)",
+//         account_type: AccountType::Asset,
+//         vat_applicable: false,
+//         vat_rate: None,
+//     },
+//     SystemAccountSeed {
+//         code: "5100",
+//         name: "MRI Tax Expense",
+//         account_type: AccountType::Expense,
+//         vat_applicable: false,
+//         vat_rate: None,
+//     },
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FULL UPDATED FILE BELOW — complete replacement for src/domain/accounting.rs
+// ─────────────────────────────────────────────────────────────────────────────
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use time::{Date, OffsetDateTime};
@@ -77,10 +134,7 @@ pub struct Account {
     pub account_type: AccountType,
     pub balance: Decimal,
     pub is_system: bool,
-    /// When `true` this account contributes to the VAT report.
-    /// Revenue accounts → output VAT.  Expense accounts → input VAT.
     pub vat_applicable: bool,
-    /// Fractional VAT rate e.g. `0.1600` = 16 %.  `None` when not applicable.
     pub vat_rate: Option<Decimal>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -136,23 +190,17 @@ pub struct VatReportLine {
     pub code: String,
     pub name: String,
     pub account_type: AccountType,
-    /// Net turnover for the period (exclusive of VAT).
     pub net_amount_kes: Decimal,
-    /// VAT at `vat_rate` on `net_amount_kes`.
     pub vat_amount_kes: Decimal,
     pub vat_rate: Decimal,
 }
 
-/// Aggregated VAT return for a calendar period.
 #[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct VatReport {
     pub period_start: Date,
     pub period_end: Date,
-    /// Output VAT — collected from tenants on VAT-applicable revenue.
     pub output_vat_kes: Decimal,
-    /// Input VAT — paid on VAT-applicable expenses.
     pub input_vat_kes: Decimal,
-    /// `output_vat - input_vat`.  Negative = refund due.
     pub net_vat_payable_kes: Decimal,
     pub lines: Vec<VatReportLine>,
 }
@@ -205,9 +253,6 @@ pub struct VatReportFilter {
 }
 
 // ── System chart of accounts ──────────────────────────────────────────────────
-//
-// Seeded once per agency during provisioning.  All entries here get
-// `is_system = true` so they cannot be deleted via the API.
 
 pub struct SystemAccountSeed {
     pub code: &'static str,
@@ -221,7 +266,7 @@ pub fn system_accounts() -> Vec<SystemAccountSeed> {
     let vat16 = Some(Decimal::new(1600, 4)); // 0.1600 = 16 %
 
     vec![
-        // Assets
+        // ── Assets ────────────────────────────────────────────────────────
         SystemAccountSeed {
             code: "1010",
             name: "Cash on Hand",
@@ -250,7 +295,15 @@ pub fn system_accounts() -> Vec<SystemAccountSeed> {
             vat_applicable: false,
             vat_rate: None,
         },
-        // Liabilities
+        // NEW: WHT certificate receivable (5 % deducted by owner on management fee)
+        SystemAccountSeed {
+            code: "1050",
+            name: "WHT Receivable (WHT Certificate)",
+            account_type: AccountType::Asset,
+            vat_applicable: false,
+            vat_rate: None,
+        },
+        // ── Liabilities ───────────────────────────────────────────────────
         SystemAccountSeed {
             code: "2010",
             name: "Accounts Payable",
@@ -272,7 +325,31 @@ pub fn system_accounts() -> Vec<SystemAccountSeed> {
             vat_applicable: false,
             vat_rate: None,
         },
-        // Equity
+        // NEW: MRI 7.5 % collected from tenants on behalf of owners, not yet remitted
+        SystemAccountSeed {
+            code: "2040",
+            name: "MRI Tax Payable",
+            account_type: AccountType::Liability,
+            vat_applicable: false,
+            vat_rate: None,
+        },
+        // NEW: 5 % WHT deducted on management fee, to be remitted to KRA
+        SystemAccountSeed {
+            code: "2050",
+            name: "Withholding Tax Payable — KRA",
+            account_type: AccountType::Liability,
+            vat_applicable: false,
+            vat_rate: None,
+        },
+        // NEW: net VAT control (output - input); clears to 2030 on filing
+        SystemAccountSeed {
+            code: "2060",
+            name: "VAT Control Account",
+            account_type: AccountType::Liability,
+            vat_applicable: false,
+            vat_rate: None,
+        },
+        // ── Equity ────────────────────────────────────────────────────────
         SystemAccountSeed {
             code: "3010",
             name: "Owner Equity",
@@ -287,7 +364,7 @@ pub fn system_accounts() -> Vec<SystemAccountSeed> {
             vat_applicable: false,
             vat_rate: None,
         },
-        // Revenue — VAT-applicable at 16 %
+        // ── Revenue ───────────────────────────────────────────────────────
         SystemAccountSeed {
             code: "4010",
             name: "Rental Income",
@@ -316,7 +393,7 @@ pub fn system_accounts() -> Vec<SystemAccountSeed> {
             vat_applicable: false,
             vat_rate: None,
         },
-        // Expenses — VAT-reclaimable at 16 %
+        // ── Expenses ──────────────────────────────────────────────────────
         SystemAccountSeed {
             code: "5010",
             name: "Maintenance & Repairs",
@@ -348,6 +425,14 @@ pub fn system_accounts() -> Vec<SystemAccountSeed> {
         SystemAccountSeed {
             code: "5090",
             name: "Other Expenses",
+            account_type: AccountType::Expense,
+            vat_applicable: false,
+            vat_rate: None,
+        },
+        // NEW: owner's MRI expense when agency is NOT acting as WHT agent
+        SystemAccountSeed {
+            code: "5100",
+            name: "MRI Tax Expense",
             account_type: AccountType::Expense,
             vat_applicable: false,
             vat_rate: None,

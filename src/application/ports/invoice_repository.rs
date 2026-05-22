@@ -12,6 +12,7 @@ use crate::{
 
 pub struct CreateInvoiceCommand {
     pub agency_id: Uuid,
+    pub owner_id: Option<Uuid>,
     pub property_id: Uuid,
     pub agreement_id: Option<Uuid>,
     pub resident_id: Option<Uuid>,

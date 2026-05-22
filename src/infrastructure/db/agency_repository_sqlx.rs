@@ -28,7 +28,7 @@ impl AgencyRepository for PgAgencyRepo {
             r#"
             INSERT INTO agencies (name, slug, schema_name, country_code, currency_code)
             VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, name, slug, schema_name, fga_store_id, status
+            RETURNING id, name, slug, schema_name, fga_store_id, status::text
             "#,
         )
         .bind(&cmd.name)
@@ -66,7 +66,7 @@ impl AgencyRepository for PgAgencyRepo {
     async fn find_by_slug(&self, slug: &str) -> Result<Option<Agency>, AppError> {
         let row = sqlx::query(
             r#"
-            SELECT id, name, slug, schema_name, fga_store_id, status, country_code, currency_code
+            SELECT id, name, slug, schema_name, fga_store_id, status::text, country_code, currency_code
             FROM   agencies
             WHERE  slug = $1
             "#,

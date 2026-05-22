@@ -17,6 +17,7 @@ pub struct CreateInvoiceUseCase {
 
 pub struct CreateInvoiceInput {
     pub agency_id: Uuid,
+    pub owner_id: Option<Uuid>,
     pub property_id: Uuid,
     pub agreement_id: Option<Uuid>,
     pub resident_id: Option<Uuid>,
@@ -61,6 +62,7 @@ impl CreateInvoiceUseCase {
             .repo
             .create(CreateInvoiceCommand {
                 agency_id: input.agency_id,
+                owner_id: input.owner_id,
                 property_id: input.property_id,
                 agreement_id: input.agreement_id,
                 resident_id: input.resident_id,

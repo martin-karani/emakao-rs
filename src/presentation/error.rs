@@ -18,7 +18,7 @@ pub struct ErrorResponse {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
-            // 400
+            // 400 / 422
             AppError::Validation(msg) => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "VALIDATION_ERROR",
@@ -32,12 +32,26 @@ impl IntoResponse for AppError {
                 "authentication required".into(),
             ),
 
-            // 402
+            // 402 — subscription / plan limit
             AppError::PlanUpgradeRequired
             | AppError::Domain(DomainError::PropertyLimitExceeded) => (
                 StatusCode::PAYMENT_REQUIRED,
                 "PLAN_LIMIT_EXCEEDED",
                 self.to_string(),
+            ),
+
+            // 402 — NEW: feature gating
+            AppError::FeatureNotAvailable(key) => (
+                StatusCode::PAYMENT_REQUIRED,
+                "FEATURE_NOT_AVAILABLE",
+                format!("Your plan does not include '{key}'. Please upgrade to access this feature."),
+            ),
+
+            // 402 — NEW: numeric plan limit
+            AppError::PlanLimitExceeded(key, max) => (
+                StatusCode::PAYMENT_REQUIRED,
+                "PLAN_LIMIT_EXCEEDED",
+                format!("You have reached the plan limit for '{key}' ({max}). Please upgrade to add more."),
             ),
 
             // 403
@@ -48,7 +62,7 @@ impl IntoResponse for AppError {
                 (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone())
             }
 
-            // 422 domain rules
+            // 422 — domain rules
             AppError::Domain(DomainError::PropertyNameEmpty)
             | AppError::Domain(DomainError::InvalidInput(_))
             | AppError::Domain(DomainError::AgreementNotActive(_))
@@ -59,7 +73,10 @@ impl IntoResponse for AppError {
                 self.to_string(),
             ),
 
-            // 500 - Database
+            // 409
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, "CONFLICT", msg.clone()),
+
+            // 500 — database
             AppError::Database(e) => {
                 tracing::error!(error = %e, "database error");
                 (
@@ -68,7 +85,8 @@ impl IntoResponse for AppError {
                     "a database error occurred".into(),
                 )
             }
-            // 500 - External service
+
+            // 500 — external service
             AppError::ExternalService(msg) => {
                 tracing::error!(error = %msg, "external service error");
                 (
@@ -77,7 +95,8 @@ impl IntoResponse for AppError {
                     "an external service error occurred".into(),
                 )
             }
-            // 500 - InternalServer (with inner message)
+
+            // 500 — internal
             AppError::InternalServer(msg) => {
                 tracing::error!(error = %msg, "internal server error");
                 (
@@ -86,9 +105,10 @@ impl IntoResponse for AppError {
                     msg.clone(),
                 )
             }
-            // catch-all for any other variant (should not happen)
+
+            // catch-all
             _ => {
-                tracing::error!(error = %self, "unhandled error");
+                tracing::error!(error = %self, "unhandled error variant");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "INTERNAL_ERROR",

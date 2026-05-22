@@ -1,10 +1,14 @@
+pub mod audit;
 pub mod auth;
 pub mod cache;
+pub mod crypto;
 pub mod db;
 pub mod email;
+pub mod jobs;
 pub mod notifications;
 pub mod openfga;
 pub mod payments;
+pub mod providers;
 pub mod scheduler;
 pub mod sms;
 pub mod storage;

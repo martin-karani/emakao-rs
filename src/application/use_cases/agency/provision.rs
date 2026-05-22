@@ -44,6 +44,25 @@ pub struct ProvisionAgencyUseCase {
 }
 
 impl ProvisionAgencyUseCase {
+    pub fn new(
+        agency_repo: Arc<dyn AgencyRepository>,
+        pool_manager: Arc<AgencyPoolManager>,
+        openfga: Arc<dyn OpenFgaPort>,
+    ) -> Self {
+        // Load the default model from a resource file or embedded JSON
+        let default_model = serde_json::from_str(include_str!(
+            "../../../../resources/fga/default_model.json"
+        ))
+        .expect("failed to parse default FGA model");
+
+        Self {
+            agency_repo,
+            pool_manager,
+            openfga,
+            default_model,
+        }
+    }
+
     pub async fn execute(&self, input: ProvisionAgencyInput) -> Result<Agency, AppError> {
         let schema_name = format!("agency_{}", input.slug.replace('-', "_").to_lowercase());
 

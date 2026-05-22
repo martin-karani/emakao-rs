@@ -21,5 +21,6 @@ pub mod pool;
 pub mod property_repository_sqlx;
 pub mod resident_repository_sqlx;
 pub mod subscription_repository_sqlx;
+pub mod tax_repository_sqlx;
 pub mod utility_repository_sqlx;
 pub mod vendor_repository_sqlx;

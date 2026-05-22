@@ -1,4 +1,7 @@
-use axum::{routing::post, Router};
+use axum::{
+    routing::{get, patch},
+    Router,
+};
 
 use crate::presentation::{
     app_state::AppState,
@@ -8,20 +11,48 @@ use crate::presentation::{
     },
 };
 
+// ── Staff: agency profile management ─────────────────────────────────────────
+//
+// Mounted inside `build_staff_api` with only `require_auth` applied —
+// no `resolve_agency_context` or `subscription_middleware` because the
+// agency_id is read directly from the authenticated user's JWT claim.
+//
+// Add `get_agency` / `update_agency` handlers to
+// `src/presentation/http/handlers/agency.rs` when ready and wire them below.
+
+pub fn management_routes() -> Router<AppState> {
+    Router::new()
+    // GET  /api/v1/agency  — fetch the authenticated agency's own profile
+    // PATCH /api/v1/agency — update name, contact info, logo URL, etc.
+    //
+    // Uncomment once the handlers exist:
+    //
+    // .route(
+    //     "/api/v1/agency",
+    //     get(get_agency).patch(update_agency),
+    // )
+    //
+    // For now the router compiles as a no-op; add routes incrementally.
+}
+
+// ── Platform admin ────────────────────────────────────────────────────────────
+//
+// Mounted inside `build_admin_api` behind the `require_admin` middleware.
+
 pub fn admin_routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/admin/agencies", post(create_agency))
+        .route("/api/v1/admin/agencies", axum::routing::post(create_agency))
         .route(
             "/api/v1/admin/agencies/{agency_id}/staff",
-            post(create_staff_user),
+            axum::routing::post(create_staff_user),
         )
-        // ── OpenFGA permission management ────────────────────────────────────
+        // OpenFGA permission management
         .route(
             "/api/v1/admin/agencies/{fga_store_id}/permissions/tuples",
-            post(write_permission_tuple).delete(delete_permission_tuple),
+            axum::routing::post(write_permission_tuple).delete(delete_permission_tuple),
         )
         .route(
             "/api/v1/admin/agencies/{fga_store_id}/permissions/model",
-            post(update_auth_model),
+            axum::routing::post(update_auth_model),
         )
 }

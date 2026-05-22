@@ -1,7 +1,4 @@
-// src/domain/billing.rs
-//
 // Pure domain types for the billing automation scheduler.
-// No I/O, no framework dependencies — plain data + enums.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -9,8 +6,6 @@ use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::domain::enums::BillingFrequency;
-
-// ── Idempotency records (mirrors the three scheduler tables) ──────────────────
 
 /// One row in `billing_cycles` — written when a rent charge is posted.
 #[derive(Debug, Clone, Serialize, Deserialize)]

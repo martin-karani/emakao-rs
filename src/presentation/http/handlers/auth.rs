@@ -240,11 +240,11 @@ pub async fn forgot_password(
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    let uc = ForgotPasswordUseCase {
-        auth_repo: state.identity.auth_repo.clone(),
-        notifications: state.notifications.clone(),
-        app_base_url: state.config.app_base_url.clone(),
-    };
+    let uc = ForgotPasswordUseCase::new(
+        state.identity.auth_repo.clone(),
+        (*state.notifications).clone(),
+        state.config.app_base_url.clone(),
+    );
 
     uc.execute(ForgotPasswordInput { email: dto.email }).await?;
 

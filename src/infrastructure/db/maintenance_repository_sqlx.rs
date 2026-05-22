@@ -448,7 +448,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
               AND ($7::text IS NULL OR wo.reporter_type = $7::text::work_order_reporter_type)
               AND ($8::uuid IS NULL OR wo.assigned_caretaker_id = $8::uuid)
             ORDER BY
-                CASE wo.priority
+                CASE wo.priority::text
                     WHEN 'emergency' THEN 1
                     WHEN 'high'      THEN 2
                     WHEN 'medium'    THEN 3
@@ -521,7 +521,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             FROM work_orders wo
             JOIN agreements ag ON ag.unit_id = wo.unit_id
             WHERE ag.resident_id = $1::uuid
-              AND ag.status = 'active'
+              AND ag.status::text = 'active'
               AND wo.is_tenant_visible = true
             ORDER BY wo.created_at DESC
             LIMIT $2 OFFSET $3
@@ -671,8 +671,8 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             VALUES (
                 uuidv7(), $1::uuid, $2::uuid, $3::uuid,
                 $4::text, $5::int,
-                $6::text, $7::text, $8::text, 'open', $9::text,
-                $10::uuid, $11::text, $12::uuid, $13::uuid,
+                $6::text, $7::text, $8::text::work_order_category, 'open'::work_order_status, $9::text::work_order_priority,
+                $10::uuid, $11::text::work_order_reporter_type, $12::uuid, $13::uuid,
                 $14::uuid, $15::uuid,
                 $16::date, $17::timestamptz, $18,
                 $19::boolean, $20::text, $21::jsonb
@@ -808,7 +808,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         let rows = sqlx::query_as::<_, CommentRow>(
             r#"
             SELECT id, work_order_id, parent_comment_id,
-                   author_id, author_type, author_resident_id, author_caretaker_id,
+                   author_id, author_type::text, author_resident_id, author_caretaker_id,
                    body, is_internal, attachments, is_edited, created_at, updated_at
             FROM work_order_comments
             WHERE work_order_id = $1::uuid
@@ -838,7 +838,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         let rows = sqlx::query_as::<_, CommentRow>(
             r#"
             SELECT id, work_order_id, parent_comment_id,
-                   author_id, author_type, author_resident_id, author_caretaker_id,
+                   author_id, author_type::text, author_resident_id, author_caretaker_id,
                    body, is_internal, attachments, is_edited, created_at, updated_at
             FROM work_order_comments
             WHERE parent_comment_id = $1::uuid
@@ -870,12 +870,12 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             )
             VALUES (
                 uuidv7(), $1::uuid, $2::uuid,
-                $3::uuid, $4::text, $5::uuid, $6::uuid,
+                $3::uuid, $4::text::work_order_comment_author_type, $5::uuid, $6::uuid,
                 $7::text, $8::boolean, $9::jsonb
             )
             RETURNING
                 id, work_order_id, parent_comment_id,
-                author_id, author_type, author_resident_id, author_caretaker_id,
+                author_id, author_type::text, author_resident_id, author_caretaker_id,
                 body, is_internal, attachments, is_edited, created_at, updated_at
             "#,
         )
@@ -903,7 +903,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
     ) -> Result<Vec<WorkOrderActivity>, AppError> {
         let rows = sqlx::query_as::<_, ActivityRow>(
             r#"
-            SELECT id, work_order_id, actor_id, actor_type, event_type, payload, created_at
+            SELECT id, work_order_id, actor_id, actor_type::text, event_type, payload, created_at
             FROM work_order_activity
             WHERE work_order_id = $1::uuid
             ORDER BY created_at ASC
@@ -930,7 +930,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             r#"
             INSERT INTO work_order_activity
                 (id, work_order_id, actor_id, actor_type, event_type, payload)
-            VALUES (uuidv7(), $1::uuid, $2::uuid, $3::text, $4::text, $5::jsonb)
+            VALUES (uuidv7(), $1::uuid, $2::uuid, $3::text::work_order_comment_author_type, $4::text, $5::jsonb)
             "#,
         )
         .bind(work_order_id)

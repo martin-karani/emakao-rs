@@ -1,3 +1,7 @@
+// src/presentation/http/handlers/insights.rs
+// REFACTORED: removed local `require_insights` helper and
+// `Extension(sub): Extension<ResolvedSubscription>` from every handler.
+
 use std::sync::Arc;
 
 use axum::{
@@ -21,36 +25,20 @@ use crate::{
             tenant_churn::TenantChurnUseCase,
         },
     },
-    domain::{auth::AuthenticatedUser, subscription::FeatureKey},
+    domain::auth::AuthenticatedUser,
     infrastructure::db::{
         insight_repository_sqlx::PgInsightRepo, maintenance_repository_sqlx::PgMaintenanceRepo,
     },
     presentation::{
         app_state::AppState, error::ErrorResponse, extractors::AgencyContext,
-        http::helpers::permission::check_permission,
-        middleware::subscription::ResolvedSubscription,
+        http::helpers::permission::check_permission, require_feature,
     },
 };
 
-// ── Feature-flag guard ────────────────────────────────────────────────────────
-
-fn require_insights(sub: &ResolvedSubscription) -> Result<(), AppError> {
-    // Insights are gated behind the Growth+ portfolio reporting tier.
-    // FIX: FeatureKey::Custom does not exist — use the nearest real key.
-    if !sub
-        .entitlements
-        .has_feature(&FeatureKey::ReportPortfolioSummary)
-    {
-        return Err(AppError::PlanUpgradeRequired);
-    }
-    Ok(())
-}
-
-// ── Shared query params ───────────────────────────────────────────────────────
+// ── Query params ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct RiskScoreParams {
-    /// Only return scores at or above this threshold (0–100). Default 0.
     pub min_score: Option<u8>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -64,7 +52,7 @@ pub struct ChurnParams {
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct MaintenanceAlertParams {
-    /// Minimum number of historical work orders required to surface an alert. Default 2.
+    /// Minimum historical work orders required to surface an alert. Default 2.
     pub min_historical_count: Option<i64>,
 }
 
@@ -93,7 +81,6 @@ pub async fn rent_default_risk(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<RiskScoreParams>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -104,11 +91,10 @@ pub async fn rent_default_risk(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_insights(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = RentDefaultRiskUseCase::new(repo);
-
     let scores = uc
         .execute(&ctx, params.limit.unwrap_or(50), params.offset.unwrap_or(0))
         .await?;
@@ -131,7 +117,6 @@ pub async fn tenant_churn(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ChurnParams>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -142,7 +127,7 @@ pub async fn tenant_churn(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_insights(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = TenantChurnUseCase::new(repo);
@@ -166,7 +151,6 @@ pub async fn maintenance_alerts(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<MaintenanceAlertParams>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -177,7 +161,7 @@ pub async fn maintenance_alerts(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_insights(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = PredictiveMaintenanceUseCase::new(repo);
@@ -203,7 +187,6 @@ pub async fn expense_forecast(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ForecastParams>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -214,7 +197,7 @@ pub async fn expense_forecast(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_insights(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = ExpenseForecastUseCase::new(repo);
@@ -241,7 +224,6 @@ pub async fn vendor_allocation(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(work_order_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -252,7 +234,7 @@ pub async fn vendor_allocation(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_insights(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let maint_repo = PgMaintenanceRepo::new(ctx.pool.clone());
     let work_order = maint_repo

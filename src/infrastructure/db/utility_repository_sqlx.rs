@@ -160,7 +160,7 @@ impl UtilityRepository for PgUtilityRepo {
     async fn find_meter_by_id(&self, id: Uuid) -> Result<Option<UtilityMeter>, AppError> {
         let row = sqlx::query_as::<_, MeterRow>(
             r#"
-            SELECT id, unit_id, meter_type, billing_mode,
+            SELECT id, unit_id, meter_type::text, billing_mode::text,
                    meter_number, rate_per_unit, created_at
             FROM utility_meters
             WHERE id = $1
@@ -177,7 +177,7 @@ impl UtilityRepository for PgUtilityRepo {
     async fn find_meters_by_unit(&self, unit_id: Uuid) -> Result<Vec<UtilityMeter>, AppError> {
         let rows = sqlx::query_as::<_, MeterRow>(
             r#"
-            SELECT id, unit_id, meter_type, billing_mode,
+            SELECT id, unit_id, meter_type::text, billing_mode::text,
                    meter_number, rate_per_unit, created_at
             FROM utility_meters
             WHERE unit_id = $1
@@ -202,10 +202,10 @@ impl UtilityRepository for PgUtilityRepo {
 
         let rows = sqlx::query_as::<_, BillRow>(
             r#"
-            SELECT id, meter_id, unit_id, units_consumed, amount_kes, status, created_at
+            SELECT id, meter_id, unit_id, units_consumed, amount_kes, status::text, created_at
             FROM utility_bills
             WHERE unit_id = $1
-              AND ($2::text IS NULL OR status = $2)
+              AND ($2::text IS NULL OR status::text = $2)
             ORDER BY created_at DESC
             LIMIT $3 OFFSET $4
             "#,
@@ -227,8 +227,8 @@ impl UtilityRepository for PgUtilityRepo {
             INSERT INTO utility_meters (
                 id, unit_id, meter_type, billing_mode, meter_number, rate_per_unit
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, unit_id, meter_type, billing_mode,
+            VALUES ($1, $2, $3::meter_type, $4::billing_mode, $5, $6)
+            RETURNING id, unit_id, meter_type::text, billing_mode::text,
                       meter_number, rate_per_unit, created_at
             "#,
         )
@@ -291,8 +291,8 @@ impl UtilityRepository for PgUtilityRepo {
             INSERT INTO utility_bills (
                 id, meter_id, unit_id, units_consumed, amount_kes, status
             )
-            VALUES ($1, $2, $3, $4, $5, 'draft')
-            RETURNING id, meter_id, unit_id, units_consumed, amount_kes, status, created_at
+            VALUES ($1, $2, $3, $4, $5, 'draft'::utility_bill_status)
+            RETURNING id, meter_id, unit_id, units_consumed, amount_kes, status::text, created_at
             "#,
         )
         .bind(bill.id)

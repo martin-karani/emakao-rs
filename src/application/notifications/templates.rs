@@ -1,3 +1,7 @@
+// src/application/notifications/templates.rs
+//
+// CHANGED: Added TaxDue to both EmailTemplate and SmsTemplate.
+
 use serde::{Deserialize, Serialize};
 
 use crate::application::errors::AppError;
@@ -13,19 +17,13 @@ pub enum EmailTemplate {
     LeaseExpiring,
     PasswordReset,
     WorkOrderUpdate,
-    /// Sent to a newly invited resident (email contact path).
-    /// Context: `first_name`, `invite_url`, `agency_name` (optional).
     ResidentInvite,
-    /// Sent to a newly onboarded property owner (email contact path).
-    /// Context: `first_name`, `invite_url`, `agency_name` (optional).
     OwnerInvite,
-    /// Sent to a newly invited vendor/contractor (email contact path).
-    /// Context: `contact_name` (optional), `vendor_name`, `invite_url`, `agency_name` (optional).
     VendorInvite,
-    /// Sent to a newly invited staff member (admin / manager / agent).
-    /// Context: `first_name`, `last_name`, `role`, `invite_url`,
-    ///          `inviter_name`, `agency_name` (optional).
     StaffInvite,
+    /// Sent to agency staff when a KRA tax obligation is due in 5 or 1 day.
+    /// Context: `TaxDueCtx`.
+    TaxDue,
 }
 
 impl EmailTemplate {
@@ -41,6 +39,7 @@ impl EmailTemplate {
             Self::OwnerInvite => "email/owner_invite.html.jinja",
             Self::VendorInvite => "email/vendor_invite.html.jinja",
             Self::StaffInvite => "email/staff_invite.html.jinja",
+            Self::TaxDue => "email/tax_due.html.jinja",
         }
     }
 
@@ -56,6 +55,7 @@ impl EmailTemplate {
             Self::OwnerInvite => "Welcome to Emakao – Activate Your Owner Portal",
             Self::VendorInvite => "You've Been Added to the Emakao Vendor Directory",
             Self::StaffInvite => "You've been invited to the Emakao Staff Dashboard",
+            Self::TaxDue => "KRA Tax Obligation Due – Action Required",
         }
     }
 }
@@ -71,13 +71,11 @@ pub enum SmsTemplate {
     LeaseExpiring,
     Otp,
     WorkOrderUpdate,
-    /// Sent to a newly invited resident (phone contact path).
     ResidentInvite,
-    /// Sent to a newly onboarded property owner (phone contact path).
     OwnerInvite,
-    /// Sent to a newly invited vendor/contractor (phone contact path).
     VendorInvite,
-    // Note: StaffInvite has no SMS variant — staff always use email.
+    /// SMS alert when a KRA tax obligation is due soon.
+    TaxDue,
 }
 
 impl SmsTemplate {
@@ -122,13 +120,9 @@ impl SmsTemplate {
                     get("category"),
                     get("status"),
                 );
-                match ctx
-                    .get("scheduled_at")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                {
+                match ctx.get("scheduled_at").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
                     Some(date) => format!("{base} Scheduled: {date}."),
-                    None => base,
+                    None       => base,
                 }
             }
             Self::ResidentInvite => format!(
@@ -147,6 +141,14 @@ impl SmsTemplate {
                 "You've been added to the Emakao vendor portal at {}. Temp password: {}. Change it on first login.",
                 get("portal_url"),
                 get("temp_password"),
+            ),
+            // NEW
+            Self::TaxDue => format!(
+                "Emakao: KRA {} of KES {} is due in {} day(s) on {}. File on iTax now.",
+                get("obligation_type"),
+                get("tax_kes"),
+                get("days_until_due"),
+                get("due_date"),
             ),
         };
 

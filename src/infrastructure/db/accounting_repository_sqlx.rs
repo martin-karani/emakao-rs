@@ -131,7 +131,7 @@ impl AccountingRepository for PgAccountingRepo {
     async fn list_accounts(&self, filter: AccountFilter) -> Result<Vec<Account>, AppError> {
         let type_str = filter.account_type.as_ref().map(|t| t.as_str());
         let rows = sqlx::query_as::<_, AccountRow>(
-            r#"SELECT id, agency_id, code, name, account_type, balance, is_system,
+            r#"SELECT id, agency_id, code, name, account_type::text, balance, is_system,
                       vat_applicable, vat_rate, created_at, updated_at
                FROM   accounts
                WHERE  agency_id = $1
@@ -156,7 +156,7 @@ impl AccountingRepository for PgAccountingRepo {
         id: Uuid,
     ) -> Result<Option<Account>, AppError> {
         let row = sqlx::query_as::<_, AccountRow>(
-            r#"SELECT id, agency_id, code, name, account_type, balance, is_system,
+            r#"SELECT id, agency_id, code, name, account_type::text, balance, is_system,
                       vat_applicable, vat_rate, created_at, updated_at
                FROM   accounts
                WHERE  id = $1 AND agency_id = $2"#,
@@ -175,7 +175,7 @@ impl AccountingRepository for PgAccountingRepo {
             r#"INSERT INTO accounts
                    (id, agency_id, code, name, account_type, is_system, vat_applicable, vat_rate)
                VALUES (uuidv7(), $1, $2, $3, $4::text::account_category, $5, $6, $7)
-               RETURNING id, agency_id, code, name, account_type, balance, is_system,
+               RETURNING id, agency_id, code, name, account_type::text, balance, is_system,
                          vat_applicable, vat_rate, created_at, updated_at"#,
         )
         .bind(cmd.agency_id)
@@ -265,7 +265,7 @@ impl AccountingRepository for PgAccountingRepo {
     ) -> Result<Vec<JournalEntry>, AppError> {
         let status_str = filter.status.as_ref().map(|s| s.as_str());
         let rows = sqlx::query_as::<_, EntryRow>(
-            r#"SELECT id, agency_id, reference, description, status, posted_by,
+            r#"SELECT id, agency_id, reference, description, status::text, posted_by,
                       posted_at, created_at
                FROM   journal_entries
                WHERE  agency_id = $1
@@ -296,7 +296,7 @@ impl AccountingRepository for PgAccountingRepo {
         id: Uuid,
     ) -> Result<Option<JournalEntry>, AppError> {
         let row = sqlx::query_as::<_, EntryRow>(
-            r#"SELECT id, agency_id, reference, description, status, posted_by,
+            r#"SELECT id, agency_id, reference, description, status::text, posted_by,
                       posted_at, created_at
                FROM   journal_entries
                WHERE  id = $1 AND agency_id = $2"#,
@@ -335,7 +335,7 @@ impl AccountingRepository for PgAccountingRepo {
             r#"INSERT INTO journal_entries
                    (id, agency_id, reference, description, status, posted_by)
                VALUES (uuidv7(), $1, $2, $3, $4::text::journal_entry_status, $5)
-               RETURNING id, agency_id, reference, description, status, posted_by,
+               RETURNING id, agency_id, reference, description, status::text, posted_by,
                          posted_at, created_at"#,
         )
         .bind(cmd.agency_id)
@@ -436,7 +436,7 @@ impl AccountingRepository for PgAccountingRepo {
             r#"UPDATE journal_entries
                SET status = 'voided'::journal_entry_status
                WHERE id = $1 AND agency_id = $2
-               RETURNING id, agency_id, reference, description, status, posted_by,
+               RETURNING id, agency_id, reference, description, status::text, posted_by,
                          posted_at, created_at"#,
         )
         .bind(cmd.entry_id)
@@ -465,13 +465,13 @@ impl AccountingRepository for PgAccountingRepo {
         }
 
         let rows = sqlx::query_as::<_, TbRow>(
-            r#"SELECT a.id AS account_id, a.code, a.name, a.account_type,
+            r#"SELECT a.id AS account_id, a.code, a.name, a.account_type::text,
                       COALESCE(SUM(jl.debit_kes),  0) AS total_debits,
                       COALESCE(SUM(jl.credit_kes), 0) AS total_credits
                FROM   accounts a
                LEFT JOIN journal_lines  jl ON jl.account_id = a.id
                LEFT JOIN journal_entries je ON je.id = jl.journal_entry_id
-                  AND je.status = 'posted' AND je.agency_id = $1
+                  AND je.status::text = 'posted' AND je.agency_id = $1
                WHERE  a.agency_id = $1
                GROUP  BY a.id, a.code, a.name, a.account_type
                ORDER  BY a.code"#,
@@ -530,14 +530,14 @@ impl AccountingRepository for PgAccountingRepo {
                  a.id          AS account_id,
                  a.code,
                  a.name,
-                 a.account_type,
+                 a.account_type::text,
                  a.vat_rate,
                  COALESCE(SUM(jl.debit_kes),  0) AS total_debits,
                  COALESCE(SUM(jl.credit_kes), 0) AS total_credits
                FROM   accounts a
                JOIN   journal_lines jl  ON jl.account_id = a.id
                JOIN   journal_entries je ON je.id = jl.journal_entry_id
-                 AND  je.status    = 'posted'
+                 AND  je.status::text = 'posted'
                  AND  je.agency_id = $1
                  AND  je.posted_at >= $2
                  AND  je.posted_at <  $3 + INTERVAL '1 day'

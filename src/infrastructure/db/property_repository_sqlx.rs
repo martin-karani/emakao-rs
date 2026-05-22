@@ -88,12 +88,12 @@ impl PropertyRepository for PgPropertyRepo {
             r#"
             SELECT
                 id, agency_id, name, address, city, country_code,
-                property_type, config,
+                property_type::text, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             FROM properties
             WHERE agency_id = $1
-              AND ($2::text IS NULL OR property_type = $2)
+              AND ($2::text IS NULL OR property_type::text = $2)
             ORDER BY created_at DESC
             LIMIT $3 OFFSET $4
             "#,
@@ -114,7 +114,7 @@ impl PropertyRepository for PgPropertyRepo {
             r#"
             SELECT
                 id, agency_id, name, address, city, country_code,
-                property_type, config,
+                property_type::text, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             FROM properties
@@ -179,11 +179,11 @@ impl PropertyRepository for PgPropertyRepo {
             )
             VALUES (
                 uuidv7(), $1, $2, $3, $4, $5,
-                $6, $7, $8, $9
+                $6::property_type, $7, $8, $9
             )
             RETURNING
                 id, agency_id, name, address, city, country_code,
-                property_type, config,
+                property_type::text, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             "#,
@@ -216,7 +216,7 @@ impl PropertyRepository for PgPropertyRepo {
             WHERE id = $1 AND agency_id = $2
             RETURNING
                 id, agency_id, name, address, city, country_code,
-                property_type, config,
+                property_type::text, config,
                 work_order_prefix, work_order_seq,
                 created_by, created_at, updated_at
             "#,

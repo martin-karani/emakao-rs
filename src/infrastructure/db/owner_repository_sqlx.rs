@@ -88,7 +88,7 @@ impl OwnerRepository for PgOwnerRepo {
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
-                   o.bank_account, o.mpesa_number, o.portal_status,
+                   o.bank_account, o.mpesa_number, o.portal_status::text,
                    o.created_at, o.updated_at
             FROM owners o
             ORDER BY o.created_at DESC
@@ -109,7 +109,7 @@ impl OwnerRepository for PgOwnerRepo {
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
-                   o.bank_account, o.mpesa_number, o.portal_status,
+                   o.bank_account, o.mpesa_number, o.portal_status::text,
                    o.created_at, o.updated_at
             FROM owners o
             WHERE o.id = $1
@@ -128,7 +128,7 @@ impl OwnerRepository for PgOwnerRepo {
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
-                   o.bank_account, o.mpesa_number, o.portal_status,
+                   o.bank_account, o.mpesa_number, o.portal_status::text,
                    o.created_at, o.updated_at
             FROM owners o
             WHERE o.user_id = $1
@@ -151,7 +151,7 @@ impl OwnerRepository for PgOwnerRepo {
             r#"
             SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
                    o.phone, o.company_name, o.kra_pin, o.bank_name,
-                   o.bank_account, o.mpesa_number, o.portal_status,
+                   o.bank_account, o.mpesa_number, o.portal_status::text,
                    o.created_at, o.updated_at
             FROM owners o
             WHERE o.email = $1
@@ -174,11 +174,11 @@ impl OwnerRepository for PgOwnerRepo {
             company_name, kra_pin, bank_name, bank_account, mpesa_number,
             portal_status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::portal_status)
         RETURNING
             id, user_id, first_name, last_name, email, phone,
             company_name, kra_pin, bank_name, bank_account, mpesa_number,
-            portal_status, created_at, updated_at
+            portal_status::text, created_at, updated_at
         "#,
         )
         .bind(Uuid::new_v4())
@@ -218,7 +218,7 @@ impl OwnerRepository for PgOwnerRepo {
             RETURNING
                 id, user_id, first_name, last_name, email, phone,
                 company_name, kra_pin, bank_name, bank_account, mpesa_number,
-                portal_status, created_at, updated_at
+                portal_status::text, created_at, updated_at
             "#,
         )
         .bind(cmd.id)
@@ -290,7 +290,7 @@ impl OwnerRepository for PgOwnerRepo {
             r#"
         SELECT
             p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
-            p.property_type, p.config,
+            p.property_type::text, p.config,
             p.work_order_prefix, p.work_order_seq,
             p.created_by, p.created_at, p.updated_at,
             po.ownership_percent
@@ -362,7 +362,7 @@ impl OwnerRepository for PgOwnerRepo {
         let rows = sqlx::query_as::<_, DisbursementRow>(
             r#"
         SELECT id, agency_id, owner_id, property_id, amount_kes,
-               method, reference, status, period_start, period_end,
+               method::text, reference, status::text, period_start, period_end,
                notes, created_by, created_at, updated_at
         FROM disbursements
         WHERE owner_id = $1

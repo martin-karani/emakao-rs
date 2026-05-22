@@ -1,3 +1,10 @@
+// src/presentation/http/handlers/owner.rs
+// REFACTORED: replaced `require_feature(&sub.entitlements, …)` with
+// `require_feature!(state, ctx.agency.id, "owner_portal")` and
+// `require_limit(&sub.entitlements, &LimitKey::MaxOwners, …)` with
+// `require_below_limit!(state, ctx.agency.id, "max_owners", …)`.
+// Dropped `Extension(sub)` and all subscription domain imports.
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -20,11 +27,7 @@ use crate::{
             update_owner::UpdateOwnerUseCase,
         },
     },
-    domain::{
-        auth::AuthenticatedUser,
-        owner::UpdateOwnerCommand,
-        subscription::{FeatureKey, LimitKey},
-    },
+    domain::{auth::AuthenticatedUser, owner::UpdateOwnerCommand},
     infrastructure::db::owner_repository_sqlx::PgOwnerRepo,
     presentation::{
         app_state::AppState,
@@ -40,11 +43,12 @@ use crate::{
                 property::PropertyWithPercentResponse,
             },
         },
-        middleware::subscription::{require_feature, require_limit, ResolvedSubscription},
+        require_below_limit, require_feature,
     },
 };
 
-/// List property owners (staff)
+// ── List owners ───────────────────────────────────────────────────────────────
+
 #[utoipa::path(
     get,
     path = "/api/v1/owners",
@@ -57,16 +61,13 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_owners(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<ListOwnersParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::OwnerPortal)?;
+    require_feature!(state, ctx.agency.id, "owner_portal");
 
-    let repo = Arc::new(PgOwnerRepo::from(ctx.pool));
-    let usecase = ListOwnersUseCase::new(repo);
-
-    let items = usecase
+    let items = ListOwnersUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(
             ctx.agency.id,
             params.limit.unwrap_or(20).min(100),
@@ -82,7 +83,8 @@ pub async fn list_owners(
     ))
 }
 
-/// Get owner details (staff)
+// ── Get owner ─────────────────────────────────────────────────────────────────
+
 #[utoipa::path(
     get,
     path = "/api/v1/owners/{id}",
@@ -90,26 +92,27 @@ pub async fn list_owners(
     responses(
         (status = 200, description = "Owner details", body = OwnerResponse),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 404, description = "Owner not found", body = ErrorResponse),
+        (status = 404, description = "Owner not found",        body = ErrorResponse),
     ),
     tag = "Owners",
     security(("bearer_token" = []))
 )]
 pub async fn get_owner(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::OwnerPortal)?;
+    require_feature!(state, ctx.agency.id, "owner_portal");
 
-    let repo = Arc::new(PgOwnerRepo::from(ctx.pool));
-    let usecase = GetOwnerUseCase::new(repo);
+    let owner = GetOwnerUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
+        .execute(ctx.agency.id, id)
+        .await?;
 
-    let owner = usecase.execute(ctx.agency.id, id).await?;
     Ok(Json(OwnerResponse::from(owner)))
 }
 
-/// Create a new property owner (staff)
+// ── Create owner ──────────────────────────────────────────────────────────────
+
 #[utoipa::path(
     post,
     path = "/api/v1/owners",
@@ -117,7 +120,8 @@ pub async fn get_owner(
     responses(
         (status = 201, description = "Owner created", body = OwnerResponse),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 422, description = "Validation error", body = ErrorResponse),
+        (status = 402, description = "Plan limit reached",     body = ErrorResponse),
+        (status = 422, description = "Validation error",       body = ErrorResponse),
     ),
     tag = "Owners",
     security(("bearer_token" = []))
@@ -125,22 +129,19 @@ pub async fn get_owner(
 pub async fn create_owner(
     State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::OwnerPortal)?;
+    require_feature!(state, ctx.agency.id, "owner_portal");
 
     let current = state
         .subscription
         .repo
         .count_tenant_rows(ctx.agency.id, "owners")
         .await?;
-    require_limit(&sub.entitlements, &LimitKey::MaxOwners, current)?;
+    require_below_limit!(state, ctx.agency.id, "max_owners", current);
 
-    let repo = Arc::new(PgOwnerRepo::from(ctx.pool));
-    let usecase = CreateOwnerUseCase::new(repo);
-    let owner = usecase
+    let owner = CreateOwnerUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(CreateOwnerInput {
             agency_id: ctx.agency.id,
             first_name: dto.first_name,
@@ -154,10 +155,12 @@ pub async fn create_owner(
             mpesa_number: dto.mpesa_number,
         })
         .await?;
+
     Ok((StatusCode::CREATED, Json(OwnerResponse::from(owner))))
 }
 
-/// Invite / onboard a new property owner (staff)
+// ── Invite / onboard owner ────────────────────────────────────────────────────
+
 #[utoipa::path(
     post,
     path = "/api/v1/owners/invite",
@@ -165,7 +168,8 @@ pub async fn create_owner(
     responses(
         (status = 201, description = "Owner invited", body = OwnerResponse),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 422, description = "Validation error", body = ErrorResponse),
+        (status = 402, description = "Plan limit reached",     body = ErrorResponse),
+        (status = 422, description = "Validation error",       body = ErrorResponse),
     ),
     tag = "Owners",
     security(("bearer_token" = []))
@@ -173,47 +177,45 @@ pub async fn create_owner(
 pub async fn invite_owner(
     State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Json(dto): Json<CreateOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::OwnerPortal)?;
+    require_feature!(state, ctx.agency.id, "owner_portal");
 
     let current = state
         .subscription
         .repo
         .count_tenant_rows(ctx.agency.id, "owners")
         .await?;
-    require_limit(&sub.entitlements, &LimitKey::MaxOwners, current)?;
+    require_below_limit!(state, ctx.agency.id, "max_owners", current);
 
-    let uc = OnboardOwnerUseCase {
+    let owner = OnboardOwnerUseCase {
         owner_repo: Arc::new(PgOwnerRepo::from(ctx.pool)),
         auth_repo: state.identity.auth_repo.clone(),
         auth_port: state.identity.auth_port.clone(),
         notifications: state.notifications.clone(),
-    };
-
-    let owner = uc
-        .execute(OnboardOwnerInput {
-            agency_id: ctx.agency.id,
-            agency_name: Some(ctx.agency.name),
-            first_name: dto.first_name,
-            last_name: dto.last_name,
-            email: Some(dto.email),
-            phone: dto.phone,
-            company_name: dto.company_name,
-            kra_pin: dto.kra_pin,
-            bank_name: dto.bank_name,
-            bank_account: dto.bank_account,
-            mpesa_number: dto.mpesa_number,
-            portal_base_url: "https://owners.emakao.co.ke".to_string(),
-        })
-        .await?;
+    }
+    .execute(OnboardOwnerInput {
+        agency_id: ctx.agency.id,
+        agency_name: Some(ctx.agency.name),
+        first_name: dto.first_name,
+        last_name: dto.last_name,
+        email: Some(dto.email),
+        phone: dto.phone,
+        company_name: dto.company_name,
+        kra_pin: dto.kra_pin,
+        bank_name: dto.bank_name,
+        bank_account: dto.bank_account,
+        mpesa_number: dto.mpesa_number,
+        portal_base_url: "https://owners.emakao.co.ke".to_string(),
+    })
+    .await?;
 
     Ok((StatusCode::CREATED, Json(OwnerResponse::from(owner))))
 }
 
-/// Update owner details (staff)
+// ── Update owner ──────────────────────────────────────────────────────────────
+
 #[utoipa::path(
     patch,
     path = "/api/v1/owners/{id}",
@@ -222,25 +224,22 @@ pub async fn invite_owner(
     responses(
         (status = 200, description = "Owner updated", body = OwnerResponse),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 404, description = "Owner not found", body = ErrorResponse),
-        (status = 422, description = "Validation error", body = ErrorResponse),
+        (status = 404, description = "Owner not found",        body = ErrorResponse),
+        (status = 422, description = "Validation error",       body = ErrorResponse),
     ),
     tag = "Owners",
     security(("bearer_token" = []))
 )]
 pub async fn update_owner(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(id): Path<Uuid>,
     Json(dto): Json<UpdateOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature(&sub.entitlements, FeatureKey::OwnerPortal)?;
+    require_feature!(state, ctx.agency.id, "owner_portal");
 
-    let repo = Arc::new(PgOwnerRepo::from(ctx.pool));
-    let usecase = UpdateOwnerUseCase::new(repo);
-
-    let owner = usecase
+    let owner = UpdateOwnerUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(UpdateOwnerCommand {
             id,
             agency_id: ctx.agency.id,
@@ -258,7 +257,8 @@ pub async fn update_owner(
     Ok(Json(OwnerResponse::from(owner)))
 }
 
-/// Assign an owner to a property (staff)
+// ── Assign owner to property ──────────────────────────────────────────────────
+
 #[utoipa::path(
     post,
     path = "/api/v1/properties/{propertyId}/owners",
@@ -273,21 +273,22 @@ pub async fn update_owner(
     security(("bearer_token" = []))
 )]
 pub async fn assign_owner_to_property(
+    State(state): State<AppState>,
     ctx: AgencyContext,
-    Extension(sub): Extension<ResolvedSubscription>,
     Path(property_id): Path<Uuid>,
     Json(dto): Json<AssignOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature(&sub.entitlements, FeatureKey::OwnerPortal)?;
+    require_feature!(state, ctx.agency.id, "owner_portal");
 
-    let repo = Arc::new(PgOwnerRepo::from(ctx.pool));
-    repo.assign_to_property(dto.owner_id, property_id, dto.ownership_percent)
+    Arc::new(PgOwnerRepo::from(ctx.pool))
+        .assign_to_property(dto.owner_id, property_id, dto.ownership_percent)
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Get own profile (using JWT user_id)
+// ── Portal: get own profile ───────────────────────────────────────────────────
+
 #[utoipa::path(
     get,
     path = "/api/v1/owners/me",
@@ -308,8 +309,11 @@ pub async fn get_my_profile(
         .find_by_user_id(user.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Owner profile not found".into()))?;
+
     Ok(Json(OwnerResponse::from(owner)))
 }
+
+// ── Portal: list own properties ───────────────────────────────────────────────
 
 #[utoipa::path(
     get,
@@ -318,7 +322,7 @@ pub async fn get_my_profile(
     responses(
         (status = 200, description = "Current owner's properties", body = [PropertyWithPercentResponse]),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 404, description = "Owner profile not found", body = ErrorResponse),
+        (status = 404, description = "Owner profile not found",    body = ErrorResponse),
     ),
     tag = "Owners",
     security(("bearer_token" = []))
@@ -333,17 +337,22 @@ pub async fn list_my_properties(
         .find_by_user_id(user.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Owner profile not found".into()))?;
+
     let limit = params.limit.unwrap_or(20).min(100);
     let offset = params.offset.unwrap_or(0);
-    let properties = repo
+    let props = repo
         .find_properties_by_owner_id(owner.id, limit, offset)
         .await?;
-    let responses: Vec<PropertyWithPercentResponse> = properties
+
+    let responses: Vec<PropertyWithPercentResponse> = props
         .into_iter()
-        .map(|(prop, percent)| PropertyWithPercentResponse::from(prop, percent))
+        .map(|(prop, pct)| PropertyWithPercentResponse::from(prop, pct))
         .collect();
+
     Ok(Json(responses))
 }
+
+// ── Portal: list own disbursements ────────────────────────────────────────────
 
 #[utoipa::path(
     get,
@@ -352,7 +361,7 @@ pub async fn list_my_properties(
     responses(
         (status = 200, description = "Current owner's disbursements", body = [DisbursementResponse]),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
-        (status = 404, description = "Owner profile not found", body = ErrorResponse),
+        (status = 404, description = "Owner profile not found",       body = ErrorResponse),
     ),
     tag = "Owners",
     security(("bearer_token" = []))
@@ -367,11 +376,17 @@ pub async fn list_my_disbursements(
         .find_by_user_id(user.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Owner profile not found".into()))?;
+
     let limit = params.limit.unwrap_or(20).min(100);
     let offset = params.offset.unwrap_or(0);
     let disbursements = repo
         .find_disbursements_by_owner_id(owner.id, limit, offset)
         .await?;
-    let responses: Vec<DisbursementResponse> = disbursements.into_iter().map(Into::into).collect();
-    Ok(Json(responses))
+
+    Ok(Json(
+        disbursements
+            .into_iter()
+            .map(DisbursementResponse::from)
+            .collect::<Vec<_>>(),
+    ))
 }

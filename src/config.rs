@@ -17,7 +17,7 @@ pub struct Config {
     pub jwt_refresh_expiry_seconds: u64,
 
     pub openfga_url: String,
-    pub admin_api_key: String,
+    pub admin_api_key: Option<String>,
 
     pub mpesa_consumer_key: String,
     pub mpesa_consumer_secret: String,
@@ -32,7 +32,7 @@ pub struct Config {
 
     pub aws_access_key_id: String,
     pub aws_secret_access_key: String,
-    pub aws_endpoint_url: Option<String>,
+    pub aws_endpoint_url: String,
     pub aws_region: String,
     pub s3_bucket: String,
 
@@ -43,6 +43,18 @@ pub struct Config {
     pub smtp_password: Option<String>,
 
     pub notification_worker_concurrency: Option<usize>,
+
+    // ── NEW: customisation layer ──────────────────────────────────────────────
+    /// 64 hex characters (32 bytes) — AES-256-GCM key for
+    /// `agency_integrations.credentials`.
+    /// Generate: `openssl rand -hex 32`
+    pub credentials_enc_key: String,
+
+    /// Apalis concurrency for the workflow job worker (default 4).
+    pub workflow_worker_concurrency: usize,
+
+    /// Apalis concurrency for the archival job worker (default 2).
+    pub archival_worker_concurrency: usize,
 }
 
 impl Config {
@@ -70,22 +82,22 @@ impl Config {
             openfga_url: std::env::var("OPENFGA_URL")
                 .unwrap_or_else(|_| "http://localhost:8080".into()),
 
-            admin_api_key: std::env::var("ADMIN_API_KEY").unwrap_or_default(),
+            admin_api_key: std::env::var("ADMIN_API_KEY").ok(),
 
-            mpesa_consumer_key: std::env::var("MPESA_CONSUMER_KEY").unwrap_or_default(),
-            mpesa_consumer_secret: std::env::var("MPESA_CONSUMER_SECRET").unwrap_or_default(),
-            mpesa_shortcode: std::env::var("MPESA_SHORTCODE").unwrap_or_default(),
-            mpesa_passkey: std::env::var("MPESA_PASSKEY").unwrap_or_default(),
-            mpesa_callback_url: std::env::var("MPESA_CALLBACK_URL").unwrap_or_default(),
+            mpesa_consumer_key: std::env::var("MPESA_CONSUMER_KEY").ok(),
+            mpesa_consumer_secret: std::env::var("MPESA_CONSUMER_SECRET").ok(),
+            mpesa_shortcode: std::env::var("MPESA_SHORTCODE").ok(),
+            mpesa_passkey: std::env::var("MPESA_PASSKEY").ok(),
+            mpesa_callback_url: std::env::var("MPESA_CALLBACK_URL").ok(),
             mpesa_base_url: std::env::var("MPESA_BASE_URL")
                 .unwrap_or_else(|_| "https://sandbox.safaricom.co.ke".into()),
 
-            at_api_key: std::env::var("AT_API_KEY").unwrap_or_default(),
+            at_api_key: std::env::var("AT_API_KEY").ok(),
             at_username: std::env::var("AT_USERNAME").unwrap_or_else(|_| "sandbox".into()),
             at_sender_id: std::env::var("AT_SENDER_ID").ok(),
 
-            aws_access_key_id: std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_default(),
-            aws_secret_access_key: std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_default(),
+            aws_access_key_id: std::env::var("AWS_ACCESS_KEY_ID").ok(),
+            aws_secret_access_key: std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
             aws_endpoint_url: std::env::var("AWS_ENDPOINT_URL").ok(),
             aws_region: std::env::var("AWS_REGION").unwrap_or_else(|_| "af-south-1".into()),
             s3_bucket: std::env::var("S3_BUCKET").unwrap_or_else(|_| "emakao".into()),
@@ -99,7 +111,21 @@ impl Config {
             notification_worker_concurrency: std::env::var("NOTIFICATION_WORKER_CONCURRENCY")
                 .ok()
                 .map(|v| v.parse().unwrap_or(4)),
+
+            // ── NEW ──────────────────────────────────────────────────────────
+            credentials_enc_key: required("CREDENTIALS_ENC_KEY")
+                .context("CREDENTIALS_ENC_KEY must be set for security")?,
+
+            workflow_worker_concurrency: env_parse("WORKFLOW_WORKER_CONCURRENCY", 4),
+            archival_worker_concurrency: env_parse("ARCHIVAL_WORKER_CONCURRENCY", 2),
         })
+    }
+
+    /// Decode `credentials_enc_key` to a fixed 32-byte array.
+    /// Panics at startup if the key is malformed — intentional; bad key = no start.
+    pub fn enc_key(&self) -> [u8; 32] {
+        crate::infrastructure::crypto::load_enc_key()
+            .expect("CREDENTIALS_ENC_KEY must be a valid 64-char hex string")
     }
 }
 

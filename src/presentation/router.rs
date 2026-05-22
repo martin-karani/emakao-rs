@@ -1,24 +1,21 @@
 use axum::{middleware, Router};
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 
-use crate::{
-    domain::enums::PortalType,
-    presentation::{
-        app_state::AppState,
-        http::routes::{
-            accounting_routes, agency_routes, agreement_routes, analytics_routes, auth_routes,
-            bank_reconciliation_routes, dashboard_routes, disbursement_routes, document_routes,
-            health_routes, insights_routes, inspection_routes, invoice_routes, ledger_routes,
-            maintenance_routes, owner_routes, payment_routes, property_routes, resident_routes,
-            staff_routes, subscription_routes, upload_routes, utility_routes, vendor_routes,
-            webhook_routes, websocket_routes,
-        },
-        middleware::{
-            admin_auth::require_admin, agency_context::resolve_agency_context, auth::require_auth,
-            portal_guard::portal_guard, subscription::subscription_middleware,
-        },
-        openapi::ApiDoc,
+use crate::presentation::{
+    app_state::AppState,
+    http::routes::{
+        accounting_routes, agency_routes, agreement_routes, analytics_routes, auth_routes,
+        bank_reconciliation_routes, customisation_routes, dashboard_routes, disbursement_routes,
+        document_routes, health_routes, insights_routes, inspection_routes, invoice_routes,
+        ledger_routes, maintenance_routes, owner_routes, payment_routes, property_routes,
+        resident_routes, staff_routes, subscription_routes, tax_routes, upload_routes,
+        utility_routes, vendor_routes, webhook_routes, websocket_routes,
     },
+    middleware::{
+        admin_auth::require_admin, agency_context::resolve_agency_context, auth::require_auth,
+        portal_guard::portal_guard, subscription::subscription_middleware,
+    },
+    openapi::ApiDoc,
 };
 
 pub fn build_router(state: AppState) -> Router {
@@ -70,6 +67,7 @@ fn build_public_api(state: AppState) -> Router<AppState> {
 // ── Staff ─────────────────────────────────────────────────────────────────────
 
 fn build_staff_api(state: AppState) -> Router<AppState> {
+    // Full middleware stack: auth → agency context → subscription gate.
     let operational = Router::new()
         // Core property management
         .merge(property_routes::routes())
@@ -91,79 +89,53 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
         .merge(invoice_routes::routes())
         .merge(disbursement_routes::routes())
         .merge(upload_routes::routes())
-        // Accounting + bank reconciliation (Growth+ — further gated per-handler
-        // via the `acct_double_entry` feature entitlement check)
+        // Accounting + bank reconciliation
         .merge(accounting_routes::routes())
         .merge(bank_reconciliation_routes::routes())
         .merge(staff_routes::staff_routes())
+        .merge(tax_routes::routes())
+        // Customisation layer (settings, integrations, templates, workflow rules)
+        .merge(customisation_routes::routes())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             subscription_middleware,
-        ));
-
-    let billing = subscription_routes::billing_routes();
-    let session = auth_routes::session_routes(state.clone());
-
-    with_auth_stack(
-        Router::new()
-            .merge(operational)
-            .merge(billing)
-            .merge(session),
-        state,
-        PortalType::Staff,
-    )
-}
-
-// ── Portals ───────────────────────────────────────────────────────────────────
-
-fn build_portal_api(state: AppState) -> Router<AppState> {
-    Router::new()
-        .merge(with_auth_stack(
-            resident_routes::resident_portal_routes()
-                .merge(maintenance_routes::resident_portal_routes()),
-            state.clone(),
-            PortalType::Resident,
         ))
-        .merge(with_auth_stack(
-            owner_routes::owner_portal_routes().merge(disbursement_routes::owner_portal_routes()),
-            state.clone(),
-            PortalType::Owner,
-        ))
-        .merge(with_auth_stack(
-            vendor_routes::vendor_portal_routes(),
-            state.clone(),
-            PortalType::Vendor,
-        ))
-        .merge(with_auth_stack(
-            maintenance_routes::caretaker_portal_routes(),
-            state.clone(),
-            PortalType::Caretaker,
-        ))
-}
-
-// ── Admin ─────────────────────────────────────────────────────────────────────
-
-fn build_admin_api(state: AppState) -> Router<AppState> {
-    Router::new()
-        .merge(agency_routes::admin_routes())
-        .merge(subscription_routes::admin_routes(state.clone()))
-        .layer(middleware::from_fn_with_state(state, require_admin))
-}
-
-// ── Helper ────────────────────────────────────────────────────────────────────
-
-fn with_auth_stack(
-    routes: Router<AppState>,
-    state: AppState,
-    portal: PortalType,
-) -> Router<AppState> {
-    routes
-        .layer(middleware::from_fn(move |req, next| {
-            portal_guard(portal, req, next)
-        }))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             resolve_agency_context,
         ))
-        .layer(middleware::from_fn_with_state(state, require_auth))
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    // Agency profile management — auth only, no agency-context middleware
+    // (agency_id comes from the JWT claim directly in these handlers).
+    let agency_mgmt = agency_routes::management_routes()
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    Router::new().merge(operational).merge(agency_mgmt)
+}
+
+// ── Portal (residents, owners, vendors) ──────────────────────────────────────
+
+fn build_portal_api(state: AppState) -> Router<AppState> {
+    Router::new()
+        // FIX: function names are resident_portal_routes / owner_portal_routes /
+        //      vendor_portal_routes — there is no generic `portal_routes()` in
+        //      any of these modules.
+        .merge(resident_routes::resident_portal_routes())
+        .merge(owner_routes::owner_portal_routes())
+        .merge(vendor_routes::vendor_portal_routes())
+        .layer(middleware::from_fn_with_state(state.clone(), portal_guard))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            resolve_agency_context,
+        ))
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth))
+}
+
+// ── Admin (platform super-admin) ──────────────────────────────────────────────
+
+fn build_admin_api(state: AppState) -> Router<AppState> {
+    Router::new()
+        .merge(agency_routes::admin_routes())
+        .layer(middleware::from_fn_with_state(state, require_admin))
 }

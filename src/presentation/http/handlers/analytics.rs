@@ -1,3 +1,9 @@
+// src/presentation/http/handlers/analytics.rs
+// REFACTORED: removed local `require_analytics` helper and
+// `Extension(sub): Extension<ResolvedSubscription>` from every handler.
+// Feature gating is now done via `require_feature!` against the
+// EntitlementCache, which honours per-agency plan overrides.
+
 use std::sync::Arc;
 
 use axum::{
@@ -18,12 +24,11 @@ use crate::{
             PortfolioAnalyticsUseCase, RevenueReportInput, RevenueReportUseCase,
         },
     },
-    domain::{auth::AuthenticatedUser, subscription::FeatureKey},
+    domain::auth::AuthenticatedUser,
     infrastructure::db::analytics_repository_sqlx::PgAnalyticsRepo,
     presentation::{
         app_state::AppState, error::ErrorResponse, extractors::AgencyContext,
-        http::helpers::permission::check_permission,
-        middleware::subscription::ResolvedSubscription,
+        http::helpers::permission::check_permission, require_feature,
     },
 };
 
@@ -37,20 +42,6 @@ pub struct AnalyticsParams {
     pub to: Date,
     /// Optionally filter to a single property.
     pub property_id: Option<Uuid>,
-}
-
-// ── Feature gate ──────────────────────────────────────────────────────────────
-
-/// Require the analytics feature (Growth+ plans).
-/// FIX: FeatureKey::Custom does not exist — use the nearest real key.
-fn require_analytics(sub: &ResolvedSubscription) -> Result<(), AppError> {
-    if !sub
-        .entitlements
-        .has_feature(&FeatureKey::ReportPortfolioSummary)
-    {
-        return Err(AppError::PlanUpgradeRequired);
-    }
-    Ok(())
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -73,7 +64,6 @@ pub async fn portfolio_analytics(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<AnalyticsParams>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -84,7 +74,7 @@ pub async fn portfolio_analytics(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_analytics(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
     let result = PortfolioAnalyticsUseCase { repo }
@@ -115,7 +105,6 @@ pub async fn revenue_report(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<AnalyticsParams>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -126,7 +115,7 @@ pub async fn revenue_report(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_analytics(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
     let result = RevenueReportUseCase { repo }
@@ -157,7 +146,6 @@ pub async fn occupancy_trends(
     State(state): State<AppState>,
     ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
-    Extension(sub): Extension<ResolvedSubscription>,
     Query(params): Query<AnalyticsParams>,
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(
@@ -168,7 +156,7 @@ pub async fn occupancy_trends(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_analytics(&sub)?;
+    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
     let result = OccupancyTrendUseCase { repo }

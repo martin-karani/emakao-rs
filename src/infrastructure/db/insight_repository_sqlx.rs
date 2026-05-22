@@ -78,7 +78,7 @@ impl InsightRepository for PgInsightRepo {
             JOIN units      u ON u.id = a.unit_id
             JOIN properties p ON p.id = a.property_id
             WHERE a.agency_id = $1
-              AND a.status    = 'active'
+              AND a.status::text = 'active'
             ORDER BY a.created_at DESC
             LIMIT $2 OFFSET $3
             "#,
@@ -164,7 +164,7 @@ impl InsightRepository for PgInsightRepo {
             JOIN units      u ON u.id = a.unit_id
             JOIN properties p ON p.id = a.property_id
             WHERE a.agency_id = $1
-              AND a.status    = 'active'
+              AND a.status::text = 'active'
               AND a.end_date IS NOT NULL
             "#,
         )
@@ -320,9 +320,9 @@ impl InsightRepository for PgInsightRepo {
             FROM   vendors   v
             LEFT JOIN work_orders wo
                    ON wo.vendor_id = v.id
-                  AND wo.status    = 'completed'
+                  AND wo.status::text = 'completed'
                   AND wo.category  = $2::text::work_order_category
-            WHERE  v.is_active = true
+            WHERE  v.status::text = 'active'
               AND  v.agency_id = $1
             GROUP  BY v.id, v.name, v.phone, v.email
             ORDER  BY completed_jobs DESC

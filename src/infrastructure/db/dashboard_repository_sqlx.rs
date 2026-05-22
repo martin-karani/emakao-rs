@@ -96,9 +96,9 @@ impl DashboardRepository for PgDashboardRepo {
             SELECT
                 (SELECT COUNT(*) FROM properties)::BIGINT                                AS total_properties,
                 (SELECT COUNT(*) FROM units)::BIGINT                                     AS total_units,
-                (SELECT COUNT(*) FROM units WHERE status = 'occupied')::BIGINT           AS occupied_units,
-                (SELECT COUNT(*) FROM agreements WHERE status = 'active')::BIGINT        AS total_active_leases,
-                (SELECT COUNT(*) FROM work_orders WHERE status NOT IN ('completed','cancelled'))::BIGINT AS total_open_work_orders
+                (SELECT COUNT(*) FROM units WHERE status::text = 'occupied')::BIGINT           AS occupied_units,
+                (SELECT COUNT(*) FROM agreements WHERE status::text = 'active')::BIGINT        AS total_active_leases,
+                (SELECT COUNT(*) FROM work_orders WHERE status::text NOT IN ('completed','cancelled'))::BIGINT AS total_open_work_orders
             "#
         )
         .fetch_one(&self.pool)
@@ -127,16 +127,16 @@ impl DashboardRepository for PgDashboardRepo {
                 p.name                  AS property_name,
                 p.city,
                 COUNT(u.id)             AS total_units,
-                COUNT(u.id) FILTER (WHERE u.status = 'occupied') AS occupied_units,
+                COUNT(u.id) FILTER (WHERE u.status::text = 'occupied') AS occupied_units,
                 (SELECT COUNT(*) FROM work_orders wo
                  WHERE wo.property_id = p.id
-                   AND wo.status NOT IN ('completed','cancelled')) AS open_work_orders,
+                   AND wo.status::text NOT IN ('completed','cancelled')) AS open_work_orders,
                 COALESCE(
                     (SELECT SUM(le.amount_kes)
                      FROM   ledger_entries le
                      JOIN   agreements a ON a.id = le.agreement_id
                      WHERE  a.property_id = p.id
-                       AND  le.entry_type = 'payment'
+                       AND  le.entry_type::text = 'payment'
                        AND  le.posted_at >= DATE_TRUNC('month', now())
                     ), 0
                 )                       AS rent_collected_this_month_kes
@@ -190,7 +190,7 @@ impl DashboardRepository for PgDashboardRepo {
             JOIN  units       u ON u.id = a.unit_id
             JOIN  properties  p ON p.id = a.property_id
             JOIN  residents   r ON r.id = a.resident_id
-            WHERE a.status = 'active'
+            WHERE a.status::text = 'active'
               AND a.end_date IS NOT NULL
               AND a.end_date <= CURRENT_DATE + ($1 || ' days')::INTERVAL
             ORDER BY a.end_date ASC
@@ -237,9 +237,9 @@ impl DashboardRepository for PgDashboardRepo {
             FROM  work_orders wo
             JOIN  properties  p ON p.id = wo.property_id
             LEFT JOIN units   u ON u.id = wo.unit_id
-            WHERE wo.status NOT IN ('completed','cancelled')
+            WHERE wo.status::text NOT IN ('completed','cancelled')
             ORDER BY
-                CASE wo.priority
+                CASE wo.priority::text
                     WHEN 'emergency' THEN 0
                     WHEN 'high'      THEN 1
                     WHEN 'medium'    THEN 2
@@ -283,7 +283,7 @@ impl DashboardRepository for PgDashboardRepo {
                 COALESCE(
                     (SELECT SUM(le.amount_kes)
                      FROM   ledger_entries le
-                     WHERE  le.entry_type = 'payment'
+                     WHERE  le.entry_type::text = 'payment'
                        AND  le.posted_at >= DATE_TRUNC('month', now())),
                     0
                 ) AS total_collected_kes,
@@ -291,7 +291,7 @@ impl DashboardRepository for PgDashboardRepo {
                  FROM   rent_charges rc2
                  LEFT JOIN ledger_entries le2
                         ON le2.agreement_id = rc2.agreement_id
-                       AND le2.entry_type = 'payment'
+                       AND le2.entry_type::text = 'payment'
                        AND le2.posted_at >= rc2.charged_at
                  WHERE  rc2.charged_at >= DATE_TRUNC('month', now()) - INTERVAL '7 days'
                    AND  le2.id IS NULL

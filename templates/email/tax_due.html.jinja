@@ -1,0 +1,48 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}KRA Tax Obligation Due – Action Required{% endblock %}
+
+{% block content %}
+<h2>KRA Tax Obligation Due</h2>
+<p>Hi,</p>
+<p>
+  A KRA tax obligation for <strong>{{ owner_name }}</strong> is due in
+  <strong>{{ days_until_due }} day{% if days_until_due != "1" %}s{% endif %}</strong>.
+  Please file and pay on iTax before the due date to avoid penalties.
+</p>
+
+<div class="highlight-box">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="padding:4px 0;color:#555;">Tax Type</td>
+      <td style="padding:4px 0;font-weight:600;">{{ obligation_type }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Period</td>
+      <td style="padding:4px 0;font-weight:600;">{{ tax_period }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Amount Due</td>
+      <td style="padding:4px 0;font-weight:600;color:#e07b3c;">KES {{ tax_kes }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Due Date</td>
+      <td style="padding:4px 0;font-weight:600;">{{ due_date }}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 0;color:#555;">Property</td>
+      <td style="padding:4px 0;">{{ property_address }}</td>
+    </tr>
+  </table>
+</div>
+
+<p>
+  <a href="{{ itax_url }}" class="cta">File on iTax Now</a>
+</p>
+
+<p style="font-size:13px;color:#888888;">
+  Late filing attracts a penalty of 5% of the tax due or KES 2,000 (whichever is higher),
+  plus 1% interest per month on any unpaid balance.
+  If you have already filed, you can disregard this reminder.
+</p>
+{% endblock %}

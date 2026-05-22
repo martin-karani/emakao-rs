@@ -32,6 +32,9 @@ use crate::{
 pub struct CreateInvoiceDto {
     #[garde(skip)]
     pub property_id: Uuid,
+    /// Owner UUID — links the invoice to a tax obligation for MRI purposes.
+    #[garde(skip)]
+    pub owner_id: Option<Uuid>,
     #[garde(skip)]
     pub agreement_id: Option<Uuid>,
     #[garde(skip)]
@@ -52,6 +55,12 @@ pub struct InvoiceLineItemDto {
     pub quantity: Decimal,
     #[garde(skip)]
     pub unit_price_kes: Decimal,
+    /// Optional line classification used for tax computation.
+    /// Accepted values: `"rent"` | `"management_fee"` | `"utility"` |
+    ///                  `"deposit"` | `"late_fee"` | `"other"`
+    /// Defaults to `None` when omitted (treated as non-tax line).
+    #[garde(skip)]
+    pub line_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -120,7 +129,7 @@ pub async fn list_invoices(
     get, path = "/api/v1/invoices/{id}",
     params(("id" = Uuid, Path, description = "Invoice UUID")),
     responses(
-        (status = 200, description = "Invoice found", body = InvoiceResponse),
+        (status = 200, description = "Invoice found",  body = InvoiceResponse),
         (status = 404, description = "Not found"),
         (status = 401, description = "Unauthorised"),
     ),
@@ -155,6 +164,7 @@ pub async fn create_invoice(
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
+    // ── Map DTO line items → domain line items (now includes line_type) ────────
     let line_items = dto
         .line_items
         .into_iter()
@@ -163,6 +173,7 @@ pub async fn create_invoice(
             quantity: li.quantity,
             unit_price_kes: li.unit_price_kes,
             total_kes: li.quantity * li.unit_price_kes,
+            line_type: li.line_type, // ← NEW: pass through classification
         })
         .collect();
 
@@ -172,6 +183,7 @@ pub async fn create_invoice(
     let invoice = uc
         .execute(CreateInvoiceInput {
             agency_id: ctx.agency.id,
+            owner_id: dto.owner_id, // ← NEW: for MRI obligation linkage
             property_id: dto.property_id,
             agreement_id: dto.agreement_id,
             resident_id: dto.resident_id,
@@ -191,7 +203,7 @@ pub async fn create_invoice(
     params(("id" = Uuid, Path, description = "Invoice UUID")),
     request_body = UpdateInvoiceStatusDto,
     responses(
-        (status = 200, description = "Status updated", body = InvoiceResponse),
+        (status = 200, description = "Status updated",  body = InvoiceResponse),
         (status = 404, description = "Not found"),
         (status = 422, description = "Invalid status transition"),
         (status = 401, description = "Unauthorised"),
