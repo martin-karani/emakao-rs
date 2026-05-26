@@ -1,13 +1,12 @@
 // src/presentation/http/handlers/notification_templates.rs
 //
-// Handlers for per-agency notification templates stored in
-// `notification_templates`.
-//
 //   GET    /api/agency/notification-templates
 //   PUT    /api/agency/notification-templates/:channel/:event_key
 //   DELETE /api/agency/notification-templates/:channel/:event_key
 //
 // All require "agency_settings:write".
+
+use std::sync::Arc;
 
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -19,20 +18,26 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
-    application::errors::AppError, domain::auth::AuthenticatedUser,
+    application::{
+        errors::AppError,
+        use_cases::notification_template::{
+            delete_template::{DeleteTemplateInput, DeleteTemplateUseCase},
+            list_templates::{ListTemplatesInput, ListTemplatesUseCase},
+            upsert_template::{UpsertTemplateInput, UpsertTemplateUseCase},
+        },
+    },
+    domain::{auth::AuthenticatedUser, notification_template::NotificationTemplate},
+    infrastructure::{
+        db::notification_template_repository_sqlx::PgNotificationTemplateRepo,
+        notifications::template_validator::MiniJinjaValidator,
+    },
     presentation::app_state::AppState,
 };
 
-// ── List ──────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct ListTemplatesQuery {
-    pub channel: Option<String>,
-    pub event_key: Option<String>,
-}
+// ── Response DTO ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct NotificationTemplateDto {
+pub struct NotificationTemplateResponse {
     pub id: uuid::Uuid,
     pub channel: String,
     pub event_key: String,
@@ -41,61 +46,75 @@ pub struct NotificationTemplateDto {
     pub body: String,
 }
 
-pub async fn list_templates(
-    State(state): State<AppState>,
-    Extension(user): Extension<AuthenticatedUser>,
-    Query(q): Query<ListTemplatesQuery>,
-) -> Result<impl IntoResponse, AppError> {
-    state
-        .custom()
-        .permissions
-        .require(user.user_id, "agency_settings:write")
-        .await?;
-
-    let rows = sqlx::query!(
-        r#"
-        SELECT id, channel, event_key, locale, subject, body
-        FROM   notification_templates
-        WHERE  agency_id   = $1
-          AND  ($2::text IS NULL OR channel   = $2)
-          AND  ($3::text IS NULL OR event_key = $3)
-        ORDER  BY channel, event_key, locale
-        "#,
-        user.agency_id,
-        q.channel,
-        q.event_key,
-    )
-    .fetch_all(state.infra.tenant_pools.platform())
-    .await
-    .map_err(AppError::Database)?;
-
-    let dtos: Vec<NotificationTemplateDto> = rows
-        .into_iter()
-        .map(|r| NotificationTemplateDto {
-            id: r.id,
-            channel: r.channel,
-            event_key: r.event_key,
-            locale: r.locale,
-            subject: r.subject,
-            body: r.body,
-        })
-        .collect();
-
-    Ok(Json(dtos))
+impl From<NotificationTemplate> for NotificationTemplateResponse {
+    fn from(t: NotificationTemplate) -> Self {
+        Self {
+            id: t.id,
+            channel: t.channel,
+            event_key: t.event_key,
+            locale: t.locale,
+            subject: t.subject,
+            body: t.body,
+        }
+    }
 }
 
-// ── Upsert ────────────────────────────────────────────────────────────────────
+// ── Request DTOs ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct ListTemplatesQuery {
+    pub channel: Option<String>,
+    pub event_key: Option<String>,
+}
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertTemplateRequest {
     #[serde(default = "default_locale")]
     pub locale: String,
     pub subject: Option<String>,
-    /// MiniJinja template string. Variables available depend on `event_key`.
     pub body: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteTemplateQuery {
+    #[serde(default = "default_locale")]
+    pub locale: String,
+}
+
 fn default_locale() -> String {
     "en".into()
+}
+
+// ── Handlers ──────────────────────────────────────────────────────────────────
+
+pub async fn list_templates(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Query(q): Query<ListTemplatesQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    state
+        .customisation()
+        .permissions
+        .require(user.user_id, "agency_settings:write")
+        .await?;
+
+    let repo = Arc::new(PgNotificationTemplateRepo::new(
+        state.infra.tenant_pools.platform().clone(),
+    ));
+    let templates = ListTemplatesUseCase::new(repo)
+        .execute(ListTemplatesInput {
+            agency_id: user.agency_id,
+            channel: q.channel,
+            event_key: q.event_key,
+        })
+        .await?;
+
+    Ok(Json(
+        templates
+            .into_iter()
+            .map(NotificationTemplateResponse::from)
+            .collect::<Vec<_>>(),
+    ))
 }
 
 pub async fn upsert_template(
@@ -105,41 +124,32 @@ pub async fn upsert_template(
     Json(body): Json<UpsertTemplateRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     state
-        .custom()
+        .customisation()
         .permissions
         .require(user.user_id, "agency_settings:write")
         .await?;
 
-    // Validate that the body parses as a MiniJinja template before saving.
-    state
-        .jinja
-        .template_from_str(&body.body)
-        .map_err(|e| AppError::Validation(format!("invalid MiniJinja template: {e}")))?;
+    let repo = Arc::new(PgNotificationTemplateRepo::new(
+        state.infra.tenant_pools.platform().clone(),
+    ));
+    // The MiniJinja environment lives in AppState; we wrap it in the
+    // infrastructure adapter that implements the `TemplateValidator` port.
+    let validator = Arc::new(MiniJinjaValidator::new((*state.jinja).clone()));
 
-    sqlx::query!(
-        r#"
-        INSERT INTO notification_templates
-            (agency_id, channel, event_key, locale, subject, body)
-        VALUES
-            ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (agency_id, channel, event_key, locale)
-        DO UPDATE SET
-            subject    = EXCLUDED.subject,
-            body       = EXCLUDED.body
-        "#,
-        user.agency_id,
-        channel,
-        event_key,
-        body.locale,
-        body.subject,
-        body.body,
-    )
-    .execute(state.infra.tenant_pools.platform())
-    .await
-    .map_err(AppError::Database)?;
+    UpsertTemplateUseCase::new(repo, validator)
+        .execute(UpsertTemplateInput {
+            agency_id: user.agency_id,
+            channel: channel.clone(),
+            event_key: event_key.clone(),
+            locale: body.locale,
+            subject: body.subject,
+            body: body.body,
+        })
+        .await?;
 
+    // Audit — template mutations are always logged.
     state
-        .custom()
+        .customisation()
         .audit
         .log(crate::infrastructure::audit::AuditEvent {
             agency_id: user.agency_id,
@@ -156,14 +166,6 @@ pub async fn upsert_template(
     Ok(StatusCode::OK)
 }
 
-// ── Delete ────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct DeleteTemplateQuery {
-    #[serde(default = "default_locale")]
-    pub locale: String,
-}
-
 pub async fn delete_template(
     State(state): State<AppState>,
     Extension(user): Extension<AuthenticatedUser>,
@@ -171,29 +173,22 @@ pub async fn delete_template(
     Query(q): Query<DeleteTemplateQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     state
-        .custom()
+        .customisation()
         .permissions
         .require(user.user_id, "agency_settings:write")
         .await?;
 
-    sqlx::query!(
-        r#"
-        DELETE FROM notification_templates
-        WHERE agency_id = $1
-          AND channel   = $2
-          AND event_key = $3
-          AND locale    = $4
-        "#,
-        user.agency_id,
-        channel,
-        event_key,
-        q.locale,
-    )
-    .execute(state.infra.tenant_pools.platform())
-    .await
-    .map_err(AppError::Database)?;
+    let repo = Arc::new(PgNotificationTemplateRepo::new(
+        state.infra.tenant_pools.platform().clone(),
+    ));
+    DeleteTemplateUseCase::new(repo)
+        .execute(DeleteTemplateInput {
+            agency_id: user.agency_id,
+            channel,
+            event_key,
+            locale: q.locale,
+        })
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
-
-use sqlx;

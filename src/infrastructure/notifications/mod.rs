@@ -1,6 +1,7 @@
 pub mod dispatcher;
 pub mod email_worker;
 pub mod sms_worker;
+pub mod template_validator;
 pub mod worker_setup;
 
 pub use dispatcher::NotificationDispatcher;

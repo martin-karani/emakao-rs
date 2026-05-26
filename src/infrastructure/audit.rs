@@ -1,5 +1,3 @@
-// src/infrastructure/audit.rs
-//
 // AuditLogger — non-blocking INSERT to the partitioned `audit_log` table.
 //
 // The hot path never waits on the audit INSERT (tokio::spawn).

@@ -20,10 +20,10 @@ pub async fn require_admin(
         .get("x-admin-key")
         .and_then(|v| v.to_str().ok())
     {
-        let configured_key = &state.config.admin_api_key;
-        // Guard against an accidentally empty key accepting any request.
-        if !configured_key.is_empty() && provided_key == configured_key.as_str() {
-            return next.run(req).await;
+        if let Some(ref key) = state.config.admin_api_key {
+            if !key.is_empty() && provided_key == key {
+                return next.run(req).await;
+            }
         }
     }
 

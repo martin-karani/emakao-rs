@@ -13,7 +13,6 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Extension, State},
-    http::StatusCode,
     response::IntoResponse,
     Json,
 };
@@ -25,7 +24,7 @@ use crate::{
         errors::AppError,
         use_cases::settings_update::{self, UpdateAgencySettingsCommand},
     },
-    domain::{agency::ResolvedAgency, agency_settings::AgencySettings, auth::AuthenticatedUser},
+    domain::{agency_settings::AgencySettings, auth::AuthenticatedUser},
     presentation::app_state::AppState,
 };
 
@@ -49,7 +48,7 @@ pub async fn get_settings(
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<impl IntoResponse, AppError> {
     let settings = state
-        .custom()
+        .customisation()
         .settings
         .get_or_load(user.agency_id, state.infra.tenant_pools.platform())
         .await
@@ -96,7 +95,7 @@ pub async fn patch_settings(
 ) -> Result<impl IntoResponse, AppError> {
     // ── Permission check ──────────────────────────────────────────────────────
     state
-        .custom()
+        .customisation()
         .permissions
         .require(user.user_id, "agency_settings:write")
         .await?;

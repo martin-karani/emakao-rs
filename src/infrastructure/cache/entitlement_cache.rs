@@ -5,7 +5,6 @@
 // (`is_enabled`, `numeric_limit`) used by the Axum macros in
 // src/presentation/macros.rs.
 
-use std::sync::Arc;
 
 use dashmap::DashMap;
 use serde_json::Value;
@@ -36,7 +35,7 @@ impl EntitlementCache {
             return Ok(entry.clone());
         }
 
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT
                 sp.features AS plan_features,
@@ -55,15 +54,20 @@ impl EntitlementCache {
             WHERE asub.agency_id = $1
             GROUP BY sp.features
             "#,
-            agency_id
         )
+        .bind(agency_id)
         .fetch_one(&self.pool)
         .await?;
 
-        let mut merged: FeatureMap = row.plan_features.as_object().cloned().unwrap_or_default();
+        use sqlx::Row;
+        let plan_features: serde_json::Value = row.try_get("plan_features")?;
+        let overrides: serde_json::Value = row.try_get("overrides!")?;
+        let mut merged: FeatureMap = plan_features.as_object().cloned().unwrap_or_default();
 
-        if let Some(ov) = row.overrides.as_object() {
-            merged.extend(ov.iter().map(|(k, v)| (k.clone(), v.clone())));
+        if let Some(ov) = overrides.as_object() {
+            for (k, v) in ov.iter() {
+                merged.insert(k.to_string(), v.clone());
+            }
         }
 
         self.inner.insert(agency_id, merged.clone());

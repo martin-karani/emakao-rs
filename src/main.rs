@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use apalis::prelude::WorkerBuilder;
+use apalis::layers::WorkerBuilderExt;
+use apalis::prelude::{WorkerBuilder, WorkerFactoryFn};
 use apalis_redis::RedisStorage;
+use fred::interfaces::ClientLike;
 
 use emakao::{
     config::Config,
@@ -80,15 +82,26 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_default();
 
         for agency_id in ids {
-            if let Err(e) = providers
-                .load_agency(agency_id, &platform_pool, &enc_key)
-                .await
-            {
-                tracing::warn!(
-                    agency = %agency_id,
-                    error  = %e,
-                    "startup: could not load provider integrations — using platform defaults"
-                );
+            match state.infra.tenant_pools.for_agency(agency_id).await {
+                Ok(agency_pool) => {
+                    if let Err(e) = providers
+                        .load_agency(agency_id, &agency_pool, &enc_key)
+                        .await
+                    {
+                        tracing::warn!(
+                            agency = %agency_id,
+                            error  = %e,
+                            "startup: could not load provider integrations — using platform defaults"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        agency = %agency_id,
+                        error  = %e,
+                        "startup: could not get pool for agency — using platform defaults"
+                    );
+                }
             }
         }
     }
@@ -103,27 +116,17 @@ async fn main() -> anyhow::Result<()> {
     // 4g. Apalis Redis storage for workflow and archival jobs.
     //     We open a dedicated RedisClient (not the pool) so the Apalis queues
     //     can hold their own connection independently of the application pool.
-    let apalis_redis = {
-        let client = fred::clients::RedisClient::new(
-            fred::types::RedisConfig::from_url(&cfg.redis_url)?,
-            None,
-            None,
-            None,
-        );
-        client.connect();
-        client.wait_for_connect().await?;
-        client
-    };
+    let apalis_redis = redis::Client::open(cfg.redis_url.clone())?
+        .get_connection_manager()
+        .await?;
 
     // Two separate storage handles — each takes ownership when handed to a worker.
-    let workflow_storage: RedisStorage<WorkflowJob> =
-        RedisStorage::new(apalis_redis.clone()).await?;
-    let archival_storage: RedisStorage<ArchivalJob> =
-        RedisStorage::new(apalis_redis.clone()).await?;
+    let workflow_storage: RedisStorage<WorkflowJob> = RedisStorage::new(apalis_redis.clone());
+    let archival_storage: RedisStorage<ArchivalJob> = RedisStorage::new(apalis_redis.clone());
 
     // WorkflowEngine gets its own clone of the storage handle for enqueuing.
     let workflow_engine = Arc::new(WorkflowEngine::new(
-        platform_pool.clone(),
+        Arc::clone(&state.infra.tenant_pools),
         workflow_storage.clone(),
     ));
 
@@ -168,9 +171,7 @@ async fn main() -> anyhow::Result<()> {
             .build_fn(execute_workflow_job);
 
         tokio::spawn(async move {
-            if let Err(e) = worker.run().await {
-                tracing::error!(err = %e, "workflow worker crashed");
-            }
+            worker.run().await;
         });
     }
 
@@ -184,9 +185,7 @@ async fn main() -> anyhow::Result<()> {
             .build_fn(process_archival);
 
         tokio::spawn(async move {
-            if let Err(e) = worker.run().await {
-                tracing::error!(err = %e, "archival worker crashed");
-            }
+            worker.run().await;
         });
     }
 
@@ -194,7 +193,7 @@ async fn main() -> anyhow::Result<()> {
     let billing_monitor = build_billing_monitor(
         BillingContext {
             pool_manager: Arc::clone(&state.infra.tenant_pools),
-            notifications: *state.notifications.clone(),
+            notifications: state.notifications.clone(),
         },
         cfg.redis_url.clone(),
     )

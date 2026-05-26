@@ -12,7 +12,7 @@
 //   let alloc  = allocation_strategy(&settings.workflows.payment_allocation_strategy);
 //   alloc.sort_charges(&mut open_charges);
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use rust_decimal::Decimal;
 
 // ── Late-fee strategies ───────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ pub struct LedgerCharge {
     pub id: uuid::Uuid,
     pub entry_type: String, // "rent" | "late_fee" | "penalty" | "deposit" | …
     pub amount_kes: Decimal,
-    pub posted_at: DateTime<Utc>,
+    pub posted_at: OffsetDateTime,
 }
 
 pub trait AllocationStrategy: Send + Sync {

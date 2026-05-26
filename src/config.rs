@@ -84,21 +84,21 @@ impl Config {
 
             admin_api_key: std::env::var("ADMIN_API_KEY").ok(),
 
-            mpesa_consumer_key: std::env::var("MPESA_CONSUMER_KEY").ok(),
-            mpesa_consumer_secret: std::env::var("MPESA_CONSUMER_SECRET").ok(),
-            mpesa_shortcode: std::env::var("MPESA_SHORTCODE").ok(),
-            mpesa_passkey: std::env::var("MPESA_PASSKEY").ok(),
-            mpesa_callback_url: std::env::var("MPESA_CALLBACK_URL").ok(),
+            mpesa_consumer_key: std::env::var("MPESA_CONSUMER_KEY").unwrap_or_default(),
+            mpesa_consumer_secret: std::env::var("MPESA_CONSUMER_SECRET").unwrap_or_default(),
+            mpesa_shortcode: std::env::var("MPESA_SHORTCODE").unwrap_or_default(),
+            mpesa_passkey: std::env::var("MPESA_PASSKEY").unwrap_or_default(),
+            mpesa_callback_url: std::env::var("MPESA_CALLBACK_URL").unwrap_or_default(),
             mpesa_base_url: std::env::var("MPESA_BASE_URL")
                 .unwrap_or_else(|_| "https://sandbox.safaricom.co.ke".into()),
 
-            at_api_key: std::env::var("AT_API_KEY").ok(),
+            at_api_key: std::env::var("AT_API_KEY").unwrap_or_default(),
             at_username: std::env::var("AT_USERNAME").unwrap_or_else(|_| "sandbox".into()),
             at_sender_id: std::env::var("AT_SENDER_ID").ok(),
 
-            aws_access_key_id: std::env::var("AWS_ACCESS_KEY_ID").ok(),
-            aws_secret_access_key: std::env::var("AWS_SECRET_ACCESS_KEY").ok(),
-            aws_endpoint_url: std::env::var("AWS_ENDPOINT_URL").ok(),
+            aws_access_key_id: std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_default(),
+            aws_secret_access_key: std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_default(),
+            aws_endpoint_url: std::env::var("AWS_ENDPOINT_URL").unwrap_or_default(),
             aws_region: std::env::var("AWS_REGION").unwrap_or_else(|_| "af-south-1".into()),
             s3_bucket: std::env::var("S3_BUCKET").unwrap_or_else(|_| "emakao".into()),
 

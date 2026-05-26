@@ -163,6 +163,7 @@ pub struct AgencyUseCases {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub config: Arc<crate::config::Config>,
     pub runtime: RuntimeState,
     pub infra: InfraState,
     pub identity: IdentityState,
@@ -265,17 +266,16 @@ impl AppState {
         let token_blacklist = Arc::new(TokenBlacklist::new(redis_pool.clone()));
 
         // ── JWT ───────────────────────────────────────────────────────────────
-        let jwt = Arc::new(JwtAuth::new(
-            cfg.jwt_secret.clone(),
-            cfg.jwt_expiry_seconds,
-            cfg.jwt_refresh_expiry_seconds,
-        ));
+        let jwt = Arc::new(JwtAuth {
+            secret: cfg.jwt_secret.clone(),
+            expiry_seconds: cfg.jwt_expiry_seconds,
+        });
 
         // ── Repositories ──────────────────────────────────────────────────────
         let auth_repo = Arc::new(PgAuthRepo::new(platform_pool.clone())) as Arc<dyn AuthRepository>;
         let agency_repo =
             Arc::new(PgAgencyRepo::new(platform_pool.clone())) as Arc<dyn AgencyRepository>;
-        let subscription_repo = Arc::new(PgSubscriptionRepo::new(platform_pool.clone()))
+        let subscription_repo = Arc::new(PgSubscriptionRepo::new(platform_pool.clone(), pool_manager.clone()))
             as Arc<dyn SubscriptionRepository>;
 
         // ── External services ─────────────────────────────────────────────────
@@ -311,7 +311,7 @@ impl AppState {
                 &cfg.aws_secret_access_key,
                 &cfg.aws_region,
                 cfg.s3_bucket.clone(),
-                cfg.aws_endpoint_url.as_deref(),
+                if cfg.aws_endpoint_url.is_empty() { None } else { Some(cfg.aws_endpoint_url.as_str()) },
             )
             .await,
         ) as Arc<dyn StoragePort>;
@@ -322,6 +322,8 @@ impl AppState {
 
         // ── Subscription use-cases ────────────────────────────────────────────
         let sub_cache = Arc::new(SubscriptionCache::new(redis_pool.clone()));
+
+        let (events_tx, _) = tokio::sync::broadcast::channel(100);
 
         let subscription = SubscriptionUseCases {
             get_state: Arc::new(GetSubscriptionStateUseCase::new(
@@ -337,32 +339,35 @@ impl AppState {
                 Arc::clone(&subscription_repo),
                 Arc::clone(&sub_cache),
             )),
-            change_plan: Arc::new(ChangePlanUseCase::new(
-                Arc::clone(&subscription_repo),
-                Arc::clone(&agency_repo),
-                Arc::clone(&sub_cache),
-            )),
-            cancel_subscription: Arc::new(CancelSubscriptionUseCase::new(
-                Arc::clone(&subscription_repo),
-                Arc::clone(&sub_cache),
-            )),
-            set_override: Arc::new(SetFeatureOverrideUseCase::new(
-                Arc::clone(&subscription_repo),
-                Arc::clone(&sub_cache),
-            )),
-            remove_override: Arc::new(RemoveFeatureOverrideUseCase::new(
-                Arc::clone(&subscription_repo),
-                Arc::clone(&sub_cache),
-            )),
-            list_invoices: Arc::new(ListInvoicesUseCase::new(Arc::clone(&subscription_repo))),
-            record_payment: Arc::new(RecordPaymentUseCase::new(
-                Arc::clone(&subscription_repo),
-                Arc::clone(&sub_cache),
-            )),
-            initiate_payment: Arc::new(InitiateSubscriptionPaymentUseCase::new(
-                Arc::clone(&subscription_repo),
-                Arc::clone(&mpesa),
-            )),
+            change_plan: Arc::new(ChangePlanUseCase {
+                repo: Arc::clone(&subscription_repo),
+                cache: Arc::clone(&sub_cache),
+                events: events_tx.clone(),
+            }),
+            cancel_subscription: Arc::new(CancelSubscriptionUseCase {
+                repo: Arc::clone(&subscription_repo),
+                cache: Arc::clone(&sub_cache),
+                events: events_tx.clone(),
+            }),
+            set_override: Arc::new(SetFeatureOverrideUseCase {
+                repo: Arc::clone(&subscription_repo),
+                cache: Arc::clone(&sub_cache),
+            }),
+            remove_override: Arc::new(RemoveFeatureOverrideUseCase {
+                repo: Arc::clone(&subscription_repo),
+                cache: Arc::clone(&sub_cache),
+            }),
+            list_invoices: Arc::new(ListInvoicesUseCase {
+                repo: Arc::clone(&subscription_repo),
+            }),
+            record_payment: Arc::new(RecordPaymentUseCase {
+                repo: Arc::clone(&subscription_repo),
+                cache: Arc::clone(&sub_cache),
+            }),
+            initiate_payment: Arc::new(InitiateSubscriptionPaymentUseCase {
+                repo: Arc::clone(&subscription_repo),
+                mpesa: Arc::clone(&mpesa),
+            }),
             repo: Arc::clone(&subscription_repo),
             cache: Arc::clone(&sub_cache),
         };
@@ -400,7 +405,7 @@ impl AppState {
 
         // FIX 3: components.service is NotificationService, not Arc<NotificationService>.
         // Assign directly; the field type on AppState is NotificationService.
-        let notifications = components.service;
+        let notifications = components.service.clone();
 
         // start_notification_workers moves the storage handles out of `components`
         // and spawns the email + SMS Apalis workers.
@@ -412,6 +417,7 @@ impl AppState {
         );
 
         Ok(Self {
+            config: Arc::clone(&cfg),
             runtime: RuntimeState {
                 started_at: time::OffsetDateTime::now_utc(),
                 started_instant: Instant::now(),

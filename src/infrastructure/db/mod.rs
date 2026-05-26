@@ -1,4 +1,5 @@
 pub mod accounting_repository_sqlx;
+pub mod agency_integration_repository_sqlx;
 pub mod agency_repository_sqlx;
 pub mod agreement_repository_sqlx;
 pub mod analytics_repository_sqlx;
@@ -15,6 +16,7 @@ pub mod invoice_repository_sqlx;
 pub mod ledger_repository_sqlx;
 pub mod maintenance_repository_sqlx;
 pub mod message_repository_sqlx;
+pub mod notification_template_repository_sqlx;
 pub mod owner_repository_sqlx;
 pub mod payment_repository_sqlx;
 pub mod pool;
@@ -24,3 +26,4 @@ pub mod subscription_repository_sqlx;
 pub mod tax_repository_sqlx;
 pub mod utility_repository_sqlx;
 pub mod vendor_repository_sqlx;
+pub mod workflow_rule_repository_sqlx;

@@ -6,10 +6,9 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 use serde_json::json;
-use std::sync::Arc;
 
 use crate::{
-    domain::{agency::ResolvedAgency, agency_settings::AgencySettings, auth::AuthenticatedUser},
+    domain::{agency::ResolvedAgency, auth::AuthenticatedUser},
     infrastructure::db::pool::AgencyPool,
     presentation::app_state::AppState,
 };

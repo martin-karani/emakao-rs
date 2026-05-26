@@ -7,6 +7,8 @@
 //
 // All require "agency_settings:write".
 
+use std::sync::Arc;
+
 use axum::{
     extract::{Extension, Path, State},
     http::StatusCode,
@@ -18,24 +20,48 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    application::errors::AppError, domain::auth::AuthenticatedUser,
+    application::{
+        errors::AppError,
+        use_cases::workflow_rule::{
+            create_rule::{CreateRuleInput, CreateRuleUseCase},
+            delete_rule::DeleteRuleUseCase,
+            list_rules::ListRulesUseCase,
+            patch_rule::{PatchRuleInput, PatchRuleUseCase},
+        },
+    },
+    domain::{auth::AuthenticatedUser, workflow_rule::WorkflowRule},
+    infrastructure::db::workflow_rule_repository_sqlx::PgWorkflowRuleRepo,
     presentation::app_state::AppState,
 };
 
-// ── DTOs ──────────────────────────────────────────────────────────────────────
+// ── Response DTO ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct WorkflowRuleDto {
+pub struct WorkflowRuleResponse {
     pub id: Uuid,
     pub name: String,
     pub event_type: String,
     pub is_active: bool,
     pub offset_hours: i32,
-    /// JSONLogic condition object.
     pub conditions: serde_json::Value,
-    /// Array of action objects: `[{"type":"send_sms","params":{...}}]`
     pub actions: serde_json::Value,
 }
+
+impl From<WorkflowRule> for WorkflowRuleResponse {
+    fn from(r: WorkflowRule) -> Self {
+        Self {
+            id: r.id,
+            name: r.name,
+            event_type: r.event_type,
+            is_active: r.is_active,
+            offset_hours: r.offset_hours,
+            conditions: r.conditions,
+            actions: r.actions,
+        }
+    }
+}
+
+// ── Request DTOs ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkflowRuleRequest {
@@ -74,38 +100,20 @@ pub async fn list_rules(
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<impl IntoResponse, AppError> {
     state
-        .custom()
+        .customisation()
         .permissions
         .require(user.user_id, "agency_settings:write")
         .await?;
 
-    let rows = sqlx::query!(
-        r#"
-        SELECT id, name, event_type, is_active, offset_hours, conditions, actions
-        FROM   workflow_rules
-        WHERE  agency_id = $1
-        ORDER  BY event_type, name
-        "#,
-        user.agency_id,
-    )
-    .fetch_all(state.infra.tenant_pools.platform())
-    .await
-    .map_err(AppError::Database)?;
+    let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));
+    let rules = ListRulesUseCase::new(repo).execute(user.agency_id).await?;
 
-    let dtos: Vec<WorkflowRuleDto> = rows
-        .into_iter()
-        .map(|r| WorkflowRuleDto {
-            id: r.id,
-            name: r.name,
-            event_type: r.event_type,
-            is_active: r.is_active,
-            offset_hours: r.offset_hours.unwrap_or(0),
-            conditions: r.conditions,
-            actions: r.actions,
-        })
-        .collect();
-
-    Ok(Json(dtos))
+    Ok(Json(
+        rules
+            .into_iter()
+            .map(WorkflowRuleResponse::from)
+            .collect::<Vec<_>>(),
+    ))
 }
 
 pub async fn create_rule(
@@ -114,38 +122,25 @@ pub async fn create_rule(
     Json(body): Json<CreateWorkflowRuleRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     state
-        .custom()
+        .customisation()
         .permissions
         .require(user.user_id, "agency_settings:write")
         .await?;
 
-    let id = sqlx::query_scalar!(
-        r#"
-        INSERT INTO workflow_rules
-            (agency_id, name, event_type, is_active, offset_hours, conditions, actions)
-        VALUES
-            ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-        "#,
-        user.agency_id,
-        body.name,
-        body.event_type,
-        body.is_active,
-        body.offset_hours,
-        body.conditions,
-        body.actions,
-    )
-    .fetch_one(state.infra.tenant_pools.platform())
-    .await
-    .map_err(|e| {
-        if e.to_string().contains("unique") {
-            AppError::Conflict(format!("a rule named '{}' already exists", body.name))
-        } else {
-            AppError::Database(e)
-        }
-    })?;
+    let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));
+    let rule = CreateRuleUseCase::new(repo)
+        .execute(CreateRuleInput {
+            agency_id: user.agency_id,
+            name: body.name,
+            event_type: body.event_type,
+            is_active: body.is_active,
+            offset_hours: body.offset_hours,
+            conditions: body.conditions,
+            actions: body.actions,
+        })
+        .await?;
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
+    Ok((StatusCode::CREATED, Json(WorkflowRuleResponse::from(rule))))
 }
 
 pub async fn patch_rule(
@@ -155,35 +150,23 @@ pub async fn patch_rule(
     Json(body): Json<PatchWorkflowRuleRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     state
-        .custom()
+        .customisation()
         .permissions
         .require(user.user_id, "agency_settings:write")
         .await?;
 
-    // Only update fields that are present in the patch.
-    sqlx::query!(
-        r#"
-        UPDATE workflow_rules
-        SET
-            name         = COALESCE($3, name),
-            is_active    = COALESCE($4, is_active),
-            offset_hours = COALESCE($5, offset_hours),
-            conditions   = COALESCE($6, conditions),
-            actions      = COALESCE($7, actions)
-        WHERE id        = $1
-          AND agency_id = $2
-        "#,
-        rule_id,
-        user.agency_id,
-        body.name,
-        body.is_active,
-        body.offset_hours,
-        body.conditions,
-        body.actions,
-    )
-    .execute(state.infra.tenant_pools.platform())
-    .await
-    .map_err(AppError::Database)?;
+    let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));
+    PatchRuleUseCase::new(repo)
+        .execute(PatchRuleInput {
+            agency_id: user.agency_id,
+            rule_id,
+            name: body.name,
+            is_active: body.is_active,
+            offset_hours: body.offset_hours,
+            conditions: body.conditions,
+            actions: body.actions,
+        })
+        .await?;
 
     Ok(StatusCode::OK)
 }
@@ -194,21 +177,15 @@ pub async fn delete_rule(
     Path(rule_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     state
-        .custom()
+        .customisation()
         .permissions
         .require(user.user_id, "agency_settings:write")
         .await?;
 
-    sqlx::query!(
-        "DELETE FROM workflow_rules WHERE id = $1 AND agency_id = $2",
-        rule_id,
-        user.agency_id,
-    )
-    .execute(state.infra.tenant_pools.platform())
-    .await
-    .map_err(AppError::Database)?;
+    let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));
+    DeleteRuleUseCase::new(repo)
+        .execute(user.agency_id, rule_id)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
-
-use sqlx;

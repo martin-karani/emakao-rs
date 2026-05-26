@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO audit_log\n                    (agency_id, actor_id, actor_role, action,\n                     entity_type, entity_id, old_data, new_data, ip_address)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Uuid",
+        "Jsonb",
+        "Jsonb",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "28005b9fcb6c38c1cc82be92d4cf296b0c33216ac6ff402dd5aaa0b1d327be74"
+}

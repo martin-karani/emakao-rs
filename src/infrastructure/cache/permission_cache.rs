@@ -12,13 +12,12 @@
 // Cache is per-user. Invalidate on role reassignment or role mutation.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use dashmap::DashMap;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::presentation::errors::AppError;
+use crate::application::errors::AppError;
 
 pub struct PermissionCache {
     pool: PgPool,
@@ -36,19 +35,21 @@ impl PermissionCache {
     // ── Loading ───────────────────────────────────────────────────────────────
 
     async fn load(&self, user_id: Uuid) -> anyhow::Result<()> {
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT cr.permissions
             FROM users u
             JOIN custom_roles cr ON cr.id = u.role_id
             WHERE u.id = $1
             "#,
-            user_id
         )
-        .fetch_one(&self.pool)
-        .await?;
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("user not found"))?;
 
-        let perms: HashSet<String> = serde_json::from_value(row.permissions).unwrap_or_default();
+        let perms: HashSet<String> =
+            serde_json::from_value(row.get("permissions")).unwrap_or_default();
 
         self.inner.insert(user_id, perms);
         Ok(())

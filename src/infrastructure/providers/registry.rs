@@ -84,21 +84,27 @@ impl ProviderRegistry {
         self.payment.remove(&agency_id);
         self.storage.remove(&agency_id);
 
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             r#"
             SELECT provider_type, provider_key, credentials, settings
             FROM agency_integrations
             WHERE agency_id = $1 AND is_active = true
             "#,
-            agency_id
         )
+        .bind(agency_id)
         .fetch_all(pool)
         .await?;
 
         for row in rows {
-            let creds = crate::infrastructure::crypto::decrypt_jsonb(&row.credentials, enc_key)?;
+            use sqlx::Row;
+            let provider_type: String = row.try_get("provider_type")?;
+            let provider_key: String = row.try_get("provider_key")?;
+            let creds_raw: serde_json::Value = row.try_get("credentials")?;
+            let settings: Option<serde_json::Value> = row.try_get("settings")?;
 
-            match (row.provider_type.as_str(), row.provider_key.as_str()) {
+            let creds = crate::infrastructure::crypto::decrypt_jsonb(&creds_raw, enc_key)?;
+
+            match (provider_type.as_str(), provider_key.as_str()) {
                 ("sms", "africas_talking") => {
                     self.sms.set(
                         agency_id,
@@ -112,7 +118,7 @@ impl ProviderRegistry {
                 ("payment", "mpesa") => {
                     self.payment.insert(
                         agency_id,
-                        Arc::new(MpesaProvider::from_creds(creds, row.settings)?),
+                        Arc::new(MpesaProvider::from_creds(creds, settings.unwrap_or(serde_json::json!({})))?),
                     );
                 }
                 ("email", "sendgrid") => {

@@ -221,7 +221,7 @@ fn database_pool_status(state: &AppState) -> DatabasePoolStatus {
 
 fn configuration_status(state: &AppState) -> ConfigurationStatus {
     ConfigurationStatus {
-        admin_api_key_configured: has_value(&state.config.admin_api_key),
+        admin_api_key_configured: has_value(state.config.admin_api_key.as_deref().unwrap_or_default()),
         smtp_configured: has_value(&state.config.smtp_host) && has_value(&state.config.smtp_from),
         mpesa_configured: has_value(&state.config.mpesa_consumer_key)
             && has_value(&state.config.mpesa_consumer_secret)

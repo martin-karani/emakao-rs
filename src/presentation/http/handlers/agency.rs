@@ -43,7 +43,7 @@ pub async fn create_agency(
     dto.validate()?;
 
     let agency = state
-        .agency
+        .agency_uc
         .provision
         .execute(ProvisionAgencyInput {
             name: dto.name,

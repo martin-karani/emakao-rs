@@ -21,7 +21,7 @@ pub async fn inject_branding_middleware(
     next: Next,
 ) -> Response {
     if let Some(AgencyId(agency_id)) = req.extensions().get::<AgencyId>().copied() {
-        match state.settings_cache.get_or_load(agency_id, &state.db).await {
+        match state.customisation().settings.get_or_load(agency_id, state.infra.tenant_pools.platform()).await {
             Ok(settings) => {
                 req.extensions_mut().insert(settings);
             }

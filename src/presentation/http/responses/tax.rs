@@ -1,6 +1,6 @@
 use serde::Serialize;
 use uuid::Uuid;
-use time::{Date, OffsetDateTime};
+use time::OffsetDateTime;
 use crate::domain::tax::{TaxObligation, TaxComplianceSummary};
 
 #[derive(Debug, Serialize)]

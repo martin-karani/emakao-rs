@@ -1,4 +1,5 @@
 pub mod accounting_repository;
+pub mod agency_integration_repository;
 pub mod agency_repository;
 pub mod agreement_repository;
 pub mod analytics_repository;
@@ -17,6 +18,7 @@ pub mod invoice_repository;
 pub mod ledger_repository;
 pub mod maintenance_repository;
 pub mod message_repository;
+pub mod notification_template_repository;
 pub mod openfga_port;
 pub mod owner_repository;
 pub mod payment_repository;
@@ -28,3 +30,4 @@ pub mod subscription_repository;
 pub mod tax_repository;
 pub mod utility_repository;
 pub mod vendor_repository;
+pub mod workflow_rule_repository;

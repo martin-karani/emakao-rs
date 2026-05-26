@@ -37,3 +37,15 @@ pub async fn portal_guard(required: PortalType, req: Request<Body>, next: Next) 
         }
     }
 }
+
+pub async fn resident_portal_guard(req: Request<Body>, next: Next) -> Response {
+    portal_guard(PortalType::Resident, req, next).await
+}
+
+pub async fn owner_portal_guard(req: Request<Body>, next: Next) -> Response {
+    portal_guard(PortalType::Owner, req, next).await
+}
+
+pub async fn vendor_portal_guard(req: Request<Body>, next: Next) -> Response {
+    portal_guard(PortalType::Vendor, req, next).await
+}

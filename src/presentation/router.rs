@@ -13,7 +13,8 @@ use crate::presentation::{
     },
     middleware::{
         admin_auth::require_admin, agency_context::resolve_agency_context, auth::require_auth,
-        portal_guard::portal_guard, subscription::subscription_middleware,
+        portal_guard::{owner_portal_guard, resident_portal_guard, vendor_portal_guard},
+        subscription::subscription_middleware,
     },
     openapi::ApiDoc,
 };
@@ -117,14 +118,17 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
 // ── Portal (residents, owners, vendors) ──────────────────────────────────────
 
 fn build_portal_api(state: AppState) -> Router<AppState> {
+    let resident_api = resident_routes::resident_portal_routes()
+        .layer(middleware::from_fn(resident_portal_guard));
+    let owner_api = owner_routes::owner_portal_routes()
+        .layer(middleware::from_fn(owner_portal_guard));
+    let vendor_api = vendor_routes::vendor_portal_routes()
+        .layer(middleware::from_fn(vendor_portal_guard));
+
     Router::new()
-        // FIX: function names are resident_portal_routes / owner_portal_routes /
-        //      vendor_portal_routes — there is no generic `portal_routes()` in
-        //      any of these modules.
-        .merge(resident_routes::resident_portal_routes())
-        .merge(owner_routes::owner_portal_routes())
-        .merge(vendor_routes::vendor_portal_routes())
-        .layer(middleware::from_fn_with_state(state.clone(), portal_guard))
+        .merge(resident_api)
+        .merge(owner_api)
+        .merge(vendor_api)
         .layer(middleware::from_fn_with_state(
             state.clone(),
             resolve_agency_context,

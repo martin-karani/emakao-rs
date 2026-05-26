@@ -242,7 +242,7 @@ pub async fn forgot_password(
 
     let uc = ForgotPasswordUseCase::new(
         state.identity.auth_repo.clone(),
-        (*state.notifications).clone(),
+        state.notifications.clone(),
         state.config.app_base_url.clone(),
     );
 

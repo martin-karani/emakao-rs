@@ -117,23 +117,26 @@ impl NotificationDispatcher {
 
     async fn get_toggle(&self, agency_id: Uuid, event_key: &str) -> anyhow::Result<ToggleRow> {
         // Fall back to sensible defaults when no row exists (SMS+email on, WA off).
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             SELECT sms_enabled, email_enabled, whatsapp_enabled
             FROM   agency_notification_toggles
             WHERE  agency_id = $1 AND event_key = $2
             "#,
-            agency_id,
-            event_key,
         )
+        .bind(agency_id)
+        .bind(event_key)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(match row {
-            Some(r) => ToggleRow {
-                sms_enabled: r.sms_enabled,
-                email_enabled: r.email_enabled,
-                whatsapp_enabled: r.whatsapp_enabled,
+            Some(r) => {
+                use sqlx::Row;
+                ToggleRow {
+                    sms_enabled: r.try_get("sms_enabled").unwrap_or(true),
+                    email_enabled: r.try_get("email_enabled").unwrap_or(true),
+                    whatsapp_enabled: r.try_get("whatsapp_enabled").unwrap_or(false),
+                }
             },
             None => ToggleRow {
                 sms_enabled: true,
@@ -151,7 +154,7 @@ impl NotificationDispatcher {
         event_key: &str,
         ctx: &serde_json::Value,
     ) -> anyhow::Result<String> {
-        let tmpl_str = sqlx::query_scalar!(
+        let tmpl_str = sqlx::query_scalar(
             r#"
             SELECT body
             FROM   notification_templates
@@ -159,11 +162,10 @@ impl NotificationDispatcher {
               AND  channel   = $2
               AND  event_key = $3
             LIMIT 1
-            "#,
-            agency_id,
-            channel,
-            event_key,
-        )
+            "#)
+        .bind(agency_id)
+        .bind(channel)
+        .bind(event_key)
         .fetch_optional(&self.pool)
         .await?
         .unwrap_or_else(|| self.system_default(channel, event_key));
@@ -178,7 +180,7 @@ impl NotificationDispatcher {
         event_key: &str,
         ctx: &serde_json::Value,
     ) -> anyhow::Result<String> {
-        let subj_tmpl = sqlx::query_scalar!(
+        let subj_tmpl = sqlx::query_scalar(
             r#"
             SELECT subject
             FROM   notification_templates
@@ -186,10 +188,9 @@ impl NotificationDispatcher {
               AND  channel   = 'email'
               AND  event_key = $2
             LIMIT 1
-            "#,
-            agency_id,
-            event_key,
-        )
+            "#)
+        .bind(agency_id)
+        .bind(event_key)
         .fetch_optional(&self.pool)
         .await?
         .flatten()
@@ -228,5 +229,3 @@ impl NotificationDispatcher {
     }
 }
 
-// Bring in the `hour()` method on chrono types without a full import chain.
-use chrono::Timelike;

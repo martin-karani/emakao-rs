@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use fred::clients::{RedisClient, SubscriberClient};
+use fred::clients::SubscriberClient;
+use fred::interfaces::{EventInterface, PubsubInterface};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -53,10 +54,10 @@ impl SettingsCache {
     pub async fn invalidate_and_broadcast(
         &self,
         agency_id: Uuid,
-        redis: &RedisClient,
+        redis: &fred::clients::RedisPool,
     ) -> anyhow::Result<()> {
         self.invalidate(agency_id);
-        redis
+        redis.next()
             .publish::<(), _, _>("cache:invalidate:agency", agency_id.to_string())
             .await?;
         Ok(())
@@ -71,7 +72,7 @@ impl SettingsCache {
 /// Call with `tokio::spawn(run_invalidation_listener(subscriber, cache))`.
 pub async fn run_invalidation_listener(subscriber: SubscriberClient, cache: Arc<SettingsCache>) {
     if let Err(e) = subscriber
-        .subscribe::<(), _>("cache:invalidate:agency")
+        .subscribe("cache:invalidate:agency")
         .await
     {
         tracing::error!("settings cache: failed to subscribe: {e}");
@@ -83,7 +84,7 @@ pub async fn run_invalidation_listener(subscriber: SubscriberClient, cache: Arc<
     loop {
         match rx.recv().await {
             Ok(msg) => {
-                if let Some(id_str) = msg.value.as_string() {
+                if let Some(id_str) = msg.value.as_str() {
                     match Uuid::parse_str(&id_str) {
                         Ok(id) => {
                             cache.invalidate(id);

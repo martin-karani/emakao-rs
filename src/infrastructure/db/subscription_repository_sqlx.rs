@@ -3,6 +3,7 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use sqlx::PgPool;
+use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -137,16 +138,17 @@ type TenantPoolFn =
 
 pub struct PgSubscriptionRepo {
     pool: PgPool,
+    tenant_pools: Arc<crate::infrastructure::db::pool::AgencyPoolManager>,
 }
 
 impl PgSubscriptionRepo {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pool: PgPool, tenant_pools: Arc<crate::infrastructure::db::pool::AgencyPoolManager>) -> Self {
+        Self { pool, tenant_pools }
     }
 
     /// Resolves the agency pool for `agency_id` asynchronously.
     async fn tenant_pool(&self, agency_id: Uuid) -> Result<PgPool, AppError> {
-        (self.tenant_pool_fn)(agency_id)
+        self.tenant_pools.for_agency(agency_id)
             .await
             .map_err(|e| AppError::InternalServer(e.to_string()))
     }
@@ -181,7 +183,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             "#,
         )
         .bind(agency_id)
-        .fetch_all(&self.platform)
+        .fetch_all(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -201,7 +203,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             "#,
         )
         .bind(agency_id)
-        .fetch_all(&self.platform)
+        .fetch_all(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -253,7 +255,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             "#,
         )
         .bind(agency_id)
-        .fetch_optional(&self.platform)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -305,7 +307,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             ORDER BY sort_order ASC
             "#,
         )
-        .fetch_all(&self.platform)
+        .fetch_all(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -322,7 +324,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             "#,
         )
         .bind(slug)
-        .fetch_optional(&self.platform)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -360,7 +362,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         .bind(status)
         .bind(mpesa_ref)
         .bind(custom_price)
-        .execute(&self.platform)
+        .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -378,7 +380,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .bind(plan_slug)
         .bind(agency_id)
-        .execute(&self.platform)
+        .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -404,7 +406,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .bind(agency_id)
         .bind(reason)
-        .execute(&self.platform)
+        .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -436,7 +438,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             "SELECT COUNT(*) FROM {table_name} WHERE agency_id = $1"
         ))
         .bind(agency_id)
-        .fetch_one(&self.platform)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -462,7 +464,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .bind(agency_id)
         .bind(limit_key)
-        .fetch_optional(&self.platform)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -515,7 +517,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         .bind(reason)
         .bind(created_by)
         .bind(expires_at)
-        .execute(&self.platform)
+        .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
         Ok(())
@@ -529,7 +531,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         sqlx::query("DELETE FROM feature_overrides WHERE agency_id = $1 AND feature_key = $2")
             .bind(agency_id)
             .bind(feature_key)
-            .execute(&self.platform)
+            .execute(&self.pool)
             .await
             .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
         Ok(())
@@ -557,7 +559,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         .bind(agency_id)
         .bind(limit)
         .bind(offset)
-        .fetch_all(&self.platform)
+        .fetch_all(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -591,7 +593,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             "SELECT id FROM subscriptions WHERE agency_id = $1 ORDER BY created_at DESC LIMIT 1",
         )
         .bind(agency_id)
-        .fetch_one(&self.platform)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -609,7 +611,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         .bind(amount_kes)
         .bind(mpesa_ref)
         .bind(mpesa_phone)
-        .fetch_one(&self.platform)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -628,7 +630,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         )
         .bind(agency_id)
         .bind(mpesa_ref)
-        .execute(&self.platform)
+        .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -658,7 +660,7 @@ impl SubscriptionRepository for PgSubscriptionRepo {
         .bind(amount_kes)
         .bind(checkout_request_id)
         .bind(merchant_request_id)
-        .execute(&self.platform)
+        .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
@@ -678,12 +680,12 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             "#,
         )
         .bind(checkout_request_id)
-        .fetch_optional(&self.platform)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         use sqlx::Row;
-        Ok(row.map(|r| {
+        Ok(row.map(|r: sqlx::postgres::PgRow| {
             (
                 r.get::<Uuid, _>("agency_id"),
                 r.get::<String, _>("plan_slug"),

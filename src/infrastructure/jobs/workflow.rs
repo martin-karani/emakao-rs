@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use apalis::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 // ── Job definition ────────────────────────────────────────────────────────────
@@ -25,20 +24,21 @@ pub struct WorkflowJob {
     pub context: serde_json::Value,
 }
 
-impl Job for WorkflowJob {
-    const NAME: &'static str = "emakao::workflow_job";
-}
+
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 
 pub struct WorkflowEngine {
-    pool: PgPool,
+    pool_manager: Arc<crate::infrastructure::db::pool::AgencyPoolManager>,
     job_queue: apalis_redis::RedisStorage<WorkflowJob>,
 }
 
 impl WorkflowEngine {
-    pub fn new(pool: PgPool, job_queue: apalis_redis::RedisStorage<WorkflowJob>) -> Self {
-        Self { pool, job_queue }
+    pub fn new(
+        pool_manager: Arc<crate::infrastructure::db::pool::AgencyPoolManager>,
+        job_queue: apalis_redis::RedisStorage<WorkflowJob>,
+    ) -> Self {
+        Self { pool_manager, job_queue }
     }
 
     /// Called by domain services when a domain event fires.
@@ -52,7 +52,8 @@ impl WorkflowEngine {
         entity_id: Uuid,
         context: serde_json::Value,
     ) -> anyhow::Result<()> {
-        let rules = sqlx::query!(
+        let tenant_pool = self.pool_manager.for_agency(agency_id).await?;
+        let rules = sqlx::query(
             r#"
             SELECT id, conditions, offset_hours
             FROM   workflow_rules
@@ -60,24 +61,28 @@ impl WorkflowEngine {
               AND  event_type = $2
               AND  is_active  = true
             "#,
-            agency_id,
-            event_type,
         )
-        .fetch_all(&self.pool)
+        .bind(agency_id)
+        .bind(event_type)
+        .fetch_all(&tenant_pool)
         .await?;
 
         for rule in rules {
+            use sqlx::Row;
+            let rule_id: Uuid = rule.try_get("id")?;
+            let conditions: serde_json::Value = rule.try_get("conditions")?;
+            let offset_hours: Option<i32> = rule.try_get("offset_hours")?;
+
             // Evaluate JSONLogic condition (empty object = always true).
-            let conditions_empty = rule
-                .conditions
+            let conditions_empty = conditions
                 .as_object()
-                .map(|o| o.is_empty())
+                .map(|o: &serde_json::Map<String, serde_json::Value>| o.is_empty())
                 .unwrap_or(true);
 
             let matches = if conditions_empty {
                 true
             } else {
-                jsonlogic::apply(&rule.conditions, &context)
+                jsonlogic::apply(&conditions, &context)
                     .map(|v| v.as_bool().unwrap_or(false))
                     .unwrap_or(false)
             };
@@ -86,9 +91,9 @@ impl WorkflowEngine {
                 continue;
             }
 
-            let delay_secs = (rule.offset_hours.unwrap_or(0).max(0) as u64) * 3600;
+            let delay_secs = (offset_hours.unwrap_or(0).max(0) as u64) * 3600;
             let job = WorkflowJob {
-                rule_id: rule.id,
+                rule_id,
                 agency_id,
                 entity_type: entity_type.to_string(),
                 entity_id,
@@ -98,9 +103,10 @@ impl WorkflowEngine {
             if delay_secs == 0 {
                 self.job_queue.clone().push(job).await?;
             } else {
+                let scheduled_time = time::OffsetDateTime::now_utc() + time::Duration::seconds(delay_secs as i64);
                 self.job_queue
                     .clone()
-                    .push_delayed(job, std::time::Duration::from_secs(delay_secs))
+                    .schedule(job, scheduled_time.unix_timestamp())
                     .await?;
             }
         }
@@ -120,16 +126,19 @@ struct WorkflowAction {
 
 pub async fn execute_workflow_job(
     job: WorkflowJob,
-    Data(state): Data<Arc<crate::presentation::app_state::AppState>>,
+    state: Data<Arc<crate::presentation::app_state::AppState>>,
 ) -> anyhow::Result<()> {
-    let rule = sqlx::query!(
+    let pool = state.infra.tenant_pools.for_agency(job.agency_id).await?;
+    let rule = sqlx::query(
         "SELECT actions FROM workflow_rules WHERE id = $1",
-        job.rule_id
     )
-    .fetch_one(&state.db)
+    .bind(job.rule_id)
+    .fetch_one(&pool)
     .await?;
 
-    let actions: Vec<WorkflowAction> = serde_json::from_value(rule.actions).unwrap_or_default();
+    use sqlx::Row;
+    let actions_val: serde_json::Value = rule.try_get("actions")?;
+    let actions: Vec<WorkflowAction> = serde_json::from_value(actions_val).unwrap_or_default();
 
     for action in actions {
         match action.action_type.as_str() {
@@ -143,17 +152,18 @@ pub async fn execute_workflow_job(
                 dispatch_notification(&state, &job, channel, &action.params).await?;
             }
             "create_task" => {
-                task_repo::create_from_params(&state.db, &action.params, &job.context).await?;
+                task_repo::create_from_params(&pool, &action.params, &job.context).await?;
             }
             "charge_late_fee" => {
                 crate::application::use_cases::late_fee::charge_for_agreement(
                     &state,
+                    &pool,
                     &action.params,
                 )
                 .await?;
             }
             "flag_agreement" => {
-                agreement_repo::set_flag(&state.db, job.entity_id, &action.params).await?;
+                agreement_repo::set_flag(&pool, job.entity_id, &action.params).await?;
             }
             other => {
                 tracing::warn!(
@@ -172,7 +182,7 @@ pub async fn execute_workflow_job(
 async fn dispatch_notification(
     state: &Arc<crate::presentation::app_state::AppState>,
     job: &WorkflowJob,
-    channel: &str,
+    _channel: &str,
     params: &serde_json::Value,
 ) -> anyhow::Result<()> {
     // Extract optional template override from params.
@@ -194,11 +204,13 @@ async fn dispatch_notification(
 
     // Load CommunicationSettings from cache.
     let settings = state
-        .settings_cache
-        .get_or_load(job.agency_id, &state.db)
+        .customisation()
+        .settings
+        .get_or_load(job.agency_id, state.infra.tenant_pools.platform())
         .await?;
 
     state
+        .customisation()
         .notifications
         .dispatch(
             job.agency_id,

@@ -42,7 +42,7 @@
 macro_rules! require_feature {
     ($state:expr, $agency_id:expr, $key:expr) => {
         if !$state
-            .custom()
+            .customisation()
             .entitlements
             .is_enabled($agency_id, $key)
             .await
@@ -67,7 +67,7 @@ macro_rules! require_feature {
 macro_rules! require_below_limit {
     ($state:expr, $agency_id:expr, $key:expr, $current:expr) => {
         if let Some(max) = $state
-            .custom()
+            .customisation()
             .entitlements
             .numeric_limit($agency_id, $key)
             .await

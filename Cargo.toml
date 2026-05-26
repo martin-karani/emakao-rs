@@ -52,7 +52,7 @@ apalis-redis      = { version = "0.7" }
 jsonwebtoken      = "9"
 argon2            = "0.5"
 
-reqwest           = { version = "0.13.3",  features = ["json", "form"], default-features = false }
+reqwest           = { version = "0.13.3", features = ["json", "form", "rustls"], default-features = false }
 
 serde             = { workspace = true }
 serde_json        = { workspace = true }
@@ -100,6 +100,7 @@ aes-gcm           = "0.10"
 # JSONLogic condition evaluation for workflow_rules
 jsonlogic         = "0.4"
 futures-util = "0.3.32"
+redis = { version = "0.32", features = ["aio", "tokio-comp", "connection-manager"] }
 
 [profile.dev]
 opt-level = 0
