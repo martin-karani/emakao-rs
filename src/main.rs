@@ -24,7 +24,6 @@ use emakao::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // ── 1. Environment & tracing ──────────────────────────────────────────────
     dotenvy::dotenv().ok();
 
     tracing_subscriber::fmt()
@@ -35,13 +34,11 @@ async fn main() -> anyhow::Result<()> {
         .json()
         .init();
 
-    // ── 2. Config + AES key ───────────────────────────────────────────────────
     let cfg = Arc::new(Config::from_env()?);
 
     // Decode once at startup — panics loudly on misconfiguration before any I/O.
     let enc_key = cfg.enc_key();
 
-    // ── 3. Base AppState ──────────────────────────────────────────────────────
     // Builds DB pools, Redis, JWT, SMTP, SMS, M-Pesa, S3, OpenFGA, notification
     // workers, subscription use-cases, and the MiniJinja environment.
     let state = AppState::build(Arc::clone(&cfg)).await?;
@@ -49,21 +46,14 @@ async fn main() -> anyhow::Result<()> {
     // Cloning PgPool is cheap — it shares the internal connection pool via Arc.
     let platform_pool = state.infra.tenant_pools.platform_pool();
 
-    // ── 4. Customisation layer components ─────────────────────────────────────
-
-    // 4a. Settings cache (DashMap + Redis pub/sub invalidation)
     let settings_cache = Arc::new(SettingsCache::new());
 
-    // 4b. Entitlement cache (plan features merged with per-agency overrides)
     let entitlements = Arc::new(EntitlementCache::new(platform_pool.clone()));
 
-    // 4c. Permission cache (custom_roles → per-user HashSet<String>)
     let permissions = Arc::new(PermissionCache::new(platform_pool.clone()));
 
-    // 4d. Audit logger (fire-and-forget INSERT to partitioned audit_log)
     let audit = Arc::new(AuditLogger::new(platform_pool.clone()));
 
-    // 4e. Provider registry — platform default SMS = Africa's Talking
     let default_sms = Arc::new(AfricasTalkingProvider::from_creds(serde_json::json!({
         "api_key":   cfg.at_api_key,
         "username":  cfg.at_username,
@@ -106,14 +96,12 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // 4f. Notification dispatcher (shares the existing MiniJinja env)
     let notifications_dispatcher = Arc::new(NotificationDispatcher {
         pool: platform_pool.clone(),
         providers: Arc::clone(&providers),
         jinja: state.jinja.as_ref().clone(),
     });
 
-    // 4g. Apalis Redis storage for workflow and archival jobs.
     //     We open a dedicated RedisClient (not the pool) so the Apalis queues
     //     can hold their own connection independently of the application pool.
     let apalis_redis = redis::Client::open(cfg.redis_url.clone())?
@@ -130,7 +118,6 @@ async fn main() -> anyhow::Result<()> {
         workflow_storage.clone(),
     ));
 
-    // ── 5. Attach customisation layer to AppState ─────────────────────────────
     let state = state.with_customisation(
         Arc::clone(&settings_cache),
         Arc::clone(&entitlements),
@@ -142,7 +129,6 @@ async fn main() -> anyhow::Result<()> {
         enc_key,
     );
 
-    // ── 6. Redis pub/sub invalidation listener ────────────────────────────────
     // Subscribes to "cache:invalidate:agency" and drops local DashMap entries
     // when another pod broadcasts an invalidation.
     {
@@ -161,7 +147,6 @@ async fn main() -> anyhow::Result<()> {
         ));
     }
 
-    // ── 7. Workflow job worker ─────────────────────────────────────────────────
     {
         let state_arc = Arc::new(state.clone());
         let worker = WorkerBuilder::new("workflow-worker")
@@ -175,7 +160,6 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // ── 8. Archival job worker ────────────────────────────────────────────────
     {
         let state_arc = Arc::new(state.clone());
         let worker = WorkerBuilder::new("archival-worker")
@@ -189,7 +173,6 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // ── 9. Billing monitor (unchanged) ────────────────────────────────────────
     let billing_monitor = build_billing_monitor(
         BillingContext {
             pool_manager: Arc::clone(&state.infra.tenant_pools),
@@ -205,7 +188,6 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // ── 10. HTTP server ───────────────────────────────────────────────────────
     let addr = format!("0.0.0.0:{}", cfg.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     let router = build_router(state);

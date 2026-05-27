@@ -488,7 +488,7 @@ mod tests {
             true,                     // WHT agent
             period(),
         );
-        assert_eq!(bd.mri_kes, Decimal::new(7500, 2)); // KES 7,500
+        assert_eq!(bd.mri_kes, Decimal::new(750000, 2)); // KES 7,500
         assert_eq!(bd.mri_regime, Some(MriRegime::Mri));
     }
 

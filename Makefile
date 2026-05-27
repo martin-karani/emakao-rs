@@ -44,6 +44,13 @@ migrate:
 	AGENCY_DATABASE_URL="$(AGENCY_URL)" \
 	cargo run -p migrate
 
+.PHONY: migrate-reset
+migrate-reset:
+	MIGRATE_RESET=true \
+	PLATFORM_DATABASE_URL="$(PLATFORM_URL)" \
+	AGENCY_DATABASE_URL="$(AGENCY_URL)" \
+	cargo run -p migrate
+
 # ── sqlx offline cache ────────────────────────────────────────────────────────
 
 .PHONY: prepare

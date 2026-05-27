@@ -50,10 +50,9 @@ impl ProvisionAgencyUseCase {
         openfga: Arc<dyn OpenFgaPort>,
     ) -> Self {
         // Load the default model from a resource file or embedded JSON
-        let default_model = serde_json::from_str(include_str!(
-            "../../../../resources/fga/default_model.json"
-        ))
-        .expect("failed to parse default FGA model");
+        let default_model =
+            serde_json::from_str(include_str!("../../../../resources/fga/default_model.json"))
+                .expect("failed to parse default FGA model");
 
         Self {
             agency_repo,
@@ -94,8 +93,8 @@ impl ProvisionAgencyUseCase {
             .provision_new_schema(&schema_name)
             .await
             .map_err(|e| {
-                tracing::error!(error = %e, "schema provisioning failed");
-                AppError::InternalServer(format!("schema provisioning failed: {e}"))
+                tracing::error!(error = %format!("{e:#}"), "schema provisioning failed");
+                AppError::InternalServer(format!("schema provisioning failed: {e:#}"))
             })?;
         // ── Step 3: Create OpenFGA store ───────────────────────────────────────
         let store_id = self.openfga.create_store(&input.slug).await?;

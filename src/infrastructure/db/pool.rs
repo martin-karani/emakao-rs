@@ -127,7 +127,11 @@ impl AgencyPoolManager {
         AGENCY_MIGRATOR
             .run(&provision_pool)
             .await
-            .with_context(|| format!("agency migration failed for schema '{schema}'"))?;
+            .map_err(|e| {
+                // e:#  prints the full cause chain (migration name + SQL error)
+                tracing::error!(schema = %schema_name, error = %format!("{e:#}"), "agency migrator error detail");
+                anyhow::anyhow!("agency migration failed for schema '{schema}': {e:#}")
+            })?;
 
         provision_pool.close().await;
         tracing::info!(schema = schema_name, "agency schema provisioned ✓");
