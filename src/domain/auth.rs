@@ -96,6 +96,7 @@ pub struct JwtClaims {
     pub role: String,
     pub portal: PortalType,
     pub jti: String,
+    pub iat: usize,
     pub exp: usize,
 }
 

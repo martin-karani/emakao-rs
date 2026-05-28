@@ -102,7 +102,7 @@ pub async fn list_rules(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));
@@ -124,7 +124,7 @@ pub async fn create_rule(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));
@@ -152,7 +152,7 @@ pub async fn patch_rule(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));
@@ -179,7 +179,7 @@ pub async fn delete_rule(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgWorkflowRuleRepo::new(state.infra.tenant_pools.platform().clone()));

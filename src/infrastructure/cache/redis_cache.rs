@@ -43,12 +43,8 @@ impl RedisCache {
             .await
             .map_err(|e| AppError::ExternalService(e.to_string()))
     }
-
-    pub async fn revoke_token(&self, jti: &str, ttl: Duration) -> Result<(), AppError> {
-        self.set(&format!("revoked:{jti}"), "1", Some(ttl)).await
-    }
-
-    pub async fn is_token_revoked(&self, jti: &str) -> Result<bool, AppError> {
-        Ok(self.get(&format!("revoked:{jti}")).await?.is_some())
-    }
+    // NOTE: Token revocation is handled exclusively by `TokenBlacklist`
+    // (key prefix `blacklist:{jti}`).  Do NOT add duplicate revoke_token /
+    // is_token_revoked methods here — they would use a different prefix and
+    // silently never be checked by the auth middleware.  See ISSUE 7.
 }

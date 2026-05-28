@@ -19,6 +19,10 @@ use crate::{
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
+    // FIXME(security): token is passed as a query parameter, which means it
+    // will appear in server access logs, proxy logs, and browser history.
+    // Prefer accepting the token via an initial text message after the
+    // handshake, or via the `Sec-WebSocket-Protocol` subprotocol header.
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let token = match params.get("token") {
@@ -26,11 +30,26 @@ pub async fn ws_handler(
         None => return AppError::Unauthorised.into_response(),
     };
 
-    // Validate token via identity sub-struct
+    // ── 1. Validate JWT signature & expiry ────────────────────────────────
     let claims = match state.identity.auth_port.verify_token(&token) {
         Ok(c) => c,
         Err(_) => return AppError::Unauthorised.into_response(),
     };
+
+    // ── 2. Check revocation blacklist (ISSUE 4 FIX) ───────────────────────
+    // Previously this step was missing, so a logged-out user could open a
+    // persistent WebSocket connection with a revoked token.
+    match state.token_blacklist.is_revoked(&claims.jti).await {
+        Ok(true) => {
+            tracing::info!(jti = %claims.jti, "ws: revoked token presented");
+            return AppError::Unauthorised.into_response();
+        }
+        Err(e) => {
+            // Redis unavailable — fail open; connection allowed with a warning.
+            tracing::warn!(err = %e, "ws: blacklist unavailable — failing open");
+        }
+        Ok(false) => {}
+    }
 
     ws.on_upgrade(move |socket| handle_socket(socket, state, claims))
 }

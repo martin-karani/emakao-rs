@@ -69,8 +69,12 @@ impl SettingsCache {
 /// Subscribe to the Redis invalidation channel and drop local entries as
 /// messages arrive from other pods.
 ///
-/// Call with `tokio::spawn(run_invalidation_listener(subscriber, cache))`.
-pub async fn run_invalidation_listener(subscriber: SubscriberClient, cache: Arc<SettingsCache>) {
+/// Call with `tokio::spawn(run_invalidation_listener(subscriber, cache, entitlements))`.
+pub async fn run_invalidation_listener(
+    subscriber: SubscriberClient,
+    cache: Arc<SettingsCache>,
+    entitlements: Arc<crate::infrastructure::cache::EntitlementCache>,
+) {
     if let Err(e) = subscriber
         .subscribe("cache:invalidate:agency")
         .await
@@ -84,10 +88,11 @@ pub async fn run_invalidation_listener(subscriber: SubscriberClient, cache: Arc<
     loop {
         match rx.recv().await {
             Ok(msg) => {
-                if let Some(id_str) = msg.value.as_str() {
+                if let Some(id_str) = msg.value.as_string() {
                     match Uuid::parse_str(&id_str) {
                         Ok(id) => {
                             cache.invalidate(id);
+                            entitlements.invalidate(id);
                             tracing::debug!("settings cache: invalidated {id}");
                         }
                         Err(e) => {

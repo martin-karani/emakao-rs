@@ -41,9 +41,22 @@ use crate::{
     security(("bearer_token" = []))
 )]
 pub async fn list_agreements(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
     ctx: AgencyContext,
     Query(params): Query<ListAgreementsParams>,
 ) -> Result<impl IntoResponse, AppError> {
+    if let Some(prop_id) = params.property_id {
+        crate::presentation::http::helpers::permission::check_permission(
+            &state,
+            &ctx,
+            &user,
+            "can_view",
+            &format!("property:{}", prop_id),
+        )
+        .await?;
+    }
+
     let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
     let usecase = ListAgreementsUseCase::new(repo);
     let items = usecase
@@ -76,9 +89,20 @@ pub async fn list_agreements(
     security(("bearer_token" = []))
 )]
 pub async fn get_agreement(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
     ctx: AgencyContext,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
+    crate::presentation::http::helpers::permission::check_permission(
+        &state,
+        &ctx,
+        &user,
+        "can_view",
+        &format!("agreement:{}", id),
+    )
+    .await?;
+
     let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
     let usecase = GetAgreementUseCase::new(repo);
     let agreement = usecase.execute(ctx.agency.id, id).await?;
@@ -106,18 +130,26 @@ pub async fn create_agreement(
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    if let Some(store_id) = ctx.agency.fga_store_id.clone() {
-        require_permissions(
-            state.openfga.clone(),
-            store_id,
-            user.user_id,
-            vec![
-                ("can_edit", format!("property:{}", dto.property_id)),
-                ("manager", format!("unit:{}", dto.unit_id)),
-            ],
-        )
-        .await?;
-    }
+    let store_id = ctx
+        .agency
+        .fga_store_id
+        .clone()
+        .ok_or_else(|| {
+            AppError::InternalServer(
+                "Agency has no OpenFGA store configured — contact platform admin".into(),
+            )
+        })?;
+
+    require_permissions(
+        state.openfga.clone(),
+        store_id,
+        user.user_id,
+        vec![
+            ("can_edit", format!("property:{}", dto.property_id)),
+            ("manager", format!("unit:{}", dto.unit_id)),
+        ],
+    )
+    .await?;
 
     let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
     let usecase = CreateAgreementUseCase::new(repo);

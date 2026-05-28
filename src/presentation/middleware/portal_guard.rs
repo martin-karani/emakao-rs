@@ -11,6 +11,10 @@ use serde_json::json;
 
 use crate::domain::{auth::AuthenticatedUser, enums::PortalType};
 
+// ISSUE 11 FIX: Ordering dependency comment.
+// This middleware MUST be layered after `require_auth` so that `AuthenticatedUser`
+// is present in the request extensions. In Axum, `.layer(A).layer(B)` executes B then A.
+// The router mounts this correctly by layering `portal_guard` BEFORE `require_auth`.
 pub async fn portal_guard(required: PortalType, req: Request<Body>, next: Next) -> Response {
     let actual = req
         .extensions()
@@ -48,4 +52,33 @@ pub async fn owner_portal_guard(req: Request<Body>, next: Next) -> Response {
 
 pub async fn vendor_portal_guard(req: Request<Body>, next: Next) -> Response {
     portal_guard(PortalType::Vendor, req, next).await
+}
+
+// ISSUE 5 FIX: caretaker portal guard was missing; router could not mount
+// caretaker routes without it.
+pub async fn caretaker_portal_guard(req: Request<Body>, next: Next) -> Response {
+    portal_guard(PortalType::Caretaker, req, next).await
+}
+
+// ISSUE 14 FIX: Guard to explicitly reject platform_admin from staff routes.
+pub async fn staff_portal_guard(req: Request<Body>, next: Next) -> Response {
+    let actual = req.extensions().get::<AuthenticatedUser>();
+
+    match actual {
+        Some(u) if u.portal == PortalType::Staff && u.role != "platform_admin" => {
+            next.run(req).await
+        }
+        Some(_) => (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "WRONG_PORTAL",
+                "message": "This token is for platform admin or another portal; you cannot access staff operational routes."
+            })),
+        )
+            .into_response(),
+        None => {
+            tracing::error!("portal_guard: AuthenticatedUser missing");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }

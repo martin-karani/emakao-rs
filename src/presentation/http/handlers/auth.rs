@@ -207,11 +207,17 @@ pub async fn logout(
     let remaining = (claims.exp as i64).saturating_sub(now_unix);
     let ttl = remaining.max(0) as i64;
 
-    state
-        .token_blacklist
-        .revoke(&claims.jti, ttl)
-        .await
-        .map_err(|e| AppError::ExternalService(format!("blacklist: {e}")))?;
+    // ISSUE 22 FIX: if the token is already past its expiry, ttl == 0.
+    // SETEX with TTL=0 is a no-op (or immediately-expiring key) in Redis,
+    // so we skip the write — the token is already invalid by expiry alone.
+    if ttl > 0 {
+        state
+            .token_blacklist
+            .revoke(&claims.jti, ttl)
+            .await
+            .map_err(|e| AppError::ExternalService(format!("blacklist: {e}")))?;
+    }
+
 
     tracing::info!(user_id = %user.user_id, jti = %claims.jti, "user logged out");
 

@@ -82,6 +82,15 @@ impl SubscriptionCache {
         let state_key = format!("subscription:state:{agency_id}");
         let entitle_key = format!("entitlements:{agency_id}");
         let _: Result<(), _> = self.redis.del::<(), _>(&[state_key, entitle_key]).await;
+        
+        // Also publish to the cross-pod invalidation channel for in-memory caches
+        // (SettingsCache, EntitlementCache).
+        use fred::interfaces::PubsubInterface;
+        let _: Result<(), _> = self
+            .redis
+            .next()
+            .publish::<(), _, _>("cache:invalidate:agency", agency_id.to_string())
+            .await;
     }
 
     //  Usage counters (monthly SMS / WhatsApp, daily API calls)

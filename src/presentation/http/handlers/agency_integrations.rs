@@ -87,7 +87,7 @@ pub async fn list_integrations(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgAgencyIntegrationRepo::new(
@@ -117,7 +117,7 @@ pub async fn upsert_integration(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgAgencyIntegrationRepo::new(
@@ -175,7 +175,7 @@ pub async fn delete_integration(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgAgencyIntegrationRepo::new(

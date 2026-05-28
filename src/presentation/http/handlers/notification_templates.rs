@@ -95,7 +95,7 @@ pub async fn list_templates(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgNotificationTemplateRepo::new(
@@ -126,7 +126,7 @@ pub async fn upsert_template(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgNotificationTemplateRepo::new(
@@ -175,7 +175,7 @@ pub async fn delete_template(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     let repo = Arc::new(PgNotificationTemplateRepo::new(

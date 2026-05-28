@@ -97,7 +97,7 @@ pub async fn patch_settings(
     state
         .customisation()
         .permissions
-        .require(user.user_id, "agency_settings:write")
+        .require(user.user_id, user.agency_id, "agency_settings:write")
         .await?;
 
     // ── Execute use-case ──────────────────────────────────────────────────────

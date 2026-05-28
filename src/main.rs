@@ -144,6 +144,7 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(run_invalidation_listener(
             subscriber,
             Arc::clone(&settings_cache),
+            Arc::clone(&entitlements),
         ));
     }
 

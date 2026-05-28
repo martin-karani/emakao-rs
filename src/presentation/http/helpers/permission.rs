@@ -44,9 +44,11 @@ pub async fn require_permission(
 // ── Batch helper ──────────────────────────────────────────────────────────────
 
 /// Check multiple `(relation, object)` pairs concurrently and return
-/// `Ok(())` only when **all** pass.  First failure short-circuits.
+/// `Ok(())` only when **all** pass.  Short-circuits on the first failure.
 ///
-/// Useful for multi-step handlers that require several permissions.
+/// ISSUE 20 FIX: previously used `join_all` which ran all FGA checks even
+/// after one had already failed, wasting RPC calls. Now uses `try_join_all`
+/// which cancels remaining futures on first error.
 pub async fn require_permissions(
     openfga: Arc<dyn OpenFgaPort>,
     store_id: String,
@@ -72,18 +74,22 @@ pub async fn require_permissions(
         }
     });
 
-    // Run all checks concurrently; collect errors.
-    let results = futures::future::join_all(futs).await;
-    for r in results {
-        r?;
-    }
+    // Run concurrently; cancel on first failure.
+    futures::future::try_join_all(futs).await?;
     Ok(())
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Guarded helper ────────────────────────────────────────────────────────────
 
-/// Runs the OpenFGA permission check only when an FGA store is configured.
-/// When the agency has no store (e.g. during local dev) the check is skipped.
+/// Runs the OpenFGA permission check for the agency's FGA store.
+///
+/// ISSUE 6 FIX: previously this returned `Ok(())` when `fga_store_id` was
+/// `None`, silently bypassing all fine-grained authorization for agencies
+/// that lost or never had their FGA store provisioned.  Now it hard-errors,
+/// ensuring that a misconfigured agency cannot inadvertently grant full access.
+///
+/// If you need a lenient mode for local development, set a real (local)
+/// OpenFGA store rather than leaving the column NULL.
 pub async fn check_permission(
     state: &AppState,
     ctx: &AgencyContext,
@@ -91,15 +97,22 @@ pub async fn check_permission(
     relation: &str,
     object: &str,
 ) -> Result<(), AppError> {
-    if let Some(store_id) = ctx.agency.fga_store_id.as_deref() {
-        require_permission(
-            state.openfga.as_ref(),
-            store_id,
-            user.user_id,
-            relation,
-            object,
-        )
-        .await?;
-    }
-    Ok(())
+    let store_id = ctx
+        .agency
+        .fga_store_id
+        .as_deref()
+        .ok_or_else(|| {
+            AppError::InternalServer(
+                "Agency has no OpenFGA store configured — contact platform admin".into(),
+            )
+        })?;
+
+    require_permission(
+        state.openfga.as_ref(),
+        store_id,
+        user.user_id,
+        relation,
+        object,
+    )
+    .await
 }

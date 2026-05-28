@@ -80,14 +80,16 @@ CREATE TYPE user_role AS ENUM (
     'agent',
     'resident',
     'owner',
-    'vendor'
+    'vendor',
+    'caretaker'
 );
 
 CREATE TYPE portal_type AS ENUM (
     'staff',
     'resident',
     'owner',
-    'vendor'
+    'vendor',
+    'caretaker'
 );
 
 CREATE TYPE contact_type AS ENUM (

@@ -48,6 +48,18 @@ pub async fn require_auth(
         Ok(false) => {}
     }
 
+    // ── 3.5. Check iat against password change timestamp (Issue 18) ────────────
+    match state.token_blacklist.is_revoked_by_iat(claims.sub, claims.iat).await {
+        Ok(true) => {
+            tracing::info!(user_id = %claims.sub, iat = %claims.iat, "token revoked by password change");
+            return (StatusCode::UNAUTHORIZED, "token has been revoked due to password change").into_response();
+        }
+        Err(e) => {
+            tracing::warn!(err = %e, "token blacklist iat check unavailable — failing open");
+        }
+        Ok(false) => {}
+    }
+
     // ── 4. Build authenticated user and insert as extension ───────────────────
     let user = AuthenticatedUser {
         user_id: claims.sub,

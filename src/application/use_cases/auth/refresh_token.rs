@@ -30,8 +30,7 @@ impl RefreshTokenUseCase {
     pub async fn execute(&self, input: RefreshInput) -> Result<RefreshOutput, AppError> {
         let old = self.auth.verify_token(&input.refresh_token)?;
 
-        let exp =
-            OffsetDateTime::now_utc().unix_timestamp() as usize + input.expiry_seconds as usize;
+        let now = OffsetDateTime::now_utc().unix_timestamp() as usize;
 
         let new_claims = JwtClaims {
             sub: old.sub,
@@ -39,7 +38,8 @@ impl RefreshTokenUseCase {
             role: old.role,
             portal: old.portal,
             jti: Uuid::new_v4().to_string(),
-            exp,
+            iat: now,
+            exp: now + input.expiry_seconds as usize,
         };
 
         let access_token = self.auth.sign_token(&new_claims)?;

@@ -28,10 +28,28 @@ pub async fn require_admin(
     }
 
     // Human operators with a `platform_admin` JWT.
+    // ISSUE 3 FIX: previously this path skipped the token blacklist, allowing
+    // a logged-out platform_admin token to access all admin endpoints until
+    // natural expiry. Now we check the blacklist identically to require_auth.
     if let Some(token) = extract_bearer(&req) {
         if let Ok(claims) = state.identity.auth_port.verify_token(&token) {
             if claims.role == "platform_admin" {
-                return next.run(req).await;
+                match state.token_blacklist.is_revoked(&claims.jti).await {
+                    Ok(true) => {
+                        // Token is revoked — fall through to 403 below.
+                        tracing::info!(
+                            jti = %claims.jti,
+                            "admin: revoked platform_admin token presented"
+                        );
+                    }
+                    Err(e) => {
+                        // Redis is unavailable — fail open with a warning.
+                        // Change to fail-closed if your threat model requires it.
+                        tracing::warn!(err = %e, "admin: blacklist unavailable — failing open");
+                        return next.run(req).await;
+                    }
+                    Ok(false) => return next.run(req).await,
+                }
             }
         }
     }

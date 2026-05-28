@@ -79,14 +79,15 @@ impl StaffLoginUseCase {
 
         let _ = self.repo.update_last_login(user.id).await;
 
-        let exp = expiry(input.expiry_seconds);
+        let now = OffsetDateTime::now_utc().unix_timestamp() as usize;
         let claims = JwtClaims {
             sub: user.id,
             agency_id: agency.id,
             role: role.to_owned(),
             portal: PortalType::Staff,
             jti: Uuid::new_v4().to_string(),
-            exp,
+            iat: now,
+            exp: now + input.expiry_seconds as usize,
         };
 
         tracing::info!(user_id = %user.id, agency = %agency.slug, "staff login");
@@ -176,14 +177,15 @@ impl PortalLoginUseCase {
             .await?
             .ok_or(AppError::Unauthorised)?;
 
-        let exp = expiry(input.expiry_seconds);
+        let now = OffsetDateTime::now_utc().unix_timestamp() as usize;
         let claims = JwtClaims {
             sub: user.id,
             agency_id: identity.agency_id,
             role: role.clone(),
             portal: input.portal,
             jti: Uuid::new_v4().to_string(),
-            exp,
+            iat: now,
+            exp: now + input.expiry_seconds as usize,
         };
 
         tracing::info!(
@@ -206,6 +208,4 @@ impl PortalLoginUseCase {
     }
 }
 
-fn expiry(seconds: u64) -> usize {
-    OffsetDateTime::now_utc().unix_timestamp() as usize + seconds as usize
-}
+

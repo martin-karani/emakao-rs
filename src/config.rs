@@ -55,6 +55,11 @@ pub struct Config {
 
     /// Apalis concurrency for the archival job worker (default 2).
     pub archival_worker_concurrency: usize,
+
+    /// CORS allowed origins (ALLOWED_ORIGINS env var, comma-separated).
+    /// Example: "https://app.emakao.co.ke,https://residents.emakao.co.ke"
+    /// An empty list means deny-all in production, permissive in debug.
+    pub allowed_origins: Vec<String>,
 }
 
 impl Config {
@@ -118,6 +123,14 @@ impl Config {
 
             workflow_worker_concurrency: env_parse("WORKFLOW_WORKER_CONCURRENCY", 4),
             archival_worker_concurrency: env_parse("ARCHIVAL_WORKER_CONCURRENCY", 2),
+
+            allowed_origins: std::env::var("ALLOWED_ORIGINS")
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect(),
         })
     }
 
