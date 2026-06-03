@@ -74,7 +74,7 @@ pub async fn portfolio_analytics(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
     let result = PortfolioAnalyticsUseCase { repo }
@@ -115,7 +115,7 @@ pub async fn revenue_report(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
     let result = RevenueReportUseCase { repo }
@@ -156,7 +156,7 @@ pub async fn occupancy_trends(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let repo = Arc::new(PgAnalyticsRepo::new(ctx.pool));
     let result = OccupancyTrendUseCase { repo }

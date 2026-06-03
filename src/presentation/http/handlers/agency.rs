@@ -1,3 +1,16 @@
+//! HTTP handlers for platform-admin operations: agency provisioning, staff
+//! seeding, and OpenFGA permissions management.
+//!
+//! ## Route ownership
+//!
+//! | Handler                  | Method | Path                                                          |
+//! |--------------------------|--------|---------------------------------------------------------------|
+//! | `create_agency`          | POST   | `/api/v1/admin/agencies`                                      |
+//! | `create_staff_user`      | POST   | `/api/v1/admin/agencies/{agency_id}/staff`                    |
+//! | `write_permission_tuple` | POST   | `/api/v1/admin/agencies/{fga_store_id}/permissions/tuples`    |
+//! | `delete_permission_tuple`| DELETE | `/api/v1/admin/agencies/{fga_store_id}/permissions/tuples`    |
+//! | `update_auth_model`      | POST   | `/api/v1/admin/agencies/{fga_store_id}/permissions/model`     |
+
 use axum::{Json, extract::{Path, State}, http::StatusCode, response::IntoResponse};
 use garde::Validate;
 use uuid::Uuid;
@@ -79,8 +92,20 @@ pub async fn create_agency(
 ///
 /// The user is immediately active and can log in at
 /// `POST /api/v1/auth/login` with the supplied credentials.
-/// Set `must_change_password: true` (coming soon) when you want the user to
-/// rotate the password on first login.
+///
+/// ## FGA side-effect
+///
+/// On success, an OpenFGA agency-membership tuple is written:
+///
+/// ```text
+/// user:{user_id}  —  {role}  —  agency:{agency_id}
+/// ```
+///
+/// This enables the full fine-grained permission chain (`property.can_view`,
+/// `agreement.can_edit`, etc.) from the moment the account is created.
+/// If the FGA write fails, the error is logged but the user is still created —
+/// the tuple can be re-synced via
+/// `POST /api/v1/admin/agencies/{fga_store_id}/permissions/tuples`.
 #[utoipa::path(
     post,
     path = "/api/v1/admin/agencies/{agency_id}/staff",
@@ -100,22 +125,23 @@ pub async fn create_staff_user(
     Json(dto): Json<CreateStaffUserDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
- 
+
     // Validate role before touching the database.
     if !["admin", "manager", "agent"].contains(&dto.role.as_str()) {
         return Err(AppError::Validation(
             "role must be one of: admin, manager, agent".into(),
         ));
     }
- 
-    // Guard: agency must exist and be active.
-    state
+
+    // Guard: agency must exist and be active.  Also capture fga_store_id so
+    // we can write the FGA tuple without a second DB round-trip.
+    let agency = state
         .identity
         .auth_repo
         .find_agency_by_id(agency_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("agency {agency_id} not found")))?;
- 
+
     let user = RegisterUseCase::new(
         state.identity.auth_repo.clone(),
         state.identity.auth_port.clone(),
@@ -127,21 +153,74 @@ pub async fn create_staff_user(
         role: dto.role.clone(),
     })
     .await?;
- 
+
+    // ── Write OpenFGA agency-membership tuple ──────────────────────────────
+    //
+    // Tuple: `user:{user_id}` — `{role}` — `agency:{agency_id}`
+    //
+    // Propagation through the model:
+    //   • role = "admin"   → agency.staff  (admin ⊆ staff)
+    //                      → property.manager (via parent_agency → admin)
+    //                      → unit.manager, agreement.manager (transitive)
+    //   • role = "manager" → agency.staff  (manager ⊆ staff)
+    //   • role = "agent"   → agency.staff  (agent ⊆ staff)
+    //                      → property.viewer (via parent_agency → agent)
+    //
+    // Best-effort: a failure logs a warning but does NOT abort the response.
+    // The user account is already committed; the admin can re-sync the tuple
+    // via `POST /api/v1/admin/agencies/{fga_store_id}/permissions/tuples`.
+    if let Some(ref store_id) = agency.fga_store_id {
+        let fga_user   = format!("user:{}", user.id);
+        let fga_object = format!("agency:{agency_id}");
+
+        match state
+            .openfga
+            .write_tuple(store_id, &fga_user, &dto.role, &fga_object)
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    user_id   = %user.id,
+                    agency_id = %agency_id,
+                    role      = %dto.role,
+                    store_id  = %store_id,
+                    "FGA agency-membership tuple written for seeded staff user",
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    user_id   = %user.id,
+                    agency_id = %agency_id,
+                    role      = %dto.role,
+                    error     = %e,
+                    "FGA tuple write failed for seeded staff user — \
+                     user can log in but fine-grained checks may fail; \
+                     re-sync via the admin permissions API",
+                );
+            }
+        }
+    } else {
+        tracing::warn!(
+            agency_id = %agency_id,
+            user_id   = %user.id,
+            "agency has no FGA store — skipping FGA tuple write for seeded staff user",
+        );
+    }
+
     tracing::info!(
         user_id   = %user.id,
         agency_id = %agency_id,
         role      = %dto.role,
-        "platform admin seeded staff user"
+        "platform admin seeded staff user",
     );
- 
+
     Ok((
         StatusCode::CREATED,
         Json(CreatedStaffUserResponse {
-            user_id: user.id,
-            email: user.email.unwrap_or_default(),
-            role: dto.role,
-            is_active: true,
+            user_id:              user.id,
+            email:                user.email.unwrap_or_default(),
+            role:                 dto.role,
+            is_active:            true,
             must_change_password: false,
         }),
     ))

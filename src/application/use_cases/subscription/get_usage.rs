@@ -24,51 +24,22 @@ impl GetUsageUseCase {
         agency_id: Uuid,
         entitlements: &AgencyEntitlements,
     ) -> Result<UsageSummary, AppError> {
-        // Fetch counts in parallel
-        let (properties, units, users, storage_mb) = tokio::try_join!(
+        // Fetch counts in parallel (Mapping "properties" table to MaxBranches concept)
+        let (branches, units, storage_mb) = tokio::try_join!(
             self.repo.count_tenant_rows(agency_id, "properties"),
             self.repo.count_tenant_rows(agency_id, "units"),
-            self.repo.count_platform_rows(agency_id, "users"),
             self.get_storage_mb(agency_id),
         )?;
 
-        // Check monthly counters from Redis (SMS/WhatsApp)
-        let sms_this_month = self
-            .cache
-            .get_monthly_counter(agency_id, LimitKey::MaxSmsPerMonth)
-            .await;
-        let wa_this_month = self
-            .cache
-            .get_monthly_counter(agency_id, LimitKey::MaxWhatsappPerMonth)
-            .await;
-        let api_calls_today = self
-            .cache
-            .get_daily_counter(agency_id, LimitKey::MaxApiCallsPerDay)
-            .await;
+        let sms_this_month = self.cache.get_monthly_counter(agency_id, LimitKey::MaxSmsPerMonth).await;
+        let wa_this_month = self.cache.get_monthly_counter(agency_id, LimitKey::MaxWhatsappPerMonth).await;
 
         Ok(UsageSummary {
-            properties: check_limit_full(entitlements, &LimitKey::MaxProperties, properties, None),
+            branches: check_limit_full(entitlements, &LimitKey::MaxBranches, branches, None),
             units: check_limit_full(entitlements, &LimitKey::MaxUnits, units, None),
-            users: check_limit_full(entitlements, &LimitKey::MaxUsers, users, None),
             storage: check_limit_full(entitlements, &LimitKey::MaxStorageMb, storage_mb, None),
-            sms: check_limit_full(
-                entitlements,
-                &LimitKey::MaxSmsPerMonth,
-                sms_this_month,
-                None,
-            ),
-            whatsapp: check_limit_full(
-                entitlements,
-                &LimitKey::MaxWhatsappPerMonth,
-                wa_this_month,
-                None,
-            ),
-            api_calls: check_limit_full(
-                entitlements,
-                &LimitKey::MaxApiCallsPerDay,
-                api_calls_today,
-                None,
-            ),
+            sms: check_limit_full(entitlements, &LimitKey::MaxSmsPerMonth, sms_this_month, None),
+            whatsapp: check_limit_full(entitlements, &LimitKey::MaxWhatsappPerMonth, wa_this_month, None),
         })
     }
 

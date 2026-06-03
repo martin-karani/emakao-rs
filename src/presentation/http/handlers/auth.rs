@@ -24,10 +24,51 @@ use crate::{
                 AcceptInviteDto, ChangePasswordDto, ForgotPasswordDto, MessageResponse,
                 PortalLoginDto, RefreshDto, ResetPasswordDto, StaffLoginDto,
             },
-            responses::auth::{LoginResponse, TokenResponse},
+            responses::auth::{LoginResponse, MeResponse, TokenResponse},
         },
     },
 };
+
+/// Get current user info — GET /api/v1/auth/me
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/me",
+    responses(
+        (status = 200, description = "Current user info", body = MeResponse),
+        (status = 401, description = "Unauthorised",       body = ErrorResponse),
+    ),
+    tag = "Auth",
+    security(("bearer_token" = []))
+)]
+pub async fn get_me(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<impl IntoResponse, AppError> {
+    let stored_user = state
+        .identity
+        .auth_repo
+        .find_user_by_id(user.user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+
+    let agency = state
+        .identity
+        .auth_repo
+        .find_agency_by_id(user.agency_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Agency not found".into()))?;
+
+    Ok(Json(MeResponse {
+        user_id: user.user_id,
+        email: stored_user.email,
+        phone: stored_user.phone,
+        role: user.role,
+        portal: user.portal,
+        agency_id: agency.id,
+        agency_name: agency.name,
+        agency_slug: agency.slug,
+    }))
+}
 
 /// Staff login — POST app.emakao.co.ke/api/v1/auth/login
 #[utoipa::path(

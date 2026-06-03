@@ -65,7 +65,7 @@ pub async fn list_owners(
     ctx: AgencyContext,
     Query(params): Query<ListOwnersParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "owner_portal");
+    require_feature!(state, ctx.agency.id, "portal_owner");
 
     let items = ListOwnersUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(
@@ -102,7 +102,7 @@ pub async fn get_owner(
     ctx: AgencyContext,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "owner_portal");
+    require_feature!(state, ctx.agency.id, "portal_owner");
 
     let owner = GetOwnerUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(ctx.agency.id, id)
@@ -132,14 +132,7 @@ pub async fn create_owner(
     Json(dto): Json<CreateOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature!(state, ctx.agency.id, "owner_portal");
-
-    let current = state
-        .subscription
-        .repo
-        .count_tenant_rows(ctx.agency.id, "owners")
-        .await?;
-    require_below_limit!(state, ctx.agency.id, "max_owners", current);
+    require_feature!(state, ctx.agency.id, "portal_owner");
 
     let owner = CreateOwnerUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(CreateOwnerInput {
@@ -180,14 +173,7 @@ pub async fn invite_owner(
     Json(dto): Json<CreateOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature!(state, ctx.agency.id, "owner_portal");
-
-    let current = state
-        .subscription
-        .repo
-        .count_tenant_rows(ctx.agency.id, "owners")
-        .await?;
-    require_below_limit!(state, ctx.agency.id, "max_owners", current);
+    require_feature!(state, ctx.agency.id, "portal_owner");
 
     let owner = OnboardOwnerUseCase {
         owner_repo: Arc::new(PgOwnerRepo::from(ctx.pool)),
@@ -237,7 +223,7 @@ pub async fn update_owner(
     Json(dto): Json<UpdateOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature!(state, ctx.agency.id, "owner_portal");
+    require_feature!(state, ctx.agency.id, "portal_owner");
 
     let owner = UpdateOwnerUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(UpdateOwnerCommand {
@@ -278,7 +264,7 @@ pub async fn assign_owner_to_property(
     Path(property_id): Path<Uuid>,
     Json(dto): Json<AssignOwnerDto>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "owner_portal");
+    require_feature!(state, ctx.agency.id, "portal_owner");
 
     Arc::new(PgOwnerRepo::from(ctx.pool))
         .assign_to_property(dto.owner_id, property_id, dto.ownership_percent)

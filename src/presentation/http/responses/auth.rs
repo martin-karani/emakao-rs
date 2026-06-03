@@ -24,6 +24,18 @@ pub struct LoginResponse {
     pub must_change_password: bool,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MeResponse {
+    pub user_id: Uuid,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub role: String,
+    pub portal: PortalType,
+    pub agency_id: Uuid,
+    pub agency_name: String,
+    pub agency_slug: String,
+}
+
 impl From<LoginOutput> for LoginResponse {
     fn from(value: LoginOutput) -> Self {
         Self {

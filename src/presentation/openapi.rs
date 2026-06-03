@@ -9,6 +9,7 @@ use utoipa::OpenApi;
 
         // ── Auth ──────────────────────────────────────────────────────────────
         crate::presentation::http::handlers::auth::staff_login,
+        crate::presentation::http::handlers::auth::get_me,
         crate::presentation::http::handlers::auth::accept_invite,
         crate::presentation::http::handlers::auth::change_password,
         crate::presentation::http::handlers::auth::refresh,
@@ -208,6 +209,8 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::auth::LoginDto,
         crate::presentation::http::dto::auth::RegisterDto,
         crate::presentation::http::dto::auth::RefreshDto,
+        crate::presentation::http::responses::auth::LoginResponse,
+        crate::presentation::http::responses::auth::MeResponse,
         crate::presentation::http::responses::auth::TokenResponse,
 
         // ── Agency ────────────────────────────────────────────────────────────

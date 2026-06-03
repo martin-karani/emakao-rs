@@ -1,5 +1,9 @@
 use axum::{
-    error_handling::HandleErrorLayer, extract::State, http::StatusCode, middleware, routing::post,
+    error_handling::HandleErrorLayer,
+    extract::State,
+    http::StatusCode,
+    middleware,
+    routing::{get, post},
     Json, Router,
 };
 use std::time::Duration;
@@ -19,8 +23,8 @@ use crate::{
         http::{
             dto::auth::PortalLoginDto,
             handlers::auth::{
-                accept_invite, change_password, forgot_password, logout, portal_login, refresh,
-                reset_password, staff_login,
+                accept_invite, change_password, forgot_password, get_me, logout, portal_login,
+                refresh, reset_password, staff_login,
             },
         },
         middleware::auth::require_auth,
@@ -145,5 +149,7 @@ pub fn password_reset_routes() -> Router<AppState> {
 
 /// Protected session route — JWT required (checked by `with_auth_stack`).
 pub fn session_routes(_state: AppState) -> Router<AppState> {
-    Router::new().route("/auth/logout", post(logout))
+    Router::new()
+        .route("/auth/logout", post(logout))
+        .route("/api/v1/auth/me", get(get_me))
 }

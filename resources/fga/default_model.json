@@ -1,103 +1,178 @@
 {
-    "schema_version": "1.1",
-    "type_definitions": [
-      {
-        "type": "user",
-        "relations": {},
-        "metadata": null
-      },
-      {
-        "type": "agency",
-        "relations": {
-          "admin": { "this": {} },
-          "staff": {
-            "union": {
-              "child": [
-                { "this": {} },
-                { "computedUserset": { "object": "", "relation": "admin" } }
-              ]
-            }
+  "schema_version": "1.1",
+  "type_definitions": [
+
+    {
+      "type": "user",
+      "relations": {},
+      "metadata": null
+    },
+
+    {
+      "type": "agency",
+      "relations": {
+        "admin": {
+          "this": {}
+        },
+        "manager": {
+          "this": {}
+        },
+        "agent": {
+          "this": {}
+        },
+        "staff": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "admin"   } },
+              { "computedUserset": { "object": "", "relation": "manager" } },
+              { "computedUserset": { "object": "", "relation": "agent"   } }
+            ]
           }
         },
-        "metadata": {
-          "relations": {
-            "admin": { "directly_related_user_types": [{ "type": "user" }] },
-            "staff": { "directly_related_user_types": [{ "type": "user" }] }
-          }
+        "can_manage_staff": {
+          "computedUserset": { "object": "", "relation": "admin" }
+        },
+        "can_manage_billing": {
+          "computedUserset": { "object": "", "relation": "admin" }
         }
       },
-      {
-        "type": "property",
+      "metadata": {
         "relations": {
-          "parent_agency": { "this": {} },
-          "manager": {
-            "union": {
-              "child": [
-                { "this": {} },
-                {
-                  "tupleToUserset": {
-                    "tupleset":        { "object": "", "relation": "parent_agency" },
-                    "computedUserset": { "object": "", "relation": "admin" }
-                  }
+          "admin":   { "directly_related_user_types": [{ "type": "user" }] },
+          "manager": { "directly_related_user_types": [{ "type": "user" }] },
+          "agent":   { "directly_related_user_types": [{ "type": "user" }] }
+        }
+      }
+    },
+
+    {
+      "type": "property",
+      "relations": {
+        "parent_agency": {
+          "this": {}
+        },
+        "manager": {
+          "union": {
+            "child": [
+              { "this": {} },
+              {
+                "tupleToUserset": {
+                  "tupleset":        { "object": "", "relation": "parent_agency" },
+                  "computedUserset": { "object": "", "relation": "admin" }
                 }
-              ]
-            }
-          },
-          "viewer": {
-            "union": {
-              "child": [
-                { "this": {} },
-                { "computedUserset": { "object": "", "relation": "manager" } }
-              ]
-            }
-          },
-          "can_edit": { "computedUserset": { "object": "", "relation": "manager" } },
-          "can_view": { "computedUserset": { "object": "", "relation": "viewer" } }
-        },
-        "metadata": {
-          "relations": {
-            "parent_agency": {
-              "directly_related_user_types": [{ "type": "agency" }]
-            },
-            "manager": {
-              "directly_related_user_types": [{ "type": "user" }]
-            },
-            "viewer": {
-              "directly_related_user_types": [{ "type": "user" }]
-            }
+              }
+            ]
           }
+        },
+        "viewer": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "manager" } },
+              {
+                "tupleToUserset": {
+                  "tupleset":        { "object": "", "relation": "parent_agency" },
+                  "computedUserset": { "object": "", "relation": "agent" }
+                }
+              }
+            ]
+          }
+        },
+        "can_view": {
+          "computedUserset": { "object": "", "relation": "viewer" }
+        },
+        "can_edit": {
+          "computedUserset": { "object": "", "relation": "manager" }
         }
       },
-      {
-        "type": "unit",
+      "metadata": {
         "relations": {
-          "parent_property": { "this": {} },
-          "occupant": { "this": {} },
-          "manager": {
-            "tupleToUserset": {
-              "tupleset":        { "object": "", "relation": "parent_property" },
-              "computedUserset": { "object": "", "relation": "manager" }
-            }
+          "parent_agency": {
+            "directly_related_user_types": [{ "type": "agency" }]
           },
-          "can_view": {
-            "union": {
-              "child": [
-                { "computedUserset": { "object": "", "relation": "manager" } },
-                { "computedUserset": { "object": "", "relation": "occupant" } }
-              ]
-            }
-          }
-        },
-        "metadata": {
-          "relations": {
-            "parent_property": {
-              "directly_related_user_types": [{ "type": "property" }]
-            },
-            "occupant": {
-              "directly_related_user_types": [{ "type": "user" }]
-            }
+          "manager": {
+            "directly_related_user_types": [{ "type": "user" }]
           }
         }
       }
-    ]
-  }
+    },
+
+    {
+      "type": "unit",
+      "relations": {
+        "parent_property": {
+          "this": {}
+        },
+        "occupant": {
+          "this": {}
+        },
+        "manager": {
+          "tupleToUserset": {
+            "tupleset":        { "object": "", "relation": "parent_property" },
+            "computedUserset": { "object": "", "relation": "manager" }
+          }
+        },
+        "can_view": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "manager"  } },
+              { "computedUserset": { "object": "", "relation": "occupant" } }
+            ]
+          }
+        },
+        "can_edit": {
+          "computedUserset": { "object": "", "relation": "manager" }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "parent_property": {
+            "directly_related_user_types": [{ "type": "property" }]
+          },
+          "occupant": {
+            "directly_related_user_types": [{ "type": "user" }]
+          }
+        }
+      }
+    },
+
+    {
+      "type": "agreement",
+      "relations": {
+        "parent_unit": {
+          "this": {}
+        },
+        "signatory": {
+          "this": {}
+        },
+        "manager": {
+          "tupleToUserset": {
+            "tupleset":        { "object": "", "relation": "parent_unit" },
+            "computedUserset": { "object": "", "relation": "manager" }
+          }
+        },
+        "can_view": {
+          "union": {
+            "child": [
+              { "computedUserset": { "object": "", "relation": "manager"   } },
+              { "computedUserset": { "object": "", "relation": "signatory" } }
+            ]
+          }
+        },
+        "can_edit": {
+          "computedUserset": { "object": "", "relation": "manager" }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "parent_unit": {
+            "directly_related_user_types": [{ "type": "unit" }]
+          },
+          "signatory": {
+            "directly_related_user_types": [{ "type": "user" }]
+          }
+        }
+      }
+    }
+
+  ]
+}

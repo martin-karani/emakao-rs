@@ -267,7 +267,7 @@ pub async fn create_work_order(
     let agency_id = ctx.agency.id;
     require_feature!(state, agency_id, "maint_work_orders");
     if dto.vendor_id.is_some() {
-        require_feature!(state, agency_id, "maint_vendor_portal");
+        require_feature!(state, agency_id, "portal_vendor");
     }
 
     let uc = CreateWorkOrderUseCase::new(repo!(ctx), state.notifications.clone());
@@ -323,7 +323,7 @@ pub async fn update_work_order(
     let agency_id = ctx.agency.id;
     require_feature!(state, agency_id, "maint_work_orders");
     if dto.vendor_id.as_ref().and_then(|v| v.as_ref()).is_some() {
-        require_feature!(state, agency_id, "maint_vendor_portal");
+        require_feature!(state, agency_id, "portal_vendor");
     }
 
     let uc = UpdateWorkOrderUseCase::new(repo!(ctx), state.notifications.clone());

@@ -168,18 +168,18 @@ pub async fn create_property(
     .await?;
 
     // ── 1. Numeric plan limit ─────────────────────────────────────────────────
-    // Count current properties; reject if at or above the plan's max_properties.
-    let current = state
+    // Count current properties; reject if at or above the plan's max_branches.
+    let current_branches = state
         .subscription
         .repo
         .count_tenant_rows(ctx.agency.id, "properties")
         .await?;
 
-    require_below_limit!(state, user.agency_id, "max_properties", current);
-
-    // ── 2. Feature flag ───────────────────────────────────────────────────────
-    // Ensures the agency's plan includes the property management module.
-    require_feature!(state, user.agency_id, "property_management");
+    // Allow the first property (branch), but gate subsequent ones
+    if current_branches > 0 {
+        require_feature!(state, user.agency_id, "core_multi_branch");
+    }
+    require_below_limit!(state, user.agency_id, "max_branches", current_branches);
 
     // ── 3. Read AgencySettings for workflow defaults ───────────────────────────
     // Arc<AgencySettings> was inserted into extensions by resolve_agency_context.

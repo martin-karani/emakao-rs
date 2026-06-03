@@ -58,7 +58,7 @@ pub async fn list_meters(
     ctx: AgencyContext,
     Query(params): Query<ListMetersParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "integ_utility_billing");
+    require_feature!(state, ctx.agency.id, "utility_billing");
 
     let unit_id = params
         .unit_id
@@ -95,7 +95,7 @@ pub async fn get_meter(
     ctx: AgencyContext,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "integ_utility_billing");
+    require_feature!(state, ctx.agency.id, "utility_billing");
 
     let meter = GetMeterUseCase::new(Arc::new(PgUtilityRepo::from(ctx.pool)))
         .execute(id)
@@ -124,7 +124,7 @@ pub async fn create_meter(
     Json(dto): Json<CreateMeterDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature!(state, ctx.agency.id, "integ_utility_billing");
+    require_feature!(state, ctx.agency.id, "utility_billing");
 
     let meter = CreateMeterUseCase::new(Arc::new(PgUtilityRepo::from(ctx.pool)))
         .execute(CreateMeterInput {
@@ -163,7 +163,7 @@ pub async fn record_reading(
     Json(dto): Json<RecordReadingDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature!(state, ctx.agency.id, "integ_utility_billing");
+    require_feature!(state, ctx.agency.id, "utility_billing");
 
     RecordReadingUseCase::new(Arc::new(PgUtilityRepo::from(ctx.pool)))
         .execute(RecordReadingInput {
@@ -194,7 +194,7 @@ pub async fn list_bills(
     ctx: AgencyContext,
     Query(params): Query<ListBillsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "integ_utility_billing");
+    require_feature!(state, ctx.agency.id, "utility_billing");
 
     let unit_id = params
         .unit_id
@@ -237,7 +237,7 @@ pub async fn generate_bill(
     ctx: AgencyContext,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "integ_utility_billing");
+    require_feature!(state, ctx.agency.id, "utility_billing");
 
     let bill = GenerateBillUseCase::new(Arc::new(PgUtilityRepo::from(ctx.pool)))
         .execute(id)

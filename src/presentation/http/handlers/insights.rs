@@ -91,7 +91,7 @@ pub async fn rent_default_risk(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = RentDefaultRiskUseCase::new(repo);
@@ -127,7 +127,7 @@ pub async fn tenant_churn(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = TenantChurnUseCase::new(repo);
@@ -161,7 +161,7 @@ pub async fn maintenance_alerts(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = PredictiveMaintenanceUseCase::new(repo);
@@ -197,7 +197,7 @@ pub async fn expense_forecast(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let repo = Arc::new(PgInsightRepo::new(ctx.pool.clone()));
     let uc = ExpenseForecastUseCase::new(repo);
@@ -234,7 +234,7 @@ pub async fn vendor_allocation(
         &format!("agency:{}", ctx.agency.id),
     )
     .await?;
-    require_feature!(state, ctx.agency.id, "report_portfolio_summary");
+
 
     let maint_repo = PgMaintenanceRepo::new(ctx.pool.clone());
     let work_order = maint_repo

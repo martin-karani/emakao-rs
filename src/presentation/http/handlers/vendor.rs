@@ -61,7 +61,7 @@ pub async fn list_vendors(
     ctx: AgencyContext,
     Query(params): Query<ListVendorsParams>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
+    require_feature!(state, ctx.agency.id, "portal_vendor");
 
     let items = ListVendorsUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
         .execute(
@@ -98,7 +98,7 @@ pub async fn get_vendor(
     ctx: AgencyContext,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
+    require_feature!(state, ctx.agency.id, "portal_vendor");
 
     let vendor = GetVendorUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
         .execute(ctx.agency.id, id)
@@ -128,14 +128,7 @@ pub async fn create_vendor(
     Json(dto): Json<CreateVendorDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
-
-    let current = state
-        .subscription
-        .repo
-        .count_tenant_rows(ctx.agency.id, "vendors")
-        .await?;
-    require_below_limit!(state, ctx.agency.id, "max_vendors", current);
+    require_feature!(state, ctx.agency.id, "portal_vendor");
 
     let vendor = CreateVendorUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
         .execute(CreateVendorInput {
@@ -175,7 +168,7 @@ pub async fn update_vendor(
     Json(dto): Json<UpdateVendorDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
-    require_feature!(state, ctx.agency.id, "maint_vendor_portal");
+    require_feature!(state, ctx.agency.id, "portal_vendor");
 
     let vendor = UpdateVendorUseCase::new(Arc::new(PgVendorRepo::from(ctx.pool)))
         .execute(UpdateVendorCommand {

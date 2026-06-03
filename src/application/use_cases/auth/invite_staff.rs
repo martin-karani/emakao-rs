@@ -5,8 +5,10 @@
 //! 2. Create a platform `users` row (inactive; empty password hash).
 //! 3. Bind to the agency with the requested role (`user_agency_roles`).
 //! 4. Register in `portal_user_index` for O(1) login lookups.
-//! 5. Generate a 48 h invite token and persist it.
-//! 6. Send the invite email via `NotificationService`.
+//! 5. Generate a 48-h invite token and persist it.
+//! 6. Write the OpenFGA agency-membership tuple so permission checks pass
+//!    as soon as the invite is accepted.
+//! 7. Send the invite email via `NotificationService`.
 //!
 //! **Staff members always have an email address** — there is no phone-only
 //! path for the staff portal.
@@ -27,6 +29,7 @@ use crate::application::{
             AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand, CreateUserCommand,
             UpsertPortalIndexCommand,
         },
+        openfga_port::OpenFgaPort,
     },
 };
 
@@ -37,6 +40,10 @@ const STAFF_ROLES: &[&str] = &["admin", "manager", "agent"];
 
 pub struct InviteStaffInput {
     pub agency_id: Uuid,
+    /// OpenFGA store ID for the agency.  When `None` the FGA tuple write is
+    /// skipped with a warning — the user can still be invited but fine-grained
+    /// permission checks will fail until the store is configured.
+    pub fga_store_id: Option<String>,
     /// Must be a valid email address; normalised to lowercase inside the use case.
     pub email: String,
     /// Display name used in the greeting line of the invite email.
@@ -70,6 +77,9 @@ pub struct InviteStaffUseCase {
     pub auth_repo: Arc<dyn AuthRepository>,
     pub auth_port: Arc<dyn AuthPort>,
     pub notifications: NotificationService,
+    /// Required to write the agency-membership tuple so that fine-grained
+    /// `check_permission` calls succeed once the invite is accepted.
+    pub openfga: Arc<dyn OpenFgaPort>,
 }
 
 impl InviteStaffUseCase {
@@ -153,7 +163,62 @@ impl InviteStaffUseCase {
             })
             .await?;
 
-        // ── Step 5: Send invite email (best-effort; soft failure logged) ────────
+        // ── Step 5: Write OpenFGA agency-membership tuple ──────────────────────
+        //
+        // Tuple written: `user:{user_id}` — `{role}` — `agency:{agency_id}`
+        //
+        // This single tuple is enough for all derived relations:
+        //   • `agency.staff`   = admin ∪ manager ∪ agent   → general staff gate
+        //   • `property.manager` inherits via `parent_agency → admin`
+        //   • `property.viewer`  inherits via `parent_agency → agent`
+        //
+        // The write is best-effort: a failure is logged but does NOT abort the
+        // invite.  The user cannot log in until they accept the invite anyway,
+        // so there is a window to re-sync the tuple via the admin permissions
+        // API (`POST /api/v1/admin/agencies/{fga_store_id}/permissions/tuples`).
+        match &input.fga_store_id {
+            Some(store_id) => {
+                let fga_user   = format!("user:{user_id}");
+                let fga_object = format!("agency:{}", input.agency_id);
+
+                match self
+                    .openfga
+                    .write_tuple(store_id, &fga_user, &input.role, &fga_object)
+                    .await
+                {
+                    Ok(()) => {
+                        tracing::info!(
+                            user_id   = %user_id,
+                            agency_id = %input.agency_id,
+                            role      = %input.role,
+                            store_id  = %store_id,
+                            "FGA agency-membership tuple written for invited staff",
+                        );
+                    }
+                    Err(e) => {
+                        // Non-fatal — DB membership is already committed.
+                        tracing::warn!(
+                            user_id   = %user_id,
+                            agency_id = %input.agency_id,
+                            role      = %input.role,
+                            error     = %e,
+                            "FGA tuple write failed — fine-grained checks will \
+                             fail until tuple is re-synced via the admin API",
+                        );
+                    }
+                }
+            }
+            None => {
+                tracing::warn!(
+                    agency_id = %input.agency_id,
+                    user_id   = %user_id,
+                    "agency has no FGA store configured — \
+                     skipping tuple write for invited staff member",
+                );
+            }
+        }
+
+        // ── Step 6: Send invite email (best-effort; soft failure logged) ────────
         let invite_url = format!(
             "{}/invite/{}",
             input.portal_base_url.trim_end_matches('/'),
@@ -183,7 +248,7 @@ impl InviteStaffUseCase {
             agency_id  = %input.agency_id,
             role       = %input.role,
             email      = %email,
-            "staff member invited"
+            "staff member invited",
         );
 
         Ok(InviteStaffOutput {
