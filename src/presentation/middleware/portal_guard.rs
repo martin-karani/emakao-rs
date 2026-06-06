@@ -60,12 +60,12 @@ pub async fn caretaker_portal_guard(req: Request<Body>, next: Next) -> Response 
     portal_guard(PortalType::Caretaker, req, next).await
 }
 
-// ISSUE 14 FIX: Guard to explicitly reject platform_admin from staff routes.
+// ISSUE 14 FIX: Guard to explicitly reject system admin from staff routes.
 pub async fn staff_portal_guard(req: Request<Body>, next: Next) -> Response {
     let actual = req.extensions().get::<AuthenticatedUser>();
 
     match actual {
-        Some(u) if u.portal == PortalType::Staff && u.role != "platform_admin" => {
+        Some(u) if u.portal == PortalType::Staff && u.role != "admin" => {
             next.run(req).await
         }
         Some(_) => (

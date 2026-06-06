@@ -9,10 +9,12 @@ use crate::{
         ports::invoice_repository::{CreateInvoiceCommand, InvoiceRepository},
     },
     domain::invoice::{Invoice, InvoiceLineItem},
+    infrastructure::jobs::workflow::WorkflowEngine,
 };
 
 pub struct CreateInvoiceUseCase {
     pub repo: Arc<dyn InvoiceRepository>,
+    pub workflow: Arc<WorkflowEngine>,
 }
 
 pub struct CreateInvoiceInput {
@@ -28,8 +30,8 @@ pub struct CreateInvoiceInput {
 }
 
 impl CreateInvoiceUseCase {
-    pub fn new(repo: Arc<dyn InvoiceRepository>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<dyn InvoiceRepository>, workflow: Arc<WorkflowEngine>) -> Self {
+        Self { repo, workflow }
     }
 
     pub async fn execute(&self, input: CreateInvoiceInput) -> Result<Invoice, AppError> {
@@ -79,6 +81,27 @@ impl CreateInvoiceUseCase {
             total_kes = %invoice.total_kes,
             "invoice created"
         );
+
+        // ── Trigger Workflow ──────────────────────────────────────────────────
+        let context = serde_json::json!({
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "total_kes": invoice.total_kes,
+            "due_date": invoice.due_date,
+            "resident_id": invoice.resident_id,
+            "property_id": invoice.property_id,
+        });
+
+        let _ = self
+            .workflow
+            .trigger(
+                input.agency_id,
+                "invoice.created",
+                "invoice",
+                invoice.id,
+                context,
+            )
+            .await;
 
         Ok(invoice)
     }

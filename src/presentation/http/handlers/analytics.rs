@@ -28,7 +28,7 @@ use crate::{
     infrastructure::db::analytics_repository_sqlx::PgAnalyticsRepo,
     presentation::{
         app_state::AppState, error::ErrorResponse, extractors::AgencyContext,
-        http::helpers::permission::check_permission, require_feature,
+        http::helpers::permission::check_permission,
     },
 };
 

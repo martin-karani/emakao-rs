@@ -16,7 +16,15 @@ use garde::Validate;
 use uuid::Uuid;
 
 use crate::{
-    application::{errors::AppError, use_cases::{agency::provision::ProvisionAgencyInput, auth::register::{RegisterInput, RegisterUseCase}}},
+    application::{
+        errors::AppError,
+        ports::role_repository::RoleRepository,
+        use_cases::{
+            agency::provision::ProvisionAgencyInput,
+            auth::register::{RegisterInput, RegisterUseCase},
+        },
+    },
+    infrastructure::db::role_repository_sqlx::PgRoleRepo,
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
@@ -83,11 +91,11 @@ pub async fn create_agency(
 
 /// POST /api/v1/admin/agencies/{agency_id}/staff
 ///
-/// **Platform-admin only** (`X-Admin-Key` header or JWT with
-/// `role = platform_admin`).
+/// **System-admin only** (`X-Admin-Key` header or JWT with
+/// `role = admin`).
 ///
 /// Creates a fully-active staff user with a hashed password.  Use this to
-/// provision the first `admin` for a newly created agency.  For subsequent
+/// provision the first `agency_owner` for a newly created agency.  For subsequent
 /// staff members, prefer the invite flow (`POST /api/v1/staff/invite`).
 ///
 /// The user is immediately active and can log in at
@@ -126,13 +134,6 @@ pub async fn create_staff_user(
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    // Validate role before touching the database.
-    if !["admin", "manager", "agent"].contains(&dto.role.as_str()) {
-        return Err(AppError::Validation(
-            "role must be one of: admin, manager, agent".into(),
-        ));
-    }
-
     // Guard: agency must exist and be active.  Also capture fga_store_id so
     // we can write the FGA tuple without a second DB round-trip.
     let agency = state
@@ -141,6 +142,14 @@ pub async fn create_staff_user(
         .find_agency_by_id(agency_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("agency {agency_id} not found")))?;
+
+    // Validate role exists in target agency
+    let target_pool = state.infra.tenant_pools.for_agency(agency_id).await
+        .map_err(|e| AppError::InternalServer(format!("failed to get pool for agency: {e}")))?;
+    let role_repo = PgRoleRepo::new(target_pool);
+    if role_repo.find_by_name(agency_id, &dto.role).await?.is_none() {
+        return Err(AppError::Validation(format!("role '{}' does not exist in agency {}", dto.role, agency_id)));
+    }
 
     let user = RegisterUseCase::new(
         state.identity.auth_repo.clone(),
@@ -155,27 +164,20 @@ pub async fn create_staff_user(
     .await?;
 
     // ── Write OpenFGA agency-membership tuple ──────────────────────────────
-    //
-    // Tuple: `user:{user_id}` — `{role}` — `agency:{agency_id}`
-    //
-    // Propagation through the model:
-    //   • role = "admin"   → agency.staff  (admin ⊆ staff)
-    //                      → property.manager (via parent_agency → admin)
-    //                      → unit.manager, agreement.manager (transitive)
-    //   • role = "manager" → agency.staff  (manager ⊆ staff)
-    //   • role = "agent"   → agency.staff  (agent ⊆ staff)
-    //                      → property.viewer (via parent_agency → agent)
-    //
-    // Best-effort: a failure logs a warning but does NOT abort the response.
-    // The user account is already committed; the admin can re-sync the tuple
-    // via `POST /api/v1/admin/agencies/{fga_store_id}/permissions/tuples`.
     if let Some(ref store_id) = agency.fga_store_id {
         let fga_user   = format!("user:{}", user.id);
         let fga_object = format!("agency:{agency_id}");
 
+        // Map custom roles to base FGA relations
+        let fga_relation = match dto.role.as_str() {
+            "agency_owner" => "agency_owner",
+            "manager"      => "manager",
+            _              => "agent",
+        };
+
         match state
             .openfga
-            .write_tuple(store_id, &fga_user, &dto.role, &fga_object)
+            .write_tuple(store_id, &fga_user, fga_relation, &fga_object)
             .await
         {
             Ok(()) => {
@@ -183,6 +185,7 @@ pub async fn create_staff_user(
                     user_id   = %user.id,
                     agency_id = %agency_id,
                     role      = %dto.role,
+                    fga_rel   = %fga_relation,
                     store_id  = %store_id,
                     "FGA agency-membership tuple written for seeded staff user",
                 );
@@ -211,7 +214,7 @@ pub async fn create_staff_user(
         user_id   = %user.id,
         agency_id = %agency_id,
         role      = %dto.role,
-        "platform admin seeded staff user",
+        "system admin seeded staff user",
     );
 
     Ok((

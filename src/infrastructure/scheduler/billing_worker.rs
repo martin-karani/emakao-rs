@@ -2,22 +2,19 @@ use apalis::prelude::{Data, Monitor, WorkerBuilder, WorkerFactoryFn};
 use apalis_redis::RedisStorage;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::application::{
+    notifications::service::NotificationService,
+    ports::{
+        billing_repository::BillingRepository,
+        property_billing_repository::PropertyBillingRepository,
+    },
+};
+use crate::domain::billing::current_billing_period;
 use crate::infrastructure::db::billing_repository_sqlx::PgBillingRepo;
 use crate::infrastructure::db::pool::AgencyPoolManager;
-use crate::{
-    application::{
-        notifications::{
-            contexts::RentDueCtx,
-            service::NotificationService,
-            templates::{EmailTemplate, SmsTemplate},
-        },
-        ports::billing_repository::BillingRepository,
-    },
-    domain::billing::current_billing_period,
-};
 
 // ── Worker context ─────────────────────────────────────────────────────────
 
@@ -56,7 +53,11 @@ pub async fn charge_rent_worker(
         .await
         .map_err(|e| anyhow::anyhow!("pool error: {e}"))?;
 
-    let repo = PgBillingRepo::for_agency(pool, job.agency_id);
+    let repo = PgBillingRepo::for_agency(pool.clone(), job.agency_id);
+    let property_billing_repo =
+        crate::infrastructure::db::property_billing_repository_sqlx::PgPropertyBillingRepo::new(
+            pool,
+        );
     let today = OffsetDateTime::now_utc().date();
 
     let agreements = repo
@@ -65,6 +66,13 @@ pub async fn charge_rent_worker(
         .map_err(|e| anyhow::anyhow!("repo error: {e}"))?;
 
     for ag in agreements {
+        // Load property settings for this agreement's property
+        let settings = property_billing_repo
+            .get_by_property_id(ag.property_id)
+            .await
+            .ok()
+            .flatten();
+
         let (period_start, period_end) =
             match current_billing_period(ag.start_date, ag.billing_frequency, today) {
                 Some(p) => p,
@@ -88,6 +96,7 @@ pub async fn charge_rent_worker(
             continue;
         }
 
+        // 1. Charge Rent
         repo.record_rent_charge(
             ag.agreement_id,
             period_start,
@@ -96,6 +105,30 @@ pub async fn charge_rent_worker(
         )
         .await
         .map_err(|e| anyhow::anyhow!("failed to record rent charge: {e}"))?;
+
+        // 2. Charge Garbage Fee if configured
+        if let Some(s) = &settings {
+            if s.garbage_fee_kes > rust_decimal::Decimal::ZERO {
+                repo.record_fixed_charge(
+                    ag.agreement_id,
+                    period_start,
+                    s.garbage_fee_kes,
+                    "Garbage Fee",
+                )
+                .await?;
+            }
+
+            // 3. Charge Security Fee if configured
+            if s.security_fee_kes > rust_decimal::Decimal::ZERO {
+                repo.record_fixed_charge(
+                    ag.agreement_id,
+                    period_start,
+                    s.security_fee_kes,
+                    "Security Fee",
+                )
+                .await?;
+            }
+        }
 
         tracing::info!(
             agreement_id = %ag.agreement_id,
@@ -111,15 +144,6 @@ pub async fn charge_rent_worker(
 
 pub async fn apply_late_fees_worker(
     job: ApplyLateFeesJob,
-    _ctx: Data<BillingContext>,
-) -> Result<(), anyhow::Error> {
-    // TODO: implement late fee logic
-    tracing::info!(agency_id = %job.agency_id, "apply_late_fees_worker stub called");
-    Ok(())
-}
-
-pub async fn send_reminders_worker(
-    job: SendRemindersJob,
     ctx: Data<BillingContext>,
 ) -> Result<(), anyhow::Error> {
     let pool = ctx
@@ -128,7 +152,11 @@ pub async fn send_reminders_worker(
         .await
         .map_err(|e| anyhow::anyhow!("pool error: {e}"))?;
 
-    let repo = PgBillingRepo::for_agency(pool, job.agency_id);
+    let repo = PgBillingRepo::for_agency(pool.clone(), job.agency_id);
+    let property_billing_repo =
+        crate::infrastructure::db::property_billing_repository_sqlx::PgPropertyBillingRepo::new(
+            pool,
+        );
     let today = OffsetDateTime::now_utc().date();
 
     let agreements = repo
@@ -136,110 +164,85 @@ pub async fn send_reminders_worker(
         .await
         .map_err(|e| anyhow::anyhow!("repo error: {e}"))?;
 
+    let agency_policy = repo.load_late_fee_policy().await?;
+
     for ag in agreements {
-        let (period_start, _) =
+        let (period_start, _period_end) =
             match current_billing_period(ag.start_date, ag.billing_frequency, today) {
                 Some(p) => p,
                 None => continue,
             };
 
-        // Send reminder 3 days before the period start.
-        if today != period_start - Duration::days(3) {
+        // If we already charged a late fee for this period, skip
+        if repo
+            .late_fee_exists(ag.agreement_id, period_start)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+        {
             continue;
         }
 
-        // ── Email reminder ─────────────────────────────────────────────────
+        // Determine which policy to use
+        let property_policy = property_billing_repo
+            .get_by_property_id(ag.property_id)
+            .await
+            .ok()
+            .flatten();
 
-        if let Some(ref email) = ag.resident_email {
-            if !repo
-                .reminder_sent(ag.agreement_id, period_start, "email")
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?
-            {
-                let result = ctx
-                    .notifications
-                    .email(
-                        email,
-                        EmailTemplate::RentDue,
-                        RentDueCtx {
-                            resident_name: ag.resident_name.clone(),
-                            amount_kes: ag.rent_amount_kes.to_string(),
-                            unit_ref: ag.unit_number.clone(),
-                            due_date: period_start.to_string(),
-                            payment_url: String::new(),
-                        },
-                    )
-                    .await;
-
-                match result {
-                    Ok(_) => {
-                        repo.record_reminder_sent(ag.agreement_id, period_start, "email")
-                            .await
-                            .map_err(|e| anyhow::anyhow!("{e}"))?;
-                        tracing::info!(
-                            agreement_id = %ag.agreement_id,
-                            channel      = "email",
-                            "rent reminder enqueued"
-                        );
-                    }
-                    Err(e) => {
-                        // Soft failure — a missed reminder must not abort the whole run.
-                        tracing::warn!(
-                            agreement_id = %ag.agreement_id,
-                            err          = %e,
-                            "failed to enqueue email reminder"
-                        );
-                    }
-                }
+        let policy = if let Some(p_settings) = property_policy {
+            let (flat, pct) = if p_settings.late_fee_type == "flat" {
+                (Some(p_settings.late_fee_value), None)
+            } else {
+                (None, Some(p_settings.late_fee_value))
+            };
+            crate::domain::billing::LateFeePolicy {
+                grace_period_days: p_settings.late_fee_grace_days as i64,
+                flat_amount_kes: flat,
+                rate_percent: pct,
             }
+        } else {
+            agency_policy.clone()
+        };
+
+        // Check if we are past the grace period
+        let due_date = period_start + time::Duration::days(policy.grace_period_days);
+        if today <= due_date {
+            continue;
         }
 
-        // ── SMS reminder ───────────────────────────────────────────────────
+        // Check if unpaid (simplified: check if total payments since period_start < rent_amount)
+        // In a real app, we'd check the full ledger balance for that specific rent charge.
+        let paid = repo
+            .paid_amount_since(ag.agreement_id, period_start.midnight().assume_utc())
+            .await?;
 
-        if let Some(ref phone) = ag.resident_phone {
-            if !repo
-                .reminder_sent(ag.agreement_id, period_start, "sms")
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?
-            {
-                let result = ctx
-                    .notifications
-                    .sms(
-                        phone,
-                        SmsTemplate::RentDue,
-                        RentDueCtx {
-                            resident_name: ag.resident_name.clone(),
-                            amount_kes: ag.rent_amount_kes.to_string(),
-                            unit_ref: ag.unit_number.clone(),
-                            due_date: period_start.to_string(),
-                            payment_url: String::new(),
-                        },
-                    )
-                    .await;
+        if paid < ag.rent_amount_kes {
+            let fee = policy.compute(ag.rent_amount_kes);
+            if fee > rust_decimal::Decimal::ZERO {
+                repo.record_late_fee(ag.agreement_id, period_start, fee)
+                    .await?;
 
-                match result {
-                    Ok(_) => {
-                        repo.record_reminder_sent(ag.agreement_id, period_start, "sms")
-                            .await
-                            .map_err(|e| anyhow::anyhow!("{e}"))?;
-                        tracing::info!(
-                            agreement_id = %ag.agreement_id,
-                            channel      = "sms",
-                            "rent reminder enqueued"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            agreement_id = %ag.agreement_id,
-                            err          = %e,
-                            "failed to enqueue sms reminder"
-                        );
-                    }
-                }
+                tracing::info!(
+                    agreement_id = %ag.agreement_id,
+                    fee_kes = %fee,
+                    "late fee applied"
+                );
             }
         }
     }
 
+    Ok(())
+}
+
+pub async fn send_reminders_worker(
+    job: SendRemindersJob,
+    _ctx: Data<BillingContext>,
+) -> Result<(), anyhow::Error> {
+    // ── AUTOMATIC REMINDERS DISABLED ───────────────────────────────────────
+    //
+    // As per user request, automatic reminders are disabled in favor of manual
+    // statement broadcasts.
+    tracing::debug!(agency_id = %job.agency_id, "automatic reminders suppressed (manual mode)");
     Ok(())
 }
 

@@ -180,6 +180,7 @@ use utoipa::OpenApi;
         // ── Domain enums ──────────────────────────────────────────────────────
         crate::domain::enums::PropertyType,
         crate::domain::property::PropertyConfig,
+        crate::domain::property::PropertyDocument,
         crate::domain::property::BuildingClass,
         crate::domain::property::BillingCycle,
         crate::domain::enums::LedgerEntryType,
@@ -234,6 +235,11 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::property::UpdatePropertyDto,
         crate::presentation::http::dto::property::ListPropertiesParams,
         crate::presentation::http::responses::property::PropertyResponse,
+
+        // ── Units ─────────────────────────────────────────────────────────────
+        crate::presentation::http::dto::unit::CreateUnitDto,
+        crate::presentation::http::dto::unit::UpdateUnitDto,
+        crate::presentation::http::responses::unit::UnitResponse,
 
         // ── Residents ─────────────────────────────────────────────────────────
         crate::presentation::http::dto::resident::InviteResidentDto,

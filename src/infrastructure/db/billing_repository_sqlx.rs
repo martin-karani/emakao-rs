@@ -51,6 +51,7 @@ impl BillingRepository for PgBillingRepo {
                 a.id                                   AS agreement_id,
                 a.unit_id,
                 a.resident_id,
+                a.property_id,
                 a.rent_amount_kes,
                 a.billing_frequency::text,
                 a.start_date,
@@ -101,6 +102,7 @@ impl BillingRepository for PgBillingRepo {
                     resident_phone: r.get("resident_phone"),
                     resident_name: r.get("resident_name"),
                     unit_number: r.get("unit_number"),
+                    property_id: r.get("property_id"),
                 }
             })
             .collect();
@@ -131,17 +133,66 @@ impl BillingRepository for PgBillingRepo {
         period_end: Date,
         amount_kes: Decimal,
     ) -> Result<(), AppError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        // 1. Record in rent_charges
         sqlx::query(
             r#"
             INSERT INTO rent_charges (id, agreement_id, period_start, period_end, amount_kes)
             VALUES (uuidv7(), $1, $2, $3, $4)
-            ON CONFLICT (agreement_id, period_start) DO NOTHING
             "#,
         )
         .bind(agreement_id)
         .bind(period_start)
         .bind(period_end)
         .bind(amount_kes)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        // 2. Create ledger entry
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_entries (id, agreement_id, entry_type, amount_kes, description)
+            VALUES (uuidv7(), $1, 'rent', $2, $3)
+            "#,
+        )
+        .bind(agreement_id)
+        .bind(amount_kes)
+        .bind(format!(
+            "Rent charge for period {} to {}",
+            period_start, period_end
+        ))
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        tx.commit()
+            .await
+            .map_err(|e| AppError::InternalServer(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn record_fixed_charge(
+        &self,
+        agreement_id: Uuid,
+        _period_start: Date,
+        amount_kes: Decimal,
+        description: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO ledger_entries (id, agreement_id, entry_type, amount_kes, description)
+            VALUES (uuidv7(), $1, 'service_charge', $2, $3)
+            "#,
+        )
+        .bind(agreement_id)
+        .bind(amount_kes)
+        .bind(description)
         .execute(&self.pool)
         .await
         .map_err(|e| AppError::InternalServer(e.to_string()))?;
@@ -174,6 +225,40 @@ impl BillingRepository for PgBillingRepo {
                 rate_percent: Some(Decimal::from(5)),
             },
         })
+    }
+
+    async fn load_late_fee_policy_for_property(
+        &self,
+        property_id: Uuid,
+    ) -> Result<Option<LateFeePolicy>, AppError> {
+        let row = sqlx::query(
+            r#"
+            SELECT late_fee_grace_days, late_fee_type, late_fee_value
+            FROM property_billing_settings
+            WHERE property_id = $1
+            "#,
+        )
+        .bind(property_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        Ok(row.map(|r| {
+            let fee_type: String = r.get("late_fee_type");
+            let fee_val: Decimal = r.get("late_fee_value");
+
+            let (flat, pct) = if fee_type == "flat" {
+                (Some(fee_val), None)
+            } else {
+                (None, Some(fee_val))
+            };
+
+            LateFeePolicy {
+                grace_period_days: r.get::<i32, _>("late_fee_grace_days") as i64,
+                flat_amount_kes: flat,
+                rate_percent: pct,
+            }
+        }))
     }
 
     async fn late_fee_exists(

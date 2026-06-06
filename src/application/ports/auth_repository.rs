@@ -92,6 +92,8 @@ pub trait AuthRepository: Send + Sync + 'static {
     /// Find a user globally by their primary email.
     async fn find_user_by_email(&self, email: &str) -> Result<Option<StoredUser>, AppError>;
 
+    async fn find_user_by_phone(&self, phone: &str) -> Result<Option<StoredUser>, AppError>;
+
     /// Portal login: look up (contact, portal) in portal_user_index.
     async fn find_portal_identity(
         &self,

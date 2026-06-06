@@ -1,0 +1,40 @@
+{% extends "base.html.jinja" %}
+
+{% block title %}You've Been Invited as a Caretaker on Emakao{% endblock %}
+
+{% block content %}
+<h2>Welcome, {{ first_name }}!</h2>
+<p>Hi {{ first_name }},</p>
+<p>
+  You have been invited to join <strong>{{ agency_name | default("Emakao") }}</strong> as a <strong>Caretaker</strong> for <strong>{{ property_name }}</strong> on the Emakao Property Management platform.
+</p>
+
+<div class="highlight-box">
+  <strong>As a Caretaker, you will be able to:</strong><br>
+  - View and manage maintenance requests (work orders)<br>
+  - Communicate with residents regarding repairs<br>
+  - Track the status of tasks assigned to you<br>
+  - Update work order progress in real-time
+</div>
+
+<p>
+  Click the button below to activate your account and set your password.
+  This link expires in <strong>48 hours</strong>.
+</p>
+
+<p>
+  <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
+</p>
+
+<p style="font-size:13px;color:#888888;">
+  If you were not expecting this invitation, please ignore this email —
+  your account will not be activated unless you click the link above.
+</p>
+
+<hr class="divider">
+
+<p style="font-size:13px;color:#555555;">
+  Having trouble with the button? Copy and paste this link into your browser:<br>
+  <a href="{{ invite_url }}" style="color:#1a3c5e;">{{ invite_url }}</a>
+</p>
+{% endblock %}

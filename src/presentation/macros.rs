@@ -41,14 +41,27 @@
 #[macro_export]
 macro_rules! require_feature {
     ($state:expr, $agency_id:expr, $key:expr) => {
-        if !$state
-            .customisation()
-            .entitlements
-            .is_enabled($agency_id, $key)
-            .await
+        let key = $key;
+        // Portals, maintenance, and multi-property management are now available on all plans (standard)
+        let is_standard = key == "portal_owner"
+            || key == "portal_vendor"
+            || key == "portal_resident"
+            || key == "maint_work_orders"
+            || key == "utility_billing"
+            || key == "core_analytics"
+            || key == "core_insights"
+            || key == "core_multi_branch"
+            || key == "core_multi_property";
+
+        if !is_standard
+            && !$state
+                .customisation()
+                .entitlements
+                .is_enabled($agency_id, key)
+                .await
         {
             return Err($crate::application::errors::AppError::FeatureNotAvailable(
-                $key.to_string(),
+                key.to_string(),
             ));
         }
     };
@@ -66,17 +79,23 @@ macro_rules! require_feature {
 #[macro_export]
 macro_rules! require_below_limit {
     ($state:expr, $agency_id:expr, $key:expr, $current:expr) => {
-        if let Some(max) = $state
-            .customisation()
-            .entitlements
-            .numeric_limit($agency_id, $key)
-            .await
-        {
-            if ($current as i64) >= max {
-                return Err($crate::application::errors::AppError::PlanLimitExceeded(
-                    $key.to_string(),
-                    max,
-                ));
+        let key = $key;
+        // Relax limits for standard plan features
+        let is_unlimited = key == "max_branches" || key == "max_properties";
+
+        if !is_unlimited {
+            if let Some(max) = $state
+                .customisation()
+                .entitlements
+                .numeric_limit($agency_id, key)
+                .await
+            {
+                if ($current as i64) >= max {
+                    return Err($crate::application::errors::AppError::PlanLimitExceeded(
+                        key.to_string(),
+                        max,
+                    ));
+                }
             }
         }
     };

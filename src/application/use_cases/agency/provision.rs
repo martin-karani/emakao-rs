@@ -23,11 +23,16 @@ use crate::{
         },
     },
     domain::agency::Agency,
-    infrastructure::db::{accounting_repository_sqlx::PgAccountingRepo, pool::AgencyPoolManager},
+    infrastructure::db::{
+        accounting_repository_sqlx::PgAccountingRepo, pool::AgencyPoolManager,
+        role_repository_sqlx::PgRoleRepo,
+    },
 };
 
 // Re-export so callers don't have to import the accounting port directly.
-use crate::application::ports::accounting_repository::AccountingRepository as _;
+use crate::application::ports::{
+    accounting_repository::AccountingRepository as _, role_repository::RoleRepository as _,
+};
 
 pub struct ProvisionAgencyInput {
     pub name: String,
@@ -121,7 +126,7 @@ impl ProvisionAgencyUseCase {
             .await
             .map_err(|e| AppError::InternalServer(format!("tenant pool open failed: {e}")))?;
 
-        let accounting_repo = PgAccountingRepo::new(tenant_pool);
+        let accounting_repo = PgAccountingRepo::new(tenant_pool.clone());
         accounting_repo
             .seed_system_accounts(agency.id)
             .await
@@ -129,6 +134,17 @@ impl ProvisionAgencyUseCase {
                 // Non-fatal: log and continue — the agency is provisioned; CoA can
                 // be seeded manually if this fails (e.g. migration not yet applied).
                 tracing::warn!(agency_id = %agency.id, error = %e, "CoA seeding failed (non-fatal)");
+                e
+            })
+            .ok();
+
+        // ── Step 7: Seed system roles ──────────────────────────────────────────
+        let role_repo = PgRoleRepo::new(tenant_pool.clone());
+        role_repo
+            .seed_system_roles(agency.id)
+            .await
+            .map_err(|e| {
+                tracing::warn!(agency_id = %agency.id, error = %e, "role seeding failed (non-fatal)");
                 e
             })
             .ok();

@@ -22,3 +22,4 @@ pub mod staff;
 pub mod tax;
 pub mod utility;
 pub mod vendor;
+pub mod unit;

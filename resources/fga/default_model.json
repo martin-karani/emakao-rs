@@ -11,7 +11,7 @@
     {
       "type": "agency",
       "relations": {
-        "admin": {
+        "agency_owner": {
           "this": {}
         },
         "manager": {
@@ -23,22 +23,22 @@
         "staff": {
           "union": {
             "child": [
-              { "computedUserset": { "object": "", "relation": "admin"   } },
+              { "computedUserset": { "object": "", "relation": "agency_owner"   } },
               { "computedUserset": { "object": "", "relation": "manager" } },
               { "computedUserset": { "object": "", "relation": "agent"   } }
             ]
           }
         },
         "can_manage_staff": {
-          "computedUserset": { "object": "", "relation": "admin" }
+          "computedUserset": { "object": "", "relation": "agency_owner" }
         },
         "can_manage_billing": {
-          "computedUserset": { "object": "", "relation": "admin" }
+          "computedUserset": { "object": "", "relation": "agency_owner" }
         }
       },
       "metadata": {
         "relations": {
-          "admin":   { "directly_related_user_types": [{ "type": "user" }] },
+          "agency_owner":   { "directly_related_user_types": [{ "type": "user" }] },
           "manager": { "directly_related_user_types": [{ "type": "user" }] },
           "agent":   { "directly_related_user_types": [{ "type": "user" }] }
         }
@@ -58,7 +58,7 @@
               {
                 "tupleToUserset": {
                   "tupleset":        { "object": "", "relation": "parent_agency" },
-                  "computedUserset": { "object": "", "relation": "admin" }
+                  "computedUserset": { "object": "", "relation": "agency_owner" }
                 }
               }
             ]

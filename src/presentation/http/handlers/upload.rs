@@ -55,7 +55,7 @@ use crate::{
 ///
 /// `document` is intentionally absent — persisted files go through
 /// `POST /api/v1/documents`.
-const ALLOWED_CONTEXTS: &[&str] = &["payment_proof", "work_order", "avatar"];
+const ALLOWED_CONTEXTS: &[&str] = &["payment_proof", "work_order", "avatar", "property_photo"];
 
 // ── Response ──────────────────────────────────────────────────────────────────
 

@@ -74,8 +74,8 @@ CREATE TYPE agency_status AS ENUM (
 );
 
 CREATE TYPE user_role AS ENUM (
-    'platform_admin',
     'admin',
+    'agency_owner',
     'manager',
     'agent',
     'resident',
@@ -253,7 +253,8 @@ CREATE TABLE password_reset_tokens (
     token_hash TEXT        NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     used_at    TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id)
 );
 
 CREATE INDEX idx_prt_token_hash ON password_reset_tokens (token_hash);
@@ -621,15 +622,15 @@ $$;
 CREATE OR REPLACE FUNCTION create_default_subscription()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
-    starter_plan_id UUID;
+    default_plan_id UUID;
 BEGIN
-    SELECT id INTO starter_plan_id
+    SELECT id INTO default_plan_id
     FROM   subscription_plans
-    WHERE  slug = 'starter' AND is_active = true
+    WHERE  slug = 'professional' AND is_active = true
     LIMIT  1;
 
-    IF starter_plan_id IS NULL THEN
-        RAISE EXCEPTION 'Starter plan not found — seed subscription_plans before creating agencies';
+    IF default_plan_id IS NULL THEN
+        RAISE EXCEPTION 'Professional plan not found — seed subscription_plans before creating agencies';
     END IF;
 
     INSERT INTO subscriptions (
@@ -641,7 +642,7 @@ BEGIN
         current_period_end
     ) VALUES (
         NEW.id,
-        starter_plan_id,
+        default_plan_id,
         'trialing',
         now() + INTERVAL '14 days',
         now(),

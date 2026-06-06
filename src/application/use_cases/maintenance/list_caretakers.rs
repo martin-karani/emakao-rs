@@ -23,12 +23,15 @@ impl ListCaretakersUseCase {
     pub async fn execute(
         &self,
         property_id: Option<Uuid>,
+        search: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Caretaker>, AppError> {
         let limit = limit.clamp(1, 200);
         let offset = offset.max(0);
-        self.repo.find_caretakers(property_id, limit, offset).await
+        self.repo
+            .find_caretakers(property_id, search, limit, offset)
+            .await
     }
 }
 
@@ -74,6 +77,7 @@ impl UpdateCaretakerUseCase {
         self.repo
             .update_caretaker(UpdateCaretakerCommand {
                 id: input.id,
+                user_id: None,
                 first_name,
                 last_name,
                 phone: input.phone,

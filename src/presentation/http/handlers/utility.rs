@@ -1,6 +1,6 @@
 // src/presentation/http/handlers/utility.rs
 // REFACTORED: replaced `require_feature(&sub.entitlements, …)` with
-// `require_feature!(state, ctx.agency.id, "integ_utility_billing")`.
+// `require_feature!(state, ctx.agency.id, "utility_billing")`.
 // Added `State(state): State<AppState>` to every handler that was missing it.
 // Dropped `Extension(sub): Extension<ResolvedSubscription>` everywhere.
 
@@ -27,7 +27,10 @@ use crate::{
         },
     },
     domain::auth::AuthenticatedUser,
-    infrastructure::db::utility_repository_sqlx::PgUtilityRepo,
+    infrastructure::db::{
+        property_billing_repository_sqlx::PgPropertyBillingRepo,
+        utility_repository_sqlx::PgUtilityRepo,
+    },
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
@@ -239,7 +242,10 @@ pub async fn generate_bill(
 ) -> Result<impl IntoResponse, AppError> {
     require_feature!(state, ctx.agency.id, "utility_billing");
 
-    let bill = GenerateBillUseCase::new(Arc::new(PgUtilityRepo::from(ctx.pool)))
+    let repo = Arc::new(PgUtilityRepo::from(ctx.pool.clone()));
+    let billing_repo = Arc::new(PgPropertyBillingRepo::new(ctx.pool));
+
+    let bill = GenerateBillUseCase::new(repo, billing_repo)
         .execute(id)
         .await?;
 

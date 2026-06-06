@@ -38,7 +38,7 @@ impl AuthRepository for PgAuthRepo {
             FROM users u
             JOIN user_agency_roles uar ON uar.user_id = u.id
             WHERE uar.agency_id = $1
-              AND uar.role::text IN ('admin','manager','agent','platform_admin')
+              AND uar.role::text IN ('agency_owner','manager','agent','admin')
               AND uar.is_active = true
               AND (
                   ($2 = 'email' AND u.email = $3) OR
@@ -77,6 +77,33 @@ impl AuthRepository for PgAuthRepo {
             "#,
         )
         .bind(email)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        use sqlx::Row;
+        Ok(row.map(|r| StoredUser {
+            id: r.get("id"),
+            email: r.get("email"),
+            phone: r.get("phone"),
+            password_hash: r.get("password_hash"),
+            is_active: r.get("is_active"),
+            must_change_password: r.get("must_change_password"),
+            agency_id: None,
+            role: None,
+        }))
+    }
+
+    async fn find_user_by_phone(&self, phone: &str) -> Result<Option<StoredUser>, AppError> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, email, phone, password_hash, is_active, must_change_password
+            FROM users
+            WHERE phone = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(phone)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -500,7 +527,7 @@ impl AuthRepository for PgAuthRepo {
                     JOIN user_agency_roles uar ON uar.user_id = u.id
                     WHERE u.email      = $1
                       AND uar.agency_id = $2
-                      AND uar.role::text IN ('admin', 'manager', 'agent')
+                      AND uar.role::text IN ('agency_owner', 'manager', 'agent')
                 )
                 "#,
         )
@@ -532,7 +559,7 @@ impl AuthRepository for PgAuthRepo {
                 FROM users u
                 JOIN user_agency_roles uar ON uar.user_id = u.id
                 WHERE uar.agency_id = $1
-                  AND uar.role::text IN ('admin', 'manager', 'agent')
+                  AND uar.role::text IN ('agency_owner', 'manager', 'agent')
                 ORDER BY u.created_at DESC
                 LIMIT $2 OFFSET $3
                 "#,
@@ -578,7 +605,7 @@ impl AuthRepository for PgAuthRepo {
                 JOIN user_agency_roles uar ON uar.user_id = u.id
                 WHERE uar.id        = $1
                   AND uar.agency_id = $2
-                  AND uar.role::text IN ('admin', 'manager', 'agent')
+                  AND uar.role::text IN ('agency_owner', 'manager', 'agent')
                 LIMIT 1
                 "#,
         )
@@ -611,7 +638,7 @@ impl AuthRepository for PgAuthRepo {
                 SET    is_active = false
                 WHERE  id        = $1
                   AND  agency_id = $2
-                  AND  role::text IN ('admin', 'manager', 'agent')
+                  AND  role::text IN ('agency_owner', 'manager', 'agent')
                 "#,
         )
         .bind(membership_id)

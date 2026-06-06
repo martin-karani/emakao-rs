@@ -83,6 +83,7 @@ pub struct ActiveAgreementBillingView {
     pub resident_name: String,
     /// Human-readable unit ref, e.g. `"A3"`.
     pub unit_number: String,
+    pub property_id: Uuid,
 }
 
 // ── Late-fee configuration ────────────────────────────────────────────────────

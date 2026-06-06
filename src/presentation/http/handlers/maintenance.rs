@@ -76,6 +76,7 @@ pub async fn list_caretakers(
     let items = ListCaretakersUseCase::new(repo!(ctx))
         .execute(
             params.property_id,
+            params.q,
             params.limit.unwrap_or(50),
             params.offset.unwrap_or(0),
         )

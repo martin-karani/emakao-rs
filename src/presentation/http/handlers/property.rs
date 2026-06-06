@@ -25,8 +25,11 @@ use uuid::Uuid;
 use crate::{
     application::{
         errors::AppError,
+        ports::{property_repository::PropertyRepository, unit_repository::UnitRepository},
         use_cases::property::{
-            create_property::{CreatePropertyInput, CreatePropertyUseCase},
+            create_property::{
+                CreatePropertyInput, CreatePropertyUseCase, NewCaretakerInput, UnitTypeInput,
+            },
             delete_property::DeletePropertyUseCase,
             get_property::GetPropertyUseCase,
             list_properties::ListPropertiesUseCase,
@@ -36,7 +39,10 @@ use crate::{
     domain::{
         agency_settings::AgencySettings, auth::AuthenticatedUser, property::UpdatePropertyCommand,
     },
-    infrastructure::{audit::AuditEvent, db::property_repository_sqlx::PgPropertyRepo},
+    infrastructure::{
+        audit::AuditEvent,
+        db::{property_repository_sqlx::PgPropertyRepo, unit_repository_sqlx::PgUnitRepo},
+    },
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
@@ -83,13 +89,14 @@ pub async fn list_properties(
     )
     .await?;
 
-    let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = ListPropertiesUseCase::new(repo);
 
     let items = usecase
         .execute(
             ctx.agency.id,
             params.property_type.map(|pt| format!("{:?}", pt)),
+            params.q,
             params.limit.unwrap_or(20).min(100),
             params.offset.unwrap_or(0),
         )
@@ -197,19 +204,74 @@ pub async fn create_property(
         .unwrap_or_else(|| "KE".to_owned());
 
     // ── 4. Execute use-case ───────────────────────────────────────────────────
-    let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
-    let usecase = CreatePropertyUseCase::new(repo);
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
+    let unit_repo: Arc<dyn UnitRepository> = Arc::new(PgUnitRepo::from(ctx.pool.clone()));
+    let openfga = state.openfga.clone();
+    let auth_repo = Arc::new(
+        crate::infrastructure::db::auth_repository_sqlx::PgAuthRepo::new(
+            state.infra.tenant_pools.platform().clone(),
+        ),
+    );
+    let maintenance_repo = Arc::new(
+        crate::infrastructure::db::maintenance_repository_sqlx::PgMaintenanceRepo::new(
+            ctx.pool.clone(),
+        ),
+    );
+
+    let invite_caretaker =
+        crate::application::use_cases::maintenance::invite_caretaker::InviteCaretakerUseCase {
+            maintenance_repo,
+            property_repo: repo.clone(),
+            auth_repo,
+            auth_port: state.identity.auth_port.clone(),
+            notifications: state.notifications.clone(),
+        };
+
+    let usecase = CreatePropertyUseCase::new(repo, unit_repo, openfga, invite_caretaker);
 
     let property = usecase
         .execute(CreatePropertyInput {
             agency_id: ctx.agency.id,
+            fga_store_id: ctx.agency.fga_store_id.clone(),
             created_by: user.user_id,
             name: dto.name,
             address: dto.address,
             city: dto.city,
             property_type: dto.property_type,
             config: dto.config,
+            unit_types: dto
+                .unit_types
+                .unwrap_or_default()
+                .into_iter()
+                .map(|ut| UnitTypeInput {
+                    name: ut.name,
+                    bedrooms: ut.bedrooms,
+                    bathrooms: ut.bathrooms,
+                    base_rent: ut.base_rent,
+                    base_deposit: ut.base_deposit,
+                    quantity: ut.quantity,
+                })
+                .collect(),
+            photos: dto.photos.unwrap_or_default(),
+            documents: dto.documents.unwrap_or_default(),
             work_order_prefix: dto.work_order_prefix,
+            owner_ids: dto.owner_ids.unwrap_or_default(),
+            agent_ids: dto.agent_ids.unwrap_or_default(),
+            new_caretakers: dto
+                .new_caretakers
+                .unwrap_or_default()
+                .into_iter()
+                .map(|c| NewCaretakerInput {
+                    first_name: c.first_name,
+                    last_name: c.last_name,
+                    email: c.email,
+                    phone: c.phone,
+                })
+                .collect(),
+            portal_base_url: dto
+                .portal_base_url
+                .unwrap_or_else(|| "https://app.emakao.co.ke".to_string()),
+            agency_name: dto.agency_name,
         })
         .await?;
 
@@ -267,7 +329,8 @@ pub async fn update_property(
     // Capture the before-state for a field-level audit diff.
     let before = if let Some(custom) = &state.custom {
         if custom.audit.should_log_field_changes(ctx.agency.id).await {
-            let repo = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
+            let repo: Arc<dyn PropertyRepository> =
+                Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
             let usecase = GetPropertyUseCase::new(repo);
             usecase.execute(ctx.agency.id, id).await.ok()
         } else {
@@ -277,7 +340,7 @@ pub async fn update_property(
         None
     };
 
-    let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = UpdatePropertyUseCase::new(repo);
 
     let property = usecase
@@ -287,6 +350,7 @@ pub async fn update_property(
             name: dto.name,
             address: dto.address,
             city: dto.city,
+            work_order_prefix: dto.work_order_prefix,
         })
         .await?;
 
@@ -304,12 +368,14 @@ pub async fn update_property(
                     "name":    p.name,
                     "address": p.address,
                     "city":    p.city,
+                    "work_order_prefix": p.maintenance.work_order_prefix,
                 })
             }),
             new_data: Some(serde_json::json!({
                 "name":    property.name,
                 "address": property.address,
                 "city":    property.city,
+                "work_order_prefix": property.maintenance.work_order_prefix,
             })),
             ip_address: None,
         });
@@ -341,7 +407,7 @@ pub async fn delete_property(
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(&state, &ctx, &user, "can_edit", &format!("property:{id}")).await?;
 
-    let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = DeletePropertyUseCase::new(repo);
     usecase.execute(ctx.agency.id, id).await?;
 

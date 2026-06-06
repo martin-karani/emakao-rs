@@ -152,9 +152,10 @@ pub async fn create_agreement(
     .await?;
 
     let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
-    let usecase = CreateAgreementUseCase::new(repo);
+    let usecase = CreateAgreementUseCase::new(repo, state.openfga.clone());
     let agreement = usecase
         .execute(CreateAgreementInput {
+            fga_store_id: ctx.agency.fga_store_id.clone(),
             property_id: dto.property_id,
             unit_id: dto.unit_id,
             resident_id: dto.resident_id,

@@ -39,6 +39,7 @@ use crate::{
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NotificationTemplateResponse {
     pub id: uuid::Uuid,
+    pub property_id: Option<uuid::Uuid>,
     pub channel: String,
     pub event_key: String,
     pub locale: String,
@@ -50,6 +51,7 @@ impl From<NotificationTemplate> for NotificationTemplateResponse {
     fn from(t: NotificationTemplate) -> Self {
         Self {
             id: t.id,
+            property_id: t.property_id,
             channel: t.channel,
             event_key: t.event_key,
             locale: t.locale,
@@ -63,12 +65,14 @@ impl From<NotificationTemplate> for NotificationTemplateResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct ListTemplatesQuery {
+    pub property_id: Option<uuid::Uuid>,
     pub channel: Option<String>,
     pub event_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertTemplateRequest {
+    pub property_id: Option<uuid::Uuid>,
     #[serde(default = "default_locale")]
     pub locale: String,
     pub subject: Option<String>,
@@ -77,6 +81,7 @@ pub struct UpsertTemplateRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct DeleteTemplateQuery {
+    pub property_id: Option<uuid::Uuid>,
     #[serde(default = "default_locale")]
     pub locale: String,
 }
@@ -104,6 +109,7 @@ pub async fn list_templates(
     let templates = ListTemplatesUseCase::new(repo)
         .execute(ListTemplatesInput {
             agency_id: user.agency_id,
+            property_id: q.property_id,
             channel: q.channel,
             event_key: q.event_key,
         })
@@ -139,6 +145,7 @@ pub async fn upsert_template(
     UpsertTemplateUseCase::new(repo, validator)
         .execute(UpsertTemplateInput {
             agency_id: user.agency_id,
+            property_id: body.property_id,
             channel: channel.clone(),
             event_key: event_key.clone(),
             locale: body.locale,
@@ -184,6 +191,7 @@ pub async fn delete_template(
     DeleteTemplateUseCase::new(repo)
         .execute(DeleteTemplateInput {
             agency_id: user.agency_id,
+            property_id: q.property_id,
             channel,
             event_key,
             locale: q.locale,

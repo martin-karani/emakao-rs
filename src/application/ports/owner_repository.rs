@@ -14,12 +14,14 @@ pub trait OwnerRepository: Send + Sync + 'static {
     async fn find_all(
         &self,
         agency_id: Uuid,
+        search: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Owner>, AppError>;
     async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Owner>, AppError>;
     async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Owner>, AppError>;
     async fn find_by_email(&self, agency_id: Uuid, email: &str) -> Result<Option<Owner>, AppError>;
+    async fn find_by_phone(&self, agency_id: Uuid, phone: &str) -> Result<Option<Owner>, AppError>;
     async fn create(&self, cmd: CreateOwnerCommand) -> Result<Owner, AppError>;
     async fn update(&self, cmd: UpdateOwnerCommand) -> Result<Owner, AppError>;
     async fn assign_to_property(

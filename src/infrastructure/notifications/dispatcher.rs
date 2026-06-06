@@ -50,6 +50,7 @@ impl NotificationDispatcher {
     pub async fn dispatch(
         &self,
         agency_id: Uuid,
+        property_id: Option<Uuid>,
         event_key: &str,
         recipient: Recipient,
         ctx: serde_json::Value,
@@ -72,7 +73,9 @@ impl NotificationDispatcher {
         // 3. SMS
         if toggle.sms_enabled {
             if let Some(phone) = &recipient.phone {
-                let body = self.render(agency_id, "sms", event_key, &ctx).await?;
+                let body = self
+                    .render(agency_id, property_id, "sms", event_key, &ctx)
+                    .await?;
                 let provider = self.providers.sms.for_agency(agency_id);
                 let sender_id = settings
                     .sms_trigger_rules
@@ -86,8 +89,12 @@ impl NotificationDispatcher {
         // 4. Email
         if toggle.email_enabled {
             if let Some(to) = &recipient.email {
-                let body = self.render(agency_id, "email", event_key, &ctx).await?;
-                let subject = self.render_subject(agency_id, event_key, &ctx).await?;
+                let body = self
+                    .render(agency_id, property_id, "email", event_key, &ctx)
+                    .await?;
+                let subject = self
+                    .render_subject(agency_id, property_id, event_key, &ctx)
+                    .await?;
                 if let Some(provider) = self.providers.email.get(&agency_id) {
                     provider
                         .send(EmailMessage {
@@ -137,7 +144,7 @@ impl NotificationDispatcher {
                     email_enabled: r.try_get("email_enabled").unwrap_or(true),
                     whatsapp_enabled: r.try_get("whatsapp_enabled").unwrap_or(false),
                 }
-            },
+            }
             None => ToggleRow {
                 sms_enabled: true,
                 email_enabled: true,
@@ -146,10 +153,11 @@ impl NotificationDispatcher {
         })
     }
 
-    /// Agency template override → system default.
+    /// Property template override → Agency template override → system default.
     async fn render(
         &self,
         agency_id: Uuid,
+        property_id: Option<Uuid>,
         channel: &str,
         event_key: &str,
         ctx: &serde_json::Value,
@@ -161,11 +169,15 @@ impl NotificationDispatcher {
             WHERE  agency_id = $1
               AND  channel   = $2
               AND  event_key = $3
+              AND  (property_id IS NULL OR property_id = $4)
+            ORDER BY property_id DESC NULLS LAST
             LIMIT 1
-            "#)
+            "#,
+        )
         .bind(agency_id)
         .bind(channel)
         .bind(event_key)
+        .bind(property_id)
         .fetch_optional(&self.pool)
         .await?
         .unwrap_or_else(|| self.system_default(channel, event_key));
@@ -177,6 +189,7 @@ impl NotificationDispatcher {
     async fn render_subject(
         &self,
         agency_id: Uuid,
+        property_id: Option<Uuid>,
         event_key: &str,
         ctx: &serde_json::Value,
     ) -> anyhow::Result<String> {
@@ -187,10 +200,14 @@ impl NotificationDispatcher {
             WHERE  agency_id = $1
               AND  channel   = 'email'
               AND  event_key = $2
+              AND  (property_id IS NULL OR property_id = $3)
+            ORDER BY property_id DESC NULLS LAST
             LIMIT 1
-            "#)
+            "#,
+        )
         .bind(agency_id)
         .bind(event_key)
+        .bind(property_id)
         .fetch_optional(&self.pool)
         .await?
         .flatten()
@@ -214,6 +231,29 @@ impl NotificationDispatcher {
                  Please contact us to discuss renewal."
                     .to_string()
             }
+            ("sms", "invoice.new") => {
+                "Dear {{ tenant_name }}, a new invoice #{{ invoice_number }} of KES {{ amount }} \
+                 has been generated. Due date: {{ due_date }}. Thank you."
+                    .to_string()
+            }
+            ("email", "invoice.new") => {
+                "<h3>Invoice #{{ invoice_number }}</h3>\
+                 <p>Dear {{ tenant_name }},</p>\
+                 <p>An invoice for <strong>KES {{ amount }}</strong> has been generated.</p>\
+                 <p>Due date: {{ due_date }}</p>\
+                 <p>Breakdown:</p><ul>\
+                 {% for item in line_items %}<li>{{ item.description }}: KES {{ item.total_kes }}</li>{% endfor %}\
+                 </ul>"
+                     .to_string()
+             }
+            ("sms", "manual.notice") => "{{ notice_body }}".to_string(),
+            ("email", "manual.notice") => "<h3>{{ notice_subject }}</h3><p>{{ notice_body }}</p>".to_string(),
+            ("sms", "billing.statement") => {
+                "Your Acct {{ acct_no }} {{ month }} Unit {{ unit }}, {{ prev_month }} Arrears: {{ arrears }} \
+                 plus {{ month }} Rent= {{ rent }} ; Water Bill= {{ water }} ; Garbage= {{ garbage }} \
+                 Total Bal Ksh {{ total }} as at {{ today }}. Payable by 5th-{{ month }}-{{ year }}"
+                    .to_string()
+            }
             _ => "{{ event_key }} notification for {{ agency_name }}".to_string(),
         }
     }
@@ -228,4 +268,3 @@ impl NotificationDispatcher {
         }
     }
 }
-

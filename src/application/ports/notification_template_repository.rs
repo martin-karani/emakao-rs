@@ -9,12 +9,14 @@ use crate::{application::errors::AppError, domain::notification_template::Notifi
 
 pub struct ListTemplatesFilter {
     pub agency_id: Uuid,
+    pub property_id: Option<Uuid>,
     pub channel: Option<String>,
     pub event_key: Option<String>,
 }
 
 pub struct UpsertTemplateCommand {
     pub agency_id: Uuid,
+    pub property_id: Option<Uuid>,
     pub channel: String,
     pub event_key: String,
     pub locale: String,
@@ -40,6 +42,7 @@ pub trait NotificationTemplateRepository: Send + Sync + 'static {
     async fn delete(
         &self,
         agency_id: Uuid,
+        property_id: Option<Uuid>,
         channel: &str,
         event_key: &str,
         locale: &str,

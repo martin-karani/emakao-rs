@@ -27,19 +27,19 @@ pub async fn require_admin(
         }
     }
 
-    // Human operators with a `platform_admin` JWT.
+    // Human operators with an `admin` JWT.
     // ISSUE 3 FIX: previously this path skipped the token blacklist, allowing
-    // a logged-out platform_admin token to access all admin endpoints until
+    // a logged-out admin token to access all admin endpoints until
     // natural expiry. Now we check the blacklist identically to require_auth.
     if let Some(token) = extract_bearer(&req) {
         if let Ok(claims) = state.identity.auth_port.verify_token(&token) {
-            if claims.role == "platform_admin" {
+            if claims.role == "admin" {
                 match state.token_blacklist.is_revoked(&claims.jti).await {
                     Ok(true) => {
                         // Token is revoked — fall through to 403 below.
                         tracing::info!(
                             jti = %claims.jti,
-                            "admin: revoked platform_admin token presented"
+                            "admin: revoked admin token presented"
                         );
                     }
                     Err(e) => {
@@ -58,8 +58,8 @@ pub async fn require_admin(
         StatusCode::FORBIDDEN,
         Json(json!({
             "error":   "FORBIDDEN",
-            "message": "platform admin access required — \
-                        provide X-Admin-Key header or a JWT with role=platform_admin"
+            "message": "system admin access required — \
+                        provide X-Admin-Key header or a JWT with role=admin"
         })),
     )
         .into_response()

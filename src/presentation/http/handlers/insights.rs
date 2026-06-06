@@ -31,7 +31,7 @@ use crate::{
     },
     presentation::{
         app_state::AppState, error::ErrorResponse, extractors::AgencyContext,
-        http::helpers::permission::check_permission, require_feature,
+        http::helpers::permission::check_permission,
     },
 };
 

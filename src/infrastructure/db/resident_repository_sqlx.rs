@@ -253,29 +253,50 @@ impl ResidentRepository for PgResidentRepo {
             }
         }
 
-        rows.into_iter()
-            .map(|r| {
-                Ok(PaymentClaim {
-                    id: r.id,
-                    property_id: r.property_id,
-                    agreement_id: r.agreement_id,
-                    resident_id: r.resident_id,
-                    method_type: parse_method(&r.method_type),
-                    amount_kes: r.amount_kes,
-                    reference_code: r.reference_code,
-                    proof_url: r.proof_url,
-                    notes: r.notes,
-                    status: parse_status(&r.status),
-                    reviewed_by: r.reviewed_by,
-                    reviewed_at: r.reviewed_at,
-                    review_notes: r.review_notes,
-                    rejection_reason: r.rejection_reason,
-                    ledger_entry_id: r.ledger_entry_id,
-                    submitted_by: r.submitted_by,
-                    created_at: r.created_at,
-                    updated_at: r.updated_at,
-                })
+        Ok(rows
+            .into_iter()
+            .map(|r| PaymentClaim {
+                id: r.id,
+                property_id: r.property_id,
+                agreement_id: r.agreement_id,
+                resident_id: r.resident_id,
+                method_type: parse_method(&r.method_type),
+                amount_kes: r.amount_kes,
+                reference_code: r.reference_code,
+                proof_url: r.proof_url,
+                notes: r.notes,
+                status: parse_status(&r.status),
+                reviewed_by: r.reviewed_by,
+                reviewed_at: r.reviewed_at,
+                review_notes: r.review_notes,
+                rejection_reason: r.rejection_reason,
+                ledger_entry_id: r.ledger_entry_id,
+                submitted_by: r.submitted_by,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
             })
-            .collect()
+            .collect())
+    }
+
+    async fn find_by_property_id(
+        &self,
+        _agency_id: Uuid,
+        property_id: Uuid,
+    ) -> Result<Vec<Resident>, AppError> {
+        let rows = sqlx::query_as::<_, ResidentRow>(
+            r#"
+            SELECT DISTINCT r.id, r.user_id, r.first_name, r.last_name, r.email,
+                   r.phone, r.national_id, r.portal_status::text, r.created_at, r.updated_at
+            FROM residents r
+            JOIN agreements a ON a.resident_id = r.id
+            WHERE a.property_id = $1 AND a.status = 'active'
+            "#,
+        )
+        .bind(property_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        Ok(rows.into_iter().map(Resident::from).collect())
     }
 }

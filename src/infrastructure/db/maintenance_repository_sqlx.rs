@@ -320,6 +320,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
     async fn find_caretakers(
         &self,
         property_id: Option<Uuid>,
+        search: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Caretaker>, AppError> {
@@ -329,6 +330,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    is_active, created_by, created_at, updated_at
             FROM caretakers
             WHERE ($1::uuid IS NULL OR property_id = $1::uuid)
+              AND ($4::text IS NULL OR first_name ILIKE $4 OR last_name ILIKE $4 OR email ILIKE $4)
             ORDER BY first_name, last_name
             LIMIT $2 OFFSET $3
             "#,
@@ -336,6 +338,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         .bind(property_id)
         .bind(limit)
         .bind(offset)
+        .bind(search.map(|s| format!("%{}%", s)))
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(Caretaker::from).collect())
@@ -350,6 +353,46 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             "#,
         )
         .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(Caretaker::from))
+    }
+
+    async fn find_caretaker_by_email(
+        &self,
+        property_id: Uuid,
+        email: &str,
+    ) -> Result<Option<Caretaker>, AppError> {
+        let row = sqlx::query_as::<_, CaretakerRow>(
+            r#"
+            SELECT id, property_id, user_id, first_name, last_name, phone, email,
+                   is_active, created_by, created_at, updated_at
+            FROM caretakers
+            WHERE property_id = $1::uuid AND email = $2::text
+            "#,
+        )
+        .bind(property_id)
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(Caretaker::from))
+    }
+
+    async fn find_caretaker_by_phone(
+        &self,
+        property_id: Uuid,
+        phone: &str,
+    ) -> Result<Option<Caretaker>, AppError> {
+        let row = sqlx::query_as::<_, CaretakerRow>(
+            r#"
+            SELECT id, property_id, user_id, first_name, last_name, phone, email,
+                   is_active, created_by, created_at, updated_at
+            FROM caretakers
+            WHERE property_id = $1::uuid AND phone = $2::text
+            "#,
+        )
+        .bind(property_id)
+        .bind(phone)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(Caretaker::from))
@@ -381,11 +424,12 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         let row = sqlx::query_as::<_, CaretakerRow>(
             r#"
             UPDATE caretakers SET
-                first_name = COALESCE($2::text, first_name),
-                last_name  = COALESCE($3::text, last_name),
-                phone      = COALESCE($4::text, phone),
-                email      = COALESCE($5::text, email),
-                is_active  = COALESCE($6::boolean, is_active),
+                user_id    = COALESCE($2::uuid, user_id),
+                first_name = COALESCE($3::text, first_name),
+                last_name  = COALESCE($4::text, last_name),
+                phone      = COALESCE($5::text, phone),
+                email      = COALESCE($6::text, email),
+                is_active  = COALESCE($7::boolean, is_active),
                 updated_at = now()
             WHERE id = $1::uuid
             RETURNING id, property_id, user_id, first_name, last_name, phone, email,
@@ -393,15 +437,16 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             "#,
         )
         .bind(cmd.id)
+        .bind(cmd.user_id)
         .bind(cmd.first_name)
         .bind(cmd.last_name)
         .bind(cmd.phone)
         .bind(cmd.email)
         .bind(cmd.is_active)
         .fetch_optional(&self.pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("caretaker {}", cmd.id)))?;
-        Ok(Caretaker::from(row))
+        .await?;
+        row.ok_or_else(|| AppError::NotFound(format!("caretaker {}", cmd.id)))
+            .map(Caretaker::from)
     }
 
     // ── Work Orders ───────────────────────────────────────────────────────────
@@ -644,9 +689,9 @@ impl MaintenanceRepository for PgMaintenanceRepo {
 
         let (seq, prefix): (i32, String) = sqlx::query_as(
             r#"
-            UPDATE properties
+            UPDATE property_maintenance_configs
             SET    work_order_seq = work_order_seq + 1
-            WHERE  id = $1
+            WHERE  property_id = $1
             RETURNING work_order_seq, work_order_prefix
             "#,
         )

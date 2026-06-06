@@ -227,6 +227,10 @@ impl AppState {
             .agency_ctx(agency_id, self.infra.tenant_pools.platform())
             .await
     }
+
+    pub fn pool(&self) -> sqlx::PgPool {
+        self.infra.tenant_pools.platform_pool()
+    }
 }
 
 // ── AppState::build ───────────────────────────────────────────────────────────

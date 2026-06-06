@@ -34,6 +34,7 @@ impl From<PgPool> for PgUtilityRepo {
 struct MeterRow {
     id: Uuid,
     unit_id: Uuid,
+    property_id: Uuid,
     meter_type: String,
     billing_mode: String,
     meter_number: String,
@@ -76,6 +77,7 @@ impl From<MeterRow> for UtilityMeter {
         Self {
             id: r.id,
             unit_id: r.unit_id,
+            property_id: r.property_id,
             meter_type: parse_meter_type(&r.meter_type),
             billing_mode: parse_billing_mode(&r.billing_mode),
             meter_number: r.meter_number,
@@ -160,10 +162,11 @@ impl UtilityRepository for PgUtilityRepo {
     async fn find_meter_by_id(&self, id: Uuid) -> Result<Option<UtilityMeter>, AppError> {
         let row = sqlx::query_as::<_, MeterRow>(
             r#"
-            SELECT id, unit_id, meter_type::text, billing_mode::text,
-                   meter_number, rate_per_unit, created_at
-            FROM utility_meters
-            WHERE id = $1
+            SELECT m.id, m.unit_id, u.property_id, m.meter_type::text, m.billing_mode::text,
+                   m.meter_number, m.rate_per_unit, m.created_at
+            FROM utility_meters m
+            JOIN units u ON u.id = m.unit_id
+            WHERE m.id = $1
             "#,
         )
         .bind(id)
@@ -177,10 +180,11 @@ impl UtilityRepository for PgUtilityRepo {
     async fn find_meters_by_unit(&self, unit_id: Uuid) -> Result<Vec<UtilityMeter>, AppError> {
         let rows = sqlx::query_as::<_, MeterRow>(
             r#"
-            SELECT id, unit_id, meter_type::text, billing_mode::text,
-                   meter_number, rate_per_unit, created_at
-            FROM utility_meters
-            WHERE unit_id = $1
+            SELECT m.id, m.unit_id, u.property_id, m.meter_type::text, m.billing_mode::text,
+                   m.meter_number, m.rate_per_unit, m.created_at
+            FROM utility_meters m
+            JOIN units u ON u.id = m.unit_id
+            WHERE m.unit_id = $1
             "#,
         )
         .bind(unit_id)
@@ -224,12 +228,17 @@ impl UtilityRepository for PgUtilityRepo {
     async fn create_meter(&self, cmd: CreateMeterCommand) -> Result<UtilityMeter, AppError> {
         let row = sqlx::query_as::<_, MeterRow>(
             r#"
-            INSERT INTO utility_meters (
-                id, unit_id, meter_type, billing_mode, meter_number, rate_per_unit
+            WITH inserted AS (
+                INSERT INTO utility_meters (
+                    id, unit_id, meter_type, billing_mode, meter_number, rate_per_unit
+                )
+                VALUES ($1, $2, $3::meter_type, $4::billing_mode, $5, $6)
+                RETURNING id, unit_id, meter_type::text, billing_mode::text,
+                          meter_number, rate_per_unit, created_at
             )
-            VALUES ($1, $2, $3::meter_type, $4::billing_mode, $5, $6)
-            RETURNING id, unit_id, meter_type::text, billing_mode::text,
-                      meter_number, rate_per_unit, created_at
+            SELECT i.*, u.property_id
+            FROM inserted i
+            JOIN units u ON u.id = i.unit_id
             "#,
         )
         .bind(Uuid::new_v4())

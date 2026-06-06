@@ -137,7 +137,7 @@ pub async fn list_plans(State(state): State<AppState>) -> Result<impl IntoRespon
 #[utoipa::path(
     get,
     path = "/api/v1/subscription/plans/{slug}",
-    params(("slug" = String, Path, description = "Plan slug, e.g. `starter`")),
+    params(("slug" = String, Path, description = "Plan slug, e.g. `professional`")),
     responses(
         (status = 200, description = "Plan found",                  body = PlanResponse),
         (status = 404, description = "Plan not found",              body = ErrorResponse),

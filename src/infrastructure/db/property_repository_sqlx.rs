@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::PgPool;
+use sqlx::{Column, PgPool, Row};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -43,8 +43,11 @@ struct PropertyRow {
     country_code: String,
     property_type: String,
     config: sqlx::types::Json<serde_json::Value>,
-    work_order_prefix: String,
-    work_order_seq: i32,
+    unit_types: sqlx::types::Json<serde_json::Value>,
+    photos: sqlx::types::Json<Vec<String>>,
+    documents: sqlx::types::Json<serde_json::Value>,
+    work_order_prefix: Option<String>,
+    work_order_seq: Option<i32>,
     created_by: Uuid,
     created_at: time::OffsetDateTime,
     updated_at: time::OffsetDateTime,
@@ -61,6 +64,12 @@ impl TryFrom<PropertyRow> for Property {
         let config: PropertyConfig = serde_json::from_value(row.config.0)
             .map_err(|e| AppError::ExternalService(e.to_string()))?;
 
+        let unit_types = serde_json::from_value(row.unit_types.0)
+            .map_err(|e| AppError::ExternalService(e.to_string()))?;
+
+        let documents = serde_json::from_value(row.documents.0)
+            .map_err(|e| AppError::ExternalService(e.to_string()))?;
+
         Ok(Property {
             id: row.id,
             agency_id: row.agency_id,
@@ -70,8 +79,13 @@ impl TryFrom<PropertyRow> for Property {
             country_code: row.country_code,
             property_type,
             config,
-            work_order_prefix: row.work_order_prefix,
-            work_order_seq: row.work_order_seq,
+            unit_types,
+            photos: row.photos.0,
+            documents,
+            maintenance: crate::domain::property::PropertyMaintenanceConfig {
+                work_order_prefix: row.work_order_prefix.unwrap_or_default(),
+                work_order_seq: row.work_order_seq.unwrap_or(0),
+            },
             created_by: row.created_by,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -87,14 +101,16 @@ impl PropertyRepository for PgPropertyRepo {
         let rows = sqlx::query_as::<_, PropertyRow>(
             r#"
             SELECT
-                id, agency_id, name, address, city, country_code,
-                property_type::text, config,
-                work_order_prefix, work_order_seq,
-                created_by, created_at, updated_at
-            FROM properties
-            WHERE agency_id = $1
-              AND ($2::text IS NULL OR property_type::text = $2)
-            ORDER BY created_at DESC
+                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
+                mc.work_order_prefix, mc.work_order_seq,
+                p.created_by, p.created_at, p.updated_at
+            FROM properties p
+            LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
+            WHERE p.agency_id = $1
+              AND ($2::text IS NULL OR p.property_type::text = $2)
+              AND ($5::text IS NULL OR p.name ILIKE $5 OR p.address ILIKE $5 OR p.city ILIKE $5)
+            ORDER BY p.created_at DESC
             LIMIT $3 OFFSET $4
             "#,
         )
@@ -102,32 +118,41 @@ impl PropertyRepository for PgPropertyRepo {
         .bind(filter.property_type)
         .bind(filter.limit)
         .bind(filter.offset)
+        .bind(filter.search.map(|s| format!("%{}%", s)))
         .fetch_all(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(AppError::Database)?;
 
-        rows.into_iter().map(Property::try_from).collect()
+        let mut properties = Vec::new();
+        for row in rows {
+            properties.push(Property::try_from(row)?);
+        }
+        Ok(properties)
     }
 
     async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Property>, AppError> {
         let row = sqlx::query_as::<_, PropertyRow>(
             r#"
             SELECT
-                id, agency_id, name, address, city, country_code,
-                property_type::text, config,
-                work_order_prefix, work_order_seq,
-                created_by, created_at, updated_at
-            FROM properties
-            WHERE id = $1 AND agency_id = $2
+                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
+                mc.work_order_prefix, mc.work_order_seq,
+                p.created_by, p.created_at, p.updated_at
+            FROM properties p
+            LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
+            WHERE p.id = $1 AND p.agency_id = $2
             "#,
         )
         .bind(id)
         .bind(agency_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(AppError::Database)?;
 
-        row.map(Property::try_from).transpose()
+        match row {
+            Some(r) => Ok(Some(Property::try_from(r)?)),
+            None => Ok(None),
+        }
     }
 
     async fn create(&self, cmd: CreatePropertyCommand) -> Result<Property, AppError> {
@@ -150,13 +175,12 @@ impl PropertyRepository for PgPropertyRepo {
 
         // ── 2. Fetch existing prefixes ────────────────────────────────────────
         let taken_rows =
-            sqlx::query("SELECT work_order_prefix FROM properties WHERE work_order_prefix LIKE $1")
+            sqlx::query("SELECT work_order_prefix FROM property_maintenance_configs WHERE work_order_prefix LIKE $1")
                 .bind(format!("{}%", &base[..base.len().min(6)]))
                 .fetch_all(&self.pool)
                 .await
-                .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+                .map_err(AppError::Database)?;
 
-        use sqlx::Row;
         let taken: HashSet<String> = taken_rows
             .into_iter()
             .map(|r| r.get::<String, _>(0))
@@ -171,41 +195,130 @@ impl PropertyRepository for PgPropertyRepo {
             cmd.country_code.trim().to_ascii_uppercase()
         };
 
-        let row = sqlx::query_as::<_, PropertyRow>(
+        let mut tx = self.pool.begin().await.map_err(AppError::Database)?;
+
+        let property_id = Uuid::now_v7();
+
+        // Insert property
+        let res = sqlx::query(
             r#"
             INSERT INTO properties (
                 id, agency_id, name, address, city, country_code,
-                property_type, config, work_order_prefix, created_by
+                property_type, config, unit_types, photos, documents, created_by
             )
             VALUES (
-                uuidv7(), $1, $2, $3, $4, $5,
-                $6::property_type, $7, $8, $9
+                $1, $2, $3, $4, $5, $6,
+                $7::property_type, $8, $9, $10, $11, $12
             )
-            RETURNING
-                id, agency_id, name, address, city, country_code,
-                property_type::text, config,
-                work_order_prefix, work_order_seq,
-                created_by, created_at, updated_at
             "#,
         )
+        .bind(property_id)
         .bind(cmd.agency_id)
-        .bind(cmd.name)
-        .bind(cmd.address)
-        .bind(cmd.city)
-        .bind(country_code)
+        .bind(&cmd.name)
+        .bind(&cmd.address)
+        .bind(&cmd.city)
+        .bind(&country_code)
         .bind(property_type_str(&cmd.property_type))
         .bind(serde_json::to_value(&cmd.config).unwrap_or_default())
-        .bind(prefix)
+        .bind(serde_json::to_value(&cmd.unit_types).unwrap_or_default())
+        .bind(serde_json::to_value(&cmd.photos).unwrap_or_default())
+        .bind(serde_json::to_value(&cmd.documents).unwrap_or_default())
         .bind(cmd.created_by)
+        .execute(&mut *tx)
+        .await;
+
+        if let Err(e) = res {
+            tracing::error!(error = %e, "PgPropertyRepo::create: INSERT properties failed");
+            return Err(AppError::Database(e));
+        }
+
+        // Insert maintenance config
+        sqlx::query(
+            "INSERT INTO property_maintenance_configs (property_id, work_order_prefix) VALUES ($1, $2)",
+        )
+        .bind(property_id)
+        .bind(&prefix)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Database)?;
+
+        // ── 4. Link Owners ────────────────────────────────────────────────────
+        for owner_id in cmd.owner_ids {
+            sqlx::query(
+                "INSERT INTO property_owners (property_id, owner_id) VALUES ($1, $2) \
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(property_id)
+            .bind(owner_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+        }
+
+        // ── 5. Link Agents ────────────────────────────────────────────────────
+        for agent_id in cmd.agent_ids {
+            sqlx::query(
+                "INSERT INTO property_agents (property_id, user_id, agency_id) \
+                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+            )
+            .bind(property_id)
+            .bind(agent_id)
+            .bind(cmd.agency_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(AppError::Database)?;
+        }
+
+        tx.commit().await.map_err(AppError::Database)?;
+
+        // ── 6. Fetch the full row ─────────────────────────────────────────────
+        let row = sqlx::query(
+            r#"
+            SELECT
+                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
+                mc.work_order_prefix, mc.work_order_seq,
+                p.created_by, p.created_at, p.updated_at
+            FROM properties p
+            LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
+            WHERE p.id = $1
+            "#,
+        )
+        .bind(property_id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(AppError::Database)?;
 
-        Property::try_from(row)
+        let photos: sqlx::types::Json<Vec<String>> = row.try_get("photos").map_err(|e| {
+            tracing::error!(error = %e, "PgPropertyRepo::create: failed to get 'photos' column");
+            AppError::Database(e)
+        })?;
+
+        let property_row = PropertyRow {
+            id: row.get("id"),
+            agency_id: row.get("agency_id"),
+            name: row.get("name"),
+            address: row.get("address"),
+            city: row.get("city"),
+            country_code: row.get("country_code"),
+            property_type: row.get("property_type"),
+            config: row.get("config"),
+            unit_types: row.get("unit_types"),
+            photos,
+            documents: row.get("documents"),
+            work_order_prefix: row.get("work_order_prefix"),
+            work_order_seq: row.get("work_order_seq"),
+            created_by: row.get("created_by"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        };
+
+        Property::try_from(property_row)
     }
 
     async fn update(&self, cmd: UpdatePropertyCommand) -> Result<Property, AppError> {
-        let row = sqlx::query_as::<_, PropertyRow>(
+        // Update properties table
+        let updated = sqlx::query(
             r#"
             UPDATE properties
             SET
@@ -214,11 +327,6 @@ impl PropertyRepository for PgPropertyRepo {
                 city       = COALESCE($5, city),
                 updated_at = now()
             WHERE id = $1 AND agency_id = $2
-            RETURNING
-                id, agency_id, name, address, city, country_code,
-                property_type::text, config,
-                work_order_prefix, work_order_seq,
-                created_by, created_at, updated_at
             "#,
         )
         .bind(cmd.id)
@@ -226,9 +334,47 @@ impl PropertyRepository for PgPropertyRepo {
         .bind(cmd.name)
         .bind(cmd.address)
         .bind(cmd.city)
+        .execute(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        if updated.rows_affected() == 0 {
+            return Err(AppError::NotFound(format!("property {}", cmd.id)));
+        }
+
+        // Update maintenance config
+        sqlx::query(
+            r#"
+            UPDATE property_maintenance_configs
+            SET
+                work_order_prefix = COALESCE($2, work_order_prefix),
+                updated_at        = now()
+            WHERE property_id = $1
+            "#,
+        )
+        .bind(cmd.id)
+        .bind(cmd.work_order_prefix)
+        .execute(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        // Fetch the updated row
+        let row = sqlx::query_as::<_, PropertyRow>(
+            r#"
+            SELECT
+                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
+                mc.work_order_prefix, mc.work_order_seq,
+                p.created_by, p.created_at, p.updated_at
+            FROM properties p
+            LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
+            WHERE p.id = $1
+            "#,
+        )
+        .bind(cmd.id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound(format!("property {}", cmd.id)))?;
 
         Property::try_from(row)
@@ -265,11 +411,10 @@ impl PropertyRepository for PgPropertyRepo {
 fn property_type_str(pt: &PropertyType) -> &'static str {
     match pt {
         PropertyType::Residential => "residential",
+        PropertyType::Multifamily => "multifamily",
         PropertyType::Commercial => "commercial",
         PropertyType::Community => "community",
         PropertyType::Student => "student",
-        PropertyType::Affordable => "affordable",
-        // FIX: AffordableHousing was missing from this match — non-exhaustive pattern error.
-        PropertyType::AffordableHousing => "affordable_housing",
+        PropertyType::AffordableHousing | PropertyType::Affordable => "affordable_housing",
     }
 }

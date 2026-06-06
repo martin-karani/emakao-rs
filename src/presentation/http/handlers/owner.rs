@@ -43,7 +43,7 @@ use crate::{
                 property::PropertyWithPercentResponse,
             },
         },
-        require_below_limit, require_feature,
+        require_feature,
     },
 };
 
@@ -70,6 +70,7 @@ pub async fn list_owners(
     let items = ListOwnersUseCase::new(Arc::new(PgOwnerRepo::from(ctx.pool)))
         .execute(
             ctx.agency.id,
+            params.q,
             params.limit.unwrap_or(20).min(100),
             params.offset.unwrap_or(0),
         )

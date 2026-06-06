@@ -101,7 +101,7 @@ impl From<DisbursementRow> for Disbursement {
 
 // ── SELECT fragment ───────────────────────────────────────────────────────────
 
-const COLS: &str = r#"
+const _COLS: &str = r#"
     id, agency_id, owner_id, property_id, amount_kes,
     method::text, reference, status::text,
     period_start, period_end, notes,

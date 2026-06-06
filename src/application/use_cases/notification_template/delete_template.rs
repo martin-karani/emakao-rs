@@ -8,6 +8,7 @@ use crate::application::{
 
 pub struct DeleteTemplateInput {
     pub agency_id: Uuid,
+    pub property_id: Option<Uuid>,
     pub channel: String,
     pub event_key: String,
     pub locale: String,
@@ -26,6 +27,7 @@ impl DeleteTemplateUseCase {
         self.repo
             .delete(
                 input.agency_id,
+                input.property_id,
                 &input.channel,
                 &input.event_key,
                 &input.locale,

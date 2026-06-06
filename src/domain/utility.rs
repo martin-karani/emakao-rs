@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct UtilityMeter {
     pub id: Uuid,
     pub unit_id: Uuid,
+    pub property_id: Uuid,
     pub meter_type: MeterType,
     pub billing_mode: BillingMode,
     pub meter_number: String,

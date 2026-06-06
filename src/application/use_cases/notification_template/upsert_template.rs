@@ -29,6 +29,7 @@ pub trait TemplateValidator: Send + Sync + 'static {
 
 pub struct UpsertTemplateInput {
     pub agency_id: Uuid,
+    pub property_id: Option<Uuid>,
     pub channel: String,
     pub event_key: String,
     pub locale: String,
@@ -58,6 +59,7 @@ impl UpsertTemplateUseCase {
         self.repo
             .upsert(UpsertTemplateCommand {
                 agency_id: input.agency_id,
+                property_id: input.property_id,
                 channel: input.channel,
                 event_key: input.event_key,
                 locale: input.locale,

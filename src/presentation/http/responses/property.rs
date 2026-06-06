@@ -5,7 +5,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::domain::enums::PropertyType;
-use crate::domain::property::{Property, PropertyConfig};
+use crate::domain::property::{
+    Property, PropertyConfig, PropertyDocument, PropertyMaintenanceConfig, UnitType,
+};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PropertyResponse {
@@ -17,6 +19,10 @@ pub struct PropertyResponse {
     pub country_code: String,
     pub property_type: PropertyType,
     pub config: PropertyConfig,
+    pub unit_types: Vec<UnitType>,
+    pub photos: Vec<String>,
+    pub documents: Vec<PropertyDocument>,
+    pub maintenance: PropertyMaintenanceConfig,
     pub created_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -40,6 +46,10 @@ impl From<Property> for PropertyResponse {
             country_code: p.country_code,
             property_type: p.property_type,
             config: p.config,
+            unit_types: p.unit_types,
+            photos: p.photos,
+            documents: p.documents,
+            maintenance: p.maintenance,
             created_by: p.created_by,
             created_at: p.created_at,
             updated_at: p.updated_at,

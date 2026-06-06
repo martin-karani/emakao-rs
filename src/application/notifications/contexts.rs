@@ -70,6 +70,14 @@ pub struct OwnerInviteEmailCtx {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CaretakerInviteEmailCtx {
+    pub first_name: String,
+    pub property_name: String,
+    pub invite_url: String,
+    pub agency_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct VendorInviteEmailCtx {
     pub contact_name: Option<String>,
     pub vendor_name: String,

@@ -1,4 +1,4 @@
-use axum::{http::Method, middleware, Router};
+use axum::{extract::DefaultBodyLimit, http::Method, middleware, Router};
 use tower_http::{
     compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
@@ -12,7 +12,7 @@ use crate::presentation::{
         bank_reconciliation_routes, customisation_routes, dashboard_routes, disbursement_routes,
         document_routes, health_routes, insights_routes, inspection_routes, invoice_routes,
         ledger_routes, maintenance_routes, owner_routes, payment_routes, property_routes,
-        resident_routes, staff_routes, subscription_routes, tax_routes, upload_routes,
+        resident_routes, staff_routes, subscription_routes, tax_routes, unit_routes, upload_routes,
         utility_routes, vendor_routes, webhook_routes, websocket_routes,
     },
     middleware::{
@@ -46,6 +46,7 @@ pub fn build_router(state: AppState) -> Router {
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
         .with_state(state);
 
     #[cfg(debug_assertions)]
@@ -73,10 +74,8 @@ fn build_cors(state: &AppState) -> CorsLayer {
         return CorsLayer::new();
     }
 
-    let parsed: Vec<axum::http::HeaderValue> = origins
-        .iter()
-        .filter_map(|o| o.parse().ok())
-        .collect();
+    let parsed: Vec<axum::http::HeaderValue> =
+        origins.iter().filter_map(|o| o.parse().ok()).collect();
 
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(parsed))
@@ -134,6 +133,7 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
     let operational = Router::new()
         // Core property management
         .merge(property_routes::routes())
+        .merge(unit_routes::routes())
         .merge(agreement_routes::routes())
         .merge(payment_routes::routes())
         .merge(ledger_routes::routes())
@@ -163,7 +163,9 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
             state.clone(),
             subscription_middleware,
         ))
-        .layer(middleware::from_fn(crate::presentation::middleware::portal_guard::staff_portal_guard))
+        .layer(middleware::from_fn(
+            crate::presentation::middleware::portal_guard::staff_portal_guard,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             resolve_agency_context,
@@ -197,12 +199,12 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
 // ── Portal (residents, owners, vendors, caretakers) ──────────────────────────
 
 fn build_portal_api(state: AppState) -> Router<AppState> {
-    let resident_api = resident_routes::resident_portal_routes()
-        .layer(middleware::from_fn(resident_portal_guard));
-    let owner_api = owner_routes::owner_portal_routes()
-        .layer(middleware::from_fn(owner_portal_guard));
-    let vendor_api = vendor_routes::vendor_portal_routes()
-        .layer(middleware::from_fn(vendor_portal_guard));
+    let resident_api =
+        resident_routes::resident_portal_routes().layer(middleware::from_fn(resident_portal_guard));
+    let owner_api =
+        owner_routes::owner_portal_routes().layer(middleware::from_fn(owner_portal_guard));
+    let vendor_api =
+        vendor_routes::vendor_portal_routes().layer(middleware::from_fn(vendor_portal_guard));
 
     // ISSUE 5 FIX (part 2): caretaker portal routes were implemented but never
     // mounted. The caretaker_portal_guard enforces PortalType::Caretaker.

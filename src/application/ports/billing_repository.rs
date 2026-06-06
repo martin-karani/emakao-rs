@@ -30,7 +30,20 @@ pub trait BillingRepository: Send + Sync {
         amount_kes: Decimal,
     ) -> Result<(), AppError>;
 
+    async fn record_fixed_charge(
+        &self,
+        agreement_id: Uuid,
+        period_start: Date,
+        amount_kes: Decimal,
+        description: &str,
+    ) -> Result<(), AppError>;
+
     async fn load_late_fee_policy(&self) -> Result<LateFeePolicy, AppError>;
+
+    async fn load_late_fee_policy_for_property(
+        &self,
+        property_id: Uuid,
+    ) -> Result<Option<LateFeePolicy>, AppError>;
 
     async fn late_fee_exists(
         &self,

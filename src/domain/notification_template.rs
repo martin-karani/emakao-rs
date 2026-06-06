@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub struct NotificationTemplate {
     pub id: Uuid,
     pub agency_id: Uuid,
+    pub property_id: Option<Uuid>,
     /// "sms" | "email" | "whatsapp"
     pub channel: String,
     /// e.g. "rent.overdue", "lease.expiry_notice"

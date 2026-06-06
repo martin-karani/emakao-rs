@@ -14,6 +14,7 @@ use crate::{
 
 pub struct ListTemplatesInput {
     pub agency_id: uuid::Uuid,
+    pub property_id: Option<uuid::Uuid>,
     pub channel: Option<String>,
     pub event_key: Option<String>,
 }
@@ -34,6 +35,7 @@ impl ListTemplatesUseCase {
         self.repo
             .list(ListTemplatesFilter {
                 agency_id: input.agency_id,
+                property_id: input.property_id,
                 channel: input.channel,
                 event_key: input.event_key,
             })

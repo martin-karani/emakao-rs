@@ -209,11 +209,18 @@ async fn dispatch_notification(
         .get_or_load(job.agency_id, state.infra.tenant_pools.platform())
         .await?;
 
+    let property_id = job
+        .context
+        .get("property_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
     state
         .customisation()
         .notifications
         .dispatch(
             job.agency_id,
+            property_id,
             event_key,
             crate::infrastructure::notifications::dispatcher::Recipient {
                 phone,

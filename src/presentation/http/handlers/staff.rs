@@ -23,6 +23,8 @@
 //!   but the handler still returns 204 because the user's JWT is already
 //!   invalidated at the DB layer (membership `is_active = false`).
 
+use std::sync::Arc;
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -38,6 +40,7 @@ use crate::{
         use_cases::auth::invite_staff::{InviteStaffInput, InviteStaffUseCase},
     },
     domain::auth::AuthenticatedUser,
+    infrastructure::db::role_repository_sqlx::PgRoleRepo,
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
@@ -86,22 +89,23 @@ pub async fn invite_staff(
     let inviter_name = format!("Staff ({})", caller.user_id);
 
     let uc = InviteStaffUseCase {
-        auth_repo:     state.identity.auth_repo.clone(),
-        auth_port:     state.identity.auth_port.clone(),
+        auth_repo: state.identity.auth_repo.clone(),
+        role_repo: Arc::new(PgRoleRepo::new(state.pool())),
+        auth_port: state.identity.auth_port.clone(),
         notifications: state.notifications.clone(),
-        openfga:       state.openfga.clone(),
+        openfga: state.openfga.clone(),
     };
 
     let output = uc
         .execute(InviteStaffInput {
-            agency_id:       ctx.agency.id,
-            fga_store_id:    ctx.agency.fga_store_id.clone(),
-            email:           dto.email,
-            first_name:      dto.first_name,
-            last_name:       dto.last_name,
-            role:            dto.role,
+            agency_id: ctx.agency.id,
+            fga_store_id: ctx.agency.fga_store_id.clone(),
+            email: dto.email,
+            first_name: dto.first_name,
+            last_name: dto.last_name,
+            role: dto.role,
             inviter_name,
-            agency_name:     Some(ctx.agency.name.clone()),
+            agency_name: Some(ctx.agency.name.clone()),
             portal_base_url: "https://app.emakao.co.ke".to_string(),
         })
         .await?;
@@ -109,9 +113,9 @@ pub async fn invite_staff(
     Ok((
         StatusCode::CREATED,
         Json(InviteStaffResponse {
-            user_id:  output.user_id,
-            email:    output.email,
-            role:     output.role,
+            user_id: output.user_id,
+            email: output.email,
+            role: output.role,
             is_active: false,
             // Expose invite URL only in non-production environments.
             // In production, omit by returning None here.
@@ -254,20 +258,28 @@ pub async fn deactivate_staff(
     // Best-effort: a failure is logged but does NOT change the 204 response
     // because the DB deactivation already prevents login.
     if let Some(ref store_id) = ctx.agency.fga_store_id {
-        let fga_user   = format!("user:{}", member.user_id);
+        let fga_user = format!("user:{}", member.user_id);
         let fga_object = format!("agency:{}", ctx.agency.id);
+
+        // Map custom roles to base FGA relations to find the correct tuple to delete
+        let fga_relation = match member.role.as_str() {
+            "admin" => "admin",
+            "manager" => "manager",
+            _ => "agent",
+        };
 
         match state
             .openfga
-            .delete_tuple(store_id, &fga_user, &member.role, &fga_object)
+            .delete_tuple(store_id, &fga_user, fga_relation, &fga_object)
             .await
         {
             Ok(()) => {
                 tracing::info!(
-                    user_id       = %member.user_id,
-                    agency_id     = %ctx.agency.id,
-                    role          = %member.role,
-                    store_id      = %store_id,
+                    user_id = %member.user_id,
+                    agency_id = %ctx.agency.id,
+                    role = %member.role,
+                    fga_rel = %fga_relation,
+                    store_id = %store_id,
                     "FGA agency-membership tuple revoked for deactivated staff",
                 );
             }

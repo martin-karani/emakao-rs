@@ -15,7 +15,7 @@ use sqlx::PgPool;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Seed everything the platform DB needs before the first agency is created.
-/// Must be called after platform migrations have run successfully.
+/// Must be called a    fter platform migrations have run successfully.
 pub async fn run_platform_seeds(pool: &PgPool) -> Result<()> {
     seed_subscription_plans(pool).await?;
     seed_plan_features(pool).await?;
@@ -82,45 +82,187 @@ struct FeatureSeed {
 async fn seed_plan_features(pool: &PgPool) -> Result<()> {
     const FEATURES: &[FeatureSeed] = &[
         // Professional Tier Core Features
-        FeatureSeed { plan: "professional", key: "portal_resident", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "portal_resident", enabled: true },
-        FeatureSeed { plan: "professional", key: "portal_caretaker", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "portal_caretaker", enabled: true },
-        FeatureSeed { plan: "professional", key: "portal_owner", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "portal_owner", enabled: true },
-        FeatureSeed { plan: "professional", key: "maint_work_orders", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "maint_work_orders", enabled: true },
-        FeatureSeed { plan: "professional", key: "utility_billing", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "utility_billing", enabled: true },
-        FeatureSeed { plan: "professional", key: "utility_meter_reading", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "utility_meter_reading", enabled: true },
-        FeatureSeed { plan: "professional", key: "payment_mpesa_recon", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "payment_mpesa_recon", enabled: true },
-        FeatureSeed { plan: "professional", key: "acct_standard_ledger", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "acct_standard_ledger", enabled: true },
-        FeatureSeed { plan: "professional", key: "comm_sms_automation", enabled: true },
-        FeatureSeed { plan: "enterprise",   key: "comm_sms_automation", enabled: true },
-        
+        FeatureSeed {
+            plan: "professional",
+            key: "portal_resident",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "portal_resident",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "portal_caretaker",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "portal_caretaker",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "portal_owner",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "portal_owner",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "maint_work_orders",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "maint_work_orders",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "utility_billing",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "utility_billing",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "utility_meter_reading",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "utility_meter_reading",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "payment_mpesa_recon",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "payment_mpesa_recon",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "acct_standard_ledger",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "acct_standard_ledger",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "comm_sms_automation",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "comm_sms_automation",
+            enabled: true,
+        },
         // Enterprise Compliance & Automation Suite
-        FeatureSeed { plan: "professional", key: "payment_bulk_disbursements", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "payment_bulk_disbursements", enabled: true },
-        FeatureSeed { plan: "professional", key: "acct_double_entry", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "acct_double_entry", enabled: true },
-        FeatureSeed { plan: "professional", key: "acct_kra_compliance", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "acct_kra_compliance", enabled: true },
-
-        FeatureSeed { plan: "professional", key: "comm_whatsapp_automation", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "comm_whatsapp_automation", enabled: true },
-        FeatureSeed { plan: "professional", key: "portal_vendor", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "portal_vendor", enabled: true },
-        FeatureSeed { plan: "professional", key: "core_multi_branch", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "core_multi_branch", enabled: true },
-        FeatureSeed { plan: "professional", key: "core_custom_roles", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "core_custom_roles", enabled: true },
-        FeatureSeed { plan: "professional", key: "core_audit_log", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "core_audit_log", enabled: true },
-        FeatureSeed { plan: "professional", key: "brand_white_label", enabled: false },
-        FeatureSeed { plan: "enterprise",   key: "brand_white_label", enabled: true },
+        FeatureSeed {
+            plan: "professional",
+            key: "payment_bulk_disbursements",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "payment_bulk_disbursements",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "acct_double_entry",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "acct_double_entry",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "acct_kra_compliance",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "acct_kra_compliance",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "comm_whatsapp_automation",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "comm_whatsapp_automation",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "portal_vendor",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "portal_vendor",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "core_multi_branch",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "core_multi_branch",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "core_custom_roles",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "core_custom_roles",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "core_audit_log",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "core_audit_log",
+            enabled: true,
+        },
+        FeatureSeed {
+            plan: "professional",
+            key: "brand_white_label",
+            enabled: false,
+        },
+        FeatureSeed {
+            plan: "enterprise",
+            key: "brand_white_label",
+            enabled: true,
+        },
     ];
 
     for f in FEATURES {
@@ -147,18 +289,67 @@ struct LimitSeed {
 async fn seed_plan_limits(pool: &PgPool) -> Result<()> {
     const LIMITS: &[LimitSeed] = &[
         // Professional (Units dropped to 150 based on KES 5,000 price point)
-        LimitSeed { plan: "professional", key: "max_units", max_value: 150, soft_limit: Some(135) },
-        LimitSeed { plan: "professional", key: "max_branches", max_value: 1, soft_limit: Some(1) },
-        LimitSeed { plan: "professional", key: "max_storage_mb", max_value: 2048, soft_limit: Some(1800) },
-        LimitSeed { plan: "professional", key: "max_sms_per_month", max_value: 1000, soft_limit: Some(900) },
-        LimitSeed { plan: "professional", key: "max_whatsapp_per_month", max_value: 0, soft_limit: Some(0) },
-
+        LimitSeed {
+            plan: "professional",
+            key: "max_units",
+            max_value: 150,
+            soft_limit: Some(135),
+        },
+        LimitSeed {
+            plan: "professional",
+            key: "max_branches",
+            max_value: 10,
+            soft_limit: Some(8),
+        },
+        LimitSeed {
+            plan: "professional",
+            key: "max_storage_mb",
+            max_value: 2048,
+            soft_limit: Some(1800),
+        },
+        LimitSeed {
+            plan: "professional",
+            key: "max_sms_per_month",
+            max_value: 1000,
+            soft_limit: Some(900),
+        },
+        LimitSeed {
+            plan: "professional",
+            key: "max_whatsapp_per_month",
+            max_value: 0,
+            soft_limit: Some(0),
+        },
         // Enterprise (-1 = unlimited)
-        LimitSeed { plan: "enterprise", key: "max_units", max_value: -1, soft_limit: None },
-        LimitSeed { plan: "enterprise", key: "max_branches", max_value: -1, soft_limit: None },
-        LimitSeed { plan: "enterprise", key: "max_storage_mb", max_value: 51200, soft_limit: Some(46080) },
-        LimitSeed { plan: "enterprise", key: "max_sms_per_month", max_value: 10000, soft_limit: Some(9000) },
-        LimitSeed { plan: "enterprise", key: "max_whatsapp_per_month", max_value: 5000, soft_limit: Some(4500) },
+        LimitSeed {
+            plan: "enterprise",
+            key: "max_units",
+            max_value: -1,
+            soft_limit: None,
+        },
+        LimitSeed {
+            plan: "enterprise",
+            key: "max_branches",
+            max_value: -1,
+            soft_limit: None,
+        },
+        LimitSeed {
+            plan: "enterprise",
+            key: "max_storage_mb",
+            max_value: 51200,
+            soft_limit: Some(46080),
+        },
+        LimitSeed {
+            plan: "enterprise",
+            key: "max_sms_per_month",
+            max_value: 10000,
+            soft_limit: Some(9000),
+        },
+        LimitSeed {
+            plan: "enterprise",
+            key: "max_whatsapp_per_month",
+            max_value: 5000,
+            soft_limit: Some(4500),
+        },
     ];
 
     for l in LIMITS {

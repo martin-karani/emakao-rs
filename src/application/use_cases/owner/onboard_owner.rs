@@ -61,29 +61,109 @@ impl OnboardOwnerUseCase {
             ContactMethod::parse(input.phone.as_ref().unwrap())
         };
 
-        let already_exists = self
-            .auth_repo
-            .contact_exists_for_agency(
-                input.agency_id,
-                contact.value(),
-                contact.type_str(),
-                "owner",
-            )
-            .await?;
-        if already_exists {
-            return Err(AppError::Validation(format!(
-                "An owner with {} '{}' already exists in this agency.",
-                contact.type_str(),
-                contact.value()
-            )));
+        // 1. Check if owner already exists in this agency
+        let existing_owner = if let Some(ref email) = input.email {
+            self.owner_repo
+                .find_by_email(input.agency_id, email)
+                .await?
+        } else if let Some(ref phone) = input.phone {
+            self.owner_repo
+                .find_by_phone(input.agency_id, phone)
+                .await?
+        } else {
+            None
+        };
+
+        if let Some(owner) = existing_owner {
+            return Ok(owner);
         }
 
-        // 1. Tenant profile
+        // 2. Platform user - Check if they exist globally
+        let existing_user = if let Some(ref email) = input.email {
+            self.auth_repo
+                .find_user_by_email(&email.to_lowercase())
+                .await?
+        } else if let Some(ref phone) = input.phone {
+            let p = ContactMethod::parse(phone).value().to_owned();
+            self.auth_repo.find_user_by_phone(&p).await?
+        } else {
+            None
+        };
+
+        let mut temp_plain = None;
+        let user_id = if let Some(user) = existing_user {
+            user.id
+        } else {
+            let id = Uuid::new_v4();
+            let (password_hash, plain, must_change, is_active) = match &contact {
+                ContactMethod::Phone(_) => {
+                    let p = generate_temp_password();
+                    let h = self.auth_port.hash_password(&p).await?;
+                    (h, Some(p), true, true)
+                }
+                ContactMethod::Email(_) => ("".to_string(), None, false, false),
+            };
+            temp_plain = plain;
+
+            self.auth_repo
+                .create_user(CreateUserCommand {
+                    id,
+                    email: input.email.clone().map(|e| e.to_lowercase()),
+                    phone: input
+                        .phone
+                        .clone()
+                        .map(|p| ContactMethod::parse(&p).value().to_owned()),
+                    password_hash,
+                    is_active,
+                    must_change_password: must_change,
+                })
+                .await?;
+            id
+        };
+
+        // 3. Membership - Check if they have one for this agency
+        let membership = self
+            .auth_repo
+            .find_membership(user_id, input.agency_id)
+            .await?;
+        let membership_id = if let Some(_) = membership {
+            // Already a member, find the membership_id via portal index or similar
+            // For now, let's assume we can create it or find it.
+            // Actually, find_membership only returns (role, active).
+            // Let's add find_membership_id to AuthRepository if needed.
+            // But we can also just call create_membership and handle conflict if any,
+            // or use find_portal_identity.
+            let identity = self
+                .auth_repo
+                .find_portal_identity(contact.value(), contact.type_str(), "owner")
+                .await?;
+            if let Some(id) = identity {
+                id.membership_id
+            } else {
+                self.auth_repo
+                    .create_membership(CreateMembershipCommand {
+                        user_id,
+                        agency_id: input.agency_id,
+                        role: "owner".to_string(),
+                    })
+                    .await?
+            }
+        } else {
+            self.auth_repo
+                .create_membership(CreateMembershipCommand {
+                    user_id,
+                    agency_id: input.agency_id,
+                    role: "owner".to_string(),
+                })
+                .await?
+        };
+
+        // 4. Owner profile
         let owner = self
             .owner_repo
             .create(CreateOwnerCommand {
                 agency_id: input.agency_id,
-                user_id: Some(Uuid::new_v4()),
+                user_id: Some(user_id),
                 first_name: input.first_name.clone(),
                 last_name: input.last_name.clone(),
                 email: input.email.clone(),
@@ -93,41 +173,6 @@ impl OnboardOwnerUseCase {
                 bank_name: input.bank_name.clone(),
                 bank_account: input.bank_account.clone(),
                 mpesa_number: input.mpesa_number.clone(),
-            })
-            .await?;
-
-        // 2. Platform user
-        let user_id = Uuid::new_v4();
-        let (password_hash, temp_plain, must_change, is_active) = match &contact {
-            ContactMethod::Phone(_) => {
-                let p = generate_temp_password();
-                let h = self.auth_port.hash_password(&p).await?;
-                (h, Some(p), true, true)
-            }
-            ContactMethod::Email(_) => ("".to_string(), None, false, false),
-        };
-
-        self.auth_repo
-            .create_user(CreateUserCommand {
-                id: user_id,
-                email: input.email.clone().map(|e| e.to_lowercase()),
-                phone: input
-                    .phone
-                    .clone()
-                    .map(|p| ContactMethod::parse(&p).value().to_owned()),
-                password_hash,
-                is_active,
-                must_change_password: must_change,
-            })
-            .await?;
-
-        // 3. Membership
-        let membership_id = self
-            .auth_repo
-            .create_membership(CreateMembershipCommand {
-                user_id,
-                agency_id: input.agency_id,
-                role: "owner".to_string(),
             })
             .await?;
 

@@ -18,12 +18,22 @@ pub trait MaintenanceRepository: Send + Sync + 'static {
     async fn find_caretakers(
         &self,
         property_id: Option<Uuid>,
+        search: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Caretaker>, AppError>;
 
     async fn find_caretaker_by_id(&self, id: Uuid) -> Result<Option<Caretaker>, AppError>;
-
+    async fn find_caretaker_by_email(
+        &self,
+        property_id: Uuid,
+        email: &str,
+    ) -> Result<Option<Caretaker>, AppError>;
+    async fn find_caretaker_by_phone(
+        &self,
+        property_id: Uuid,
+        phone: &str,
+    ) -> Result<Option<Caretaker>, AppError>;
     async fn create_caretaker(&self, cmd: CreateCaretakerCommand) -> Result<Caretaker, AppError>;
 
     async fn update_caretaker(&self, cmd: UpdateCaretakerCommand) -> Result<Caretaker, AppError>;

@@ -2,17 +2,27 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    application::{errors::AppError, ports::utility_repository::UtilityRepository},
+    application::{
+        errors::AppError,
+        ports::{
+            property_billing_repository::PropertyBillingRepository,
+            utility_repository::UtilityRepository,
+        },
+    },
     domain::{enums::UtilityBillStatus, utility::UtilityBill},
 };
 
 pub struct GenerateBillUseCase {
     pub repo: Arc<dyn UtilityRepository>,
+    pub billing_repo: Arc<dyn PropertyBillingRepository>,
 }
 
 impl GenerateBillUseCase {
-    pub fn new(repo: Arc<dyn UtilityRepository>) -> Self {
-        Self { repo }
+    pub fn new(
+        repo: Arc<dyn UtilityRepository>,
+        billing_repo: Arc<dyn PropertyBillingRepository>,
+    ) -> Self {
+        Self { repo, billing_repo }
     }
 
     /// Derives consumption from the two most recent readings, then writes a bill.
@@ -42,7 +52,21 @@ impl GenerateBillUseCase {
             ));
         }
 
-        let amount_kes = units_consumed * meter.rate_per_unit;
+        // 1. Try to get property-level rate override
+        let mut rate = meter.rate_per_unit;
+        if let Ok(Some(settings)) = self
+            .billing_repo
+            .get_by_property_id(meter.property_id)
+            .await
+        {
+            if settings.water_rate_per_unit > rust_decimal::Decimal::ZERO
+                && meter.meter_type == crate::domain::enums::MeterType::Water
+            {
+                rate = settings.water_rate_per_unit;
+            }
+        }
+
+        let amount_kes = units_consumed * rate;
 
         let bill = UtilityBill {
             id: uuid::Uuid::new_v4(),

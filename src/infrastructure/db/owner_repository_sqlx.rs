@@ -81,6 +81,7 @@ impl OwnerRepository for PgOwnerRepo {
     async fn find_all(
         &self,
         _agency_id: Uuid,
+        search: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Owner>, AppError> {
@@ -91,12 +92,14 @@ impl OwnerRepository for PgOwnerRepo {
                    o.bank_account, o.mpesa_number, o.portal_status::text,
                    o.created_at, o.updated_at
             FROM owners o
+            WHERE ($3 IS NULL OR o.first_name ILIKE $3 OR o.last_name ILIKE $3 OR o.email ILIKE $3)
             ORDER BY o.created_at DESC
             LIMIT $1 OFFSET $2
             "#,
         )
         .bind(limit)
         .bind(offset)
+        .bind(search.map(|s| format!("%{}%", s)))
         .fetch_all(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -159,6 +162,30 @@ impl OwnerRepository for PgOwnerRepo {
             "#,
         )
         .bind(email)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        Ok(row.map(Owner::from))
+    }
+
+    async fn find_by_phone(
+        &self,
+        _agency_id: Uuid,
+        phone: &str,
+    ) -> Result<Option<Owner>, AppError> {
+        let row = sqlx::query_as::<_, OwnerRow>(
+            r#"
+            SELECT o.id, o.user_id, o.first_name, o.last_name, o.email,
+                   o.phone, o.company_name, o.kra_pin, o.bank_name,
+                   o.bank_account, o.mpesa_number, o.portal_status::text,
+                   o.created_at, o.updated_at
+            FROM owners o
+            WHERE o.phone = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(phone)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -278,8 +305,11 @@ impl OwnerRepository for PgOwnerRepo {
             country_code: String,
             property_type: String,
             config: sqlx::types::Json<serde_json::Value>,
-            work_order_prefix: String,
-            work_order_seq: i32,
+            unit_types: sqlx::types::Json<serde_json::Value>,
+            photos: sqlx::types::Json<Vec<String>>,
+            documents: sqlx::types::Json<serde_json::Value>,
+            work_order_prefix: Option<String>,
+            work_order_seq: Option<i32>,
             created_by: Uuid,
             created_at: time::OffsetDateTime,
             updated_at: time::OffsetDateTime,
@@ -290,12 +320,13 @@ impl OwnerRepository for PgOwnerRepo {
             r#"
         SELECT
             p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
-            p.property_type::text, p.config,
-            p.work_order_prefix, p.work_order_seq,
+            p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
+            mc.work_order_prefix, mc.work_order_seq,
             p.created_by, p.created_at, p.updated_at,
             po.ownership_percent
         FROM properties p
         JOIN property_owners po ON po.property_id = p.id
+        LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
         WHERE po.owner_id = $1
         ORDER BY p.created_at DESC
         LIMIT $2 OFFSET $3
@@ -306,7 +337,7 @@ impl OwnerRepository for PgOwnerRepo {
         .bind(offset)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        .map_err(AppError::Database)?;
 
         rows.into_iter()
             .map(|row| {
@@ -315,6 +346,11 @@ impl OwnerRepository for PgOwnerRepo {
                         .map_err(|e| AppError::ExternalService(e.to_string()))?;
                 let config: PropertyConfig = serde_json::from_value(row.config.0)
                     .map_err(|e| AppError::ExternalService(e.to_string()))?;
+                let unit_types = serde_json::from_value(row.unit_types.0)
+                    .map_err(|e| AppError::ExternalService(e.to_string()))?;
+                let documents = serde_json::from_value(row.documents.0)
+                    .map_err(|e| AppError::ExternalService(e.to_string()))?;
+
                 let property = Property {
                     id: row.id,
                     agency_id: row.agency_id,
@@ -324,8 +360,13 @@ impl OwnerRepository for PgOwnerRepo {
                     country_code: row.country_code,
                     property_type,
                     config,
-                    work_order_prefix: row.work_order_prefix,
-                    work_order_seq: row.work_order_seq,
+                    unit_types,
+                    photos: row.photos.0,
+                    documents,
+                    maintenance: crate::domain::property::PropertyMaintenanceConfig {
+                        work_order_prefix: row.work_order_prefix.unwrap_or_default(),
+                        work_order_seq: row.work_order_seq.unwrap_or(0),
+                    },
                     created_by: row.created_by,
                     created_at: row.created_at,
                     updated_at: row.updated_at,

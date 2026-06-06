@@ -21,6 +21,7 @@ pub enum EmailTemplate {
     OwnerInvite,
     VendorInvite,
     StaffInvite,
+    CaretakerInvite,
     /// Sent to agency staff when a KRA tax obligation is due in 5 or 1 day.
     /// Context: `TaxDueCtx`.
     TaxDue,
@@ -39,6 +40,7 @@ impl EmailTemplate {
             Self::OwnerInvite => "email/owner_invite.html.jinja",
             Self::VendorInvite => "email/vendor_invite.html.jinja",
             Self::StaffInvite => "email/staff_invite.html.jinja",
+            Self::CaretakerInvite => "email/caretaker_invite.html.jinja",
             Self::TaxDue => "email/tax_due.html.jinja",
         }
     }
@@ -55,6 +57,7 @@ impl EmailTemplate {
             Self::OwnerInvite => "Welcome to Emakao – Activate Your Owner Portal",
             Self::VendorInvite => "You've Been Added to the Emakao Vendor Directory",
             Self::StaffInvite => "You've been invited to the Emakao Staff Dashboard",
+            Self::CaretakerInvite => "You've been invited as a Caretaker on Emakao",
             Self::TaxDue => "KRA Tax Obligation Due – Action Required",
         }
     }

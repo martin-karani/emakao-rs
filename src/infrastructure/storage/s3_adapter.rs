@@ -64,10 +64,15 @@ impl S3Storage {
             s3_cfg = s3_cfg.endpoint_url(url).force_path_style(true);
         }
 
-        Self {
-            client: Client::from_conf(s3_cfg.build()),
-            bucket,
+        let client = Client::from_conf(s3_cfg.build());
+
+        // In dev mode (endpoint_url present), try to create the bucket.
+        // This makes Minio setup zero-config for new developers.
+        if endpoint_url.is_some() {
+            let _ = client.create_bucket().bucket(&bucket).send().await;
         }
+
+        Self { client, bucket }
     }
 
     /// Generate a pre-signed GET URL valid for `ttl_seconds` seconds.

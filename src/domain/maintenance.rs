@@ -46,6 +46,7 @@ pub struct CreateCaretakerCommand {
 
 pub struct UpdateCaretakerCommand {
     pub id: Uuid,
+    pub user_id: Option<Uuid>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub phone: Option<String>,

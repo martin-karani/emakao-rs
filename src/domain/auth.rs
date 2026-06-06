@@ -52,7 +52,7 @@ impl PortalType {
     /// Single source of truth: role string → portal.
     pub fn from_role(role: &str) -> Self {
         match role {
-            "admin" | "manager" | "agent" | "platform_admin" => Self::Staff,
+            "agency_owner" | "manager" | "agent" | "admin" => Self::Staff,
             "resident" => Self::Resident,
             "owner" => Self::Owner,
             "vendor" => Self::Vendor,

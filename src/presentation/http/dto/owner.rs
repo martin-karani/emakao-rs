@@ -67,6 +67,7 @@ fn validate_ownership(v: &Decimal, _ctx: &()) -> garde::Result {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListOwnersParams {
+    pub q: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }

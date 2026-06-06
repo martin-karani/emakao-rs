@@ -9,6 +9,7 @@ use crate::{
 pub struct PropertyFilter {
     pub agency_id: Uuid,
     pub property_type: Option<String>,
+    pub search: Option<String>,
     pub limit: i64,
     pub offset: i64,
 }

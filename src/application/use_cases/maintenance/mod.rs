@@ -5,6 +5,7 @@ pub mod update_work_order;
 
 // ── Caretakers ────────────────────────────────────────────────────────────────
 pub mod create_caretaker;
+pub mod invite_caretaker;
 pub mod list_caretakers;
 pub mod update_caretaker;
 

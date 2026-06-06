@@ -30,6 +30,7 @@ impl PgNotificationTemplateRepo {
 struct NotificationTemplateRow {
     id: Uuid,
     agency_id: Uuid,
+    property_id: Option<Uuid>,
     channel: String,
     event_key: String,
     locale: String,
@@ -43,6 +44,7 @@ impl From<NotificationTemplateRow> for NotificationTemplate {
         Self {
             id: r.id,
             agency_id: r.agency_id,
+            property_id: r.property_id,
             channel: r.channel,
             event_key: r.event_key,
             locale: r.locale,
@@ -63,15 +65,17 @@ impl NotificationTemplateRepository for PgNotificationTemplateRepo {
     ) -> Result<Vec<NotificationTemplate>, AppError> {
         let rows = sqlx::query_as::<_, NotificationTemplateRow>(
             r#"
-            SELECT id, agency_id, channel, event_key, locale, subject, body, created_at
+            SELECT id, agency_id, property_id, channel, event_key, locale, subject, body, created_at
             FROM   notification_templates
             WHERE  agency_id = $1
-              AND  ($2::text IS NULL OR channel   = $2)
-              AND  ($3::text IS NULL OR event_key = $3)
+              AND  ($2::uuid IS NULL OR property_id = $2)
+              AND  ($3::text IS NULL OR channel     = $3)
+              AND  ($4::text IS NULL OR event_key   = $4)
             ORDER  BY channel, event_key, locale
             "#,
         )
         .bind(filter.agency_id)
+        .bind(filter.property_id)
         .bind(filter.channel)
         .bind(filter.event_key)
         .fetch_all(&self.pool)
@@ -85,16 +89,17 @@ impl NotificationTemplateRepository for PgNotificationTemplateRepo {
         sqlx::query(
             r#"
             INSERT INTO notification_templates
-                (agency_id, channel, event_key, locale, subject, body)
+                (agency_id, property_id, channel, event_key, locale, subject, body)
             VALUES
-                ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (agency_id, channel, event_key, locale)
+                ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (agency_id, (COALESCE(property_id, '00000000-0000-0000-0000-000000000000')), channel, event_key, locale)
             DO UPDATE SET
                 subject = EXCLUDED.subject,
                 body    = EXCLUDED.body
             "#,
         )
         .bind(cmd.agency_id)
+        .bind(cmd.property_id)
         .bind(cmd.channel)
         .bind(cmd.event_key)
         .bind(cmd.locale)
@@ -110,6 +115,7 @@ impl NotificationTemplateRepository for PgNotificationTemplateRepo {
     async fn delete(
         &self,
         agency_id: Uuid,
+        property_id: Option<Uuid>,
         channel: &str,
         event_key: &str,
         locale: &str,
@@ -118,12 +124,14 @@ impl NotificationTemplateRepository for PgNotificationTemplateRepo {
             r#"
             DELETE FROM notification_templates
             WHERE agency_id = $1
-              AND channel   = $2
-              AND event_key = $3
-              AND locale    = $4
+              AND (COALESCE(property_id, '00000000-0000-0000-0000-000000000000') = COALESCE($2, '00000000-0000-0000-0000-000000000000'))
+              AND channel     = $3
+              AND event_key   = $4
+              AND locale      = $5
             "#,
         )
         .bind(agency_id)
+        .bind(property_id)
         .bind(channel)
         .bind(event_key)
         .bind(locale)

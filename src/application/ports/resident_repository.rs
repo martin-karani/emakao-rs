@@ -39,4 +39,10 @@ pub trait ResidentRepository: Send + Sync + 'static {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<PaymentClaim>, AppError>;
+
+    async fn find_by_property_id(
+        &self,
+        agency_id: Uuid,
+        property_id: Uuid,
+    ) -> Result<Vec<Resident>, AppError>;
 }

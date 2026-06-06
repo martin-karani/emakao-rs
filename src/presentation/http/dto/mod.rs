@@ -15,5 +15,6 @@ pub mod property;
 pub mod resident;
 pub mod staff;
 pub mod tax;
+pub mod unit;
 pub mod utility;
 pub mod vendor;

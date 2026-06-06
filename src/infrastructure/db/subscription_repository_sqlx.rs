@@ -1,6 +1,3 @@
-use std::future::Future;
-use std::pin::Pin;
-
 use async_trait::async_trait;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -132,23 +129,23 @@ impl From<PlanRow> for SubscriptionPlan {
 /// The closure must be async because `TenantPoolManager::for_agency` is async
 /// (it may hit the DB to resolve agency_id → schema_name on a cold cache).
 /// On subsequent calls for the same agency the pool is returned from the
-/// in-memory `DashMap` with zero extra allocations.
-type TenantPoolFn =
-    Box<dyn Fn(Uuid) -> Pin<Box<dyn Future<Output = anyhow::Result<PgPool>> + Send>> + Send + Sync>;
-
 pub struct PgSubscriptionRepo {
     pool: PgPool,
     tenant_pools: Arc<crate::infrastructure::db::pool::AgencyPoolManager>,
 }
 
 impl PgSubscriptionRepo {
-    pub fn new(pool: PgPool, tenant_pools: Arc<crate::infrastructure::db::pool::AgencyPoolManager>) -> Self {
+    pub fn new(
+        pool: PgPool,
+        tenant_pools: Arc<crate::infrastructure::db::pool::AgencyPoolManager>,
+    ) -> Self {
         Self { pool, tenant_pools }
     }
 
     /// Resolves the agency pool for `agency_id` asynchronously.
     async fn tenant_pool(&self, agency_id: Uuid) -> Result<PgPool, AppError> {
-        self.tenant_pools.for_agency(agency_id)
+        self.tenant_pools
+            .for_agency(agency_id)
             .await
             .map_err(|e| AppError::InternalServer(e.to_string()))
     }
@@ -370,9 +367,8 @@ impl SubscriptionRepository for PgSubscriptionRepo {
             r#"
             UPDATE subscriptions
             SET plan_tier = CASE $1::text
-                WHEN 'starter'    THEN 'core'
-                WHEN 'growth'     THEN 'plus'
-                WHEN 'enterprise' THEN 'max'
+                WHEN 'professional' THEN 'core'
+                WHEN 'enterprise'   THEN 'max'
                 ELSE plan_tier
             END
             WHERE agency_id = $2::uuid

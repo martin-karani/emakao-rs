@@ -19,6 +19,7 @@ pub mod owner;
 pub mod payment;
 pub mod property;
 pub mod resident;
+pub mod role;
 pub mod settings_update;
 pub mod subscription;
 pub mod tax;

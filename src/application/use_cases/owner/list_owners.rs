@@ -18,9 +18,10 @@ impl ListOwnersUseCase {
     pub async fn execute(
         &self,
         agency_id: Uuid,
+        search: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Owner>, AppError> {
-        self.repo.find_all(agency_id, limit, offset).await
+        self.repo.find_all(agency_id, search, limit, offset).await
     }
 }

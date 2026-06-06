@@ -22,6 +22,7 @@ impl ListPropertiesUseCase {
         &self,
         agency_id: Uuid,
         property_type: Option<String>,
+        search: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Property>, AppError> {
@@ -29,6 +30,7 @@ impl ListPropertiesUseCase {
             .find_all(PropertyFilter {
                 agency_id,
                 property_type,
+                search,
                 limit,
                 offset,
             })

@@ -30,11 +30,9 @@ use crate::application::{
             UpsertPortalIndexCommand,
         },
         openfga_port::OpenFgaPort,
+        role_repository::RoleRepository,
     },
 };
-
-/// Valid staff roles accepted by this use case.
-const STAFF_ROLES: &[&str] = &["admin", "manager", "agent"];
 
 // ── Input / Output ────────────────────────────────────────────────────────────
 
@@ -75,6 +73,7 @@ pub struct InviteStaffOutput {
 
 pub struct InviteStaffUseCase {
     pub auth_repo: Arc<dyn AuthRepository>,
+    pub role_repo: Arc<dyn RoleRepository>,
     pub auth_port: Arc<dyn AuthPort>,
     pub notifications: NotificationService,
     /// Required to write the agency-membership tuple so that fine-grained
@@ -84,13 +83,17 @@ pub struct InviteStaffUseCase {
 
 impl InviteStaffUseCase {
     pub async fn execute(&self, input: InviteStaffInput) -> Result<InviteStaffOutput, AppError> {
-        // ── Validate role ──────────────────────────────────────────────────────
-        if !STAFF_ROLES.contains(&input.role.as_str()) {
-            return Err(AppError::Validation(format!(
-                "role must be one of: {}",
-                STAFF_ROLES.join(", ")
-            )));
-        }
+        // ── Validate role exists in agency ─────────────────────────────────────
+        let _role = self
+            .role_repo
+            .find_by_name(input.agency_id, &input.role)
+            .await?
+            .ok_or_else(|| {
+                AppError::Validation(format!(
+                    "role '{}' does not exist in this agency",
+                    input.role
+                ))
+            })?;
 
         let email = input.email.trim().to_lowercase();
 
@@ -178,12 +181,20 @@ impl InviteStaffUseCase {
         // API (`POST /api/v1/admin/agencies/{fga_store_id}/permissions/tuples`).
         match &input.fga_store_id {
             Some(store_id) => {
-                let fga_user   = format!("user:{user_id}");
+                let fga_user = format!("user:{user_id}");
                 let fga_object = format!("agency:{}", input.agency_id);
+
+                // Map custom roles to one of the 3 base FGA relations.
+                // admin and manager keep their names; everyone else is an agent in FGA.
+                let fga_relation = match input.role.as_str() {
+                    "admin" => "admin",
+                    "manager" => "manager",
+                    _ => "agent",
+                };
 
                 match self
                     .openfga
-                    .write_tuple(store_id, &fga_user, &input.role, &fga_object)
+                    .write_tuple(store_id, &fga_user, fga_relation, &fga_object)
                     .await
                 {
                     Ok(()) => {
@@ -191,6 +202,7 @@ impl InviteStaffUseCase {
                             user_id   = %user_id,
                             agency_id = %input.agency_id,
                             role      = %input.role,
+                            fga_rel   = %fga_relation,
                             store_id  = %store_id,
                             "FGA agency-membership tuple written for invited staff",
                         );

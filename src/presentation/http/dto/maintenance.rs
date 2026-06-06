@@ -45,6 +45,7 @@ pub struct UpdateCaretakerDto {
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListCaretakersParams {
     pub property_id: Option<Uuid>,
+    pub q: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }

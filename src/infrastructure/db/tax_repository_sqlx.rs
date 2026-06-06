@@ -111,12 +111,15 @@ impl TaxObligationRow {
 
 pub struct PgTaxRepo {
     pool: PgPool,
-    agency_id: Uuid,
+    _agency_id: Uuid,
 }
 
 impl PgTaxRepo {
     pub fn new(pool: PgPool, agency_id: Uuid) -> Self {
-        Self { pool, agency_id }
+        Self {
+            pool,
+            _agency_id: agency_id,
+        }
     }
 }
 
