@@ -5,7 +5,6 @@ use axum::{
     response::IntoResponse,
     Extension, Json,
 };
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -21,27 +20,11 @@ use crate::{
     domain::auth::AuthenticatedUser,
     domain::role::PermissionDefinition,
     infrastructure::db::role_repository_sqlx::PgRoleRepo,
-    presentation::app_state::AppState,
+    presentation::{
+        app_state::AppState,
+        http::dto::role::{CreateRoleRequest, UpdateRoleRequest},
+    },
 };
-
-#[derive(Debug, Deserialize)]
-pub struct CreateRoleRequest {
-    pub name: String,
-    pub permissions: HashSet<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateRoleRequest {
-    pub permissions: HashSet<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RoleResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub permissions: HashSet<String>,
-    pub is_system: bool,
-}
 
 pub async fn list_roles(
     State(state): State<AppState>,

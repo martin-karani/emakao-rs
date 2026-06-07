@@ -11,10 +11,6 @@ use axum::{
     response::IntoResponse,
     Extension, Json,
 };
-use serde::Deserialize;
-use time::Date;
-use utoipa::IntoParams;
-use uuid::Uuid;
 
 use crate::{
     application::{
@@ -28,21 +24,12 @@ use crate::{
     infrastructure::db::analytics_repository_sqlx::PgAnalyticsRepo,
     presentation::{
         app_state::AppState, error::ErrorResponse, extractors::AgencyContext,
-        http::helpers::permission::check_permission,
+        http::{
+            dto::analytics::AnalyticsParams,
+            helpers::permission::check_permission,
+        },
     },
 };
-
-// ── Query params ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, IntoParams)]
-pub struct AnalyticsParams {
-    /// Inclusive start date, e.g. `2025-01-01`.
-    pub from: Date,
-    /// Inclusive end date, e.g. `2025-12-31`.
-    pub to: Date,
-    /// Optionally filter to a single property.
-    pub property_id: Option<Uuid>,
-}
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 

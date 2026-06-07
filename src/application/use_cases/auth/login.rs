@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::{
     application::{
         errors::AppError,
-        ports::{auth_port::AuthPort, auth_repository::AuthRepository},
+        ports::{agency_repository::AgencyRepository, auth_port::AuthPort, auth_repository::AuthRepository},
     },
     domain::{
         auth::{ContactMethod, JwtClaims},
@@ -37,17 +37,18 @@ pub struct StaffLoginInput {
 
 pub struct StaffLoginUseCase {
     pub repo: Arc<dyn AuthRepository>,
+    pub agency_repo: Arc<dyn AgencyRepository>,
     pub auth: Arc<dyn AuthPort>,
 }
 
 impl StaffLoginUseCase {
-    pub fn new(repo: Arc<dyn AuthRepository>, auth: Arc<dyn AuthPort>) -> Self {
-        Self { repo, auth }
+    pub fn new(repo: Arc<dyn AuthRepository>, agency_repo: Arc<dyn AgencyRepository>, auth: Arc<dyn AuthPort>) -> Self {
+        Self { repo, agency_repo, auth }
     }
 
     pub async fn execute(&self, input: StaffLoginInput) -> Result<LoginOutput, AppError> {
         let agency = self
-            .repo
+            .agency_repo
             .find_agency_by_slug(&input.agency_slug)
             .await?
             .ok_or(AppError::Unauthorised)?;
@@ -118,12 +119,13 @@ pub struct PortalLoginInput {
 
 pub struct PortalLoginUseCase {
     pub repo: Arc<dyn AuthRepository>,
+    pub agency_repo: Arc<dyn AgencyRepository>,
     pub auth: Arc<dyn AuthPort>,
 }
 
 impl PortalLoginUseCase {
-    pub fn new(repo: Arc<dyn AuthRepository>, auth: Arc<dyn AuthPort>) -> Self {
-        Self { repo, auth }
+    pub fn new(repo: Arc<dyn AuthRepository>, agency_repo: Arc<dyn AgencyRepository>, auth: Arc<dyn AuthPort>) -> Self {
+        Self { repo, agency_repo, auth }
     }
 
     pub async fn execute(&self, input: PortalLoginInput) -> Result<LoginOutput, AppError> {
@@ -172,7 +174,7 @@ impl PortalLoginUseCase {
         let _ = self.repo.update_last_login(user.id).await;
 
         let agency = self
-            .repo
+            .agency_repo
             .find_agency_by_id(identity.agency_id)
             .await?
             .ok_or(AppError::Unauthorised)?;

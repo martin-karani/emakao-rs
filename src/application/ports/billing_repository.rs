@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::{
     application::errors::AppError,
     // Single canonical source — supersedes domain::agreement::ActiveAgreementBillingView
-    domain::billing::{ActiveAgreementBillingView, LateFeePolicy},
+    domain::billing::{ActiveAgreementBillingView, BillingSettings, BillingSummary, LateFeePolicy},
 };
 
 #[async_trait]
@@ -77,4 +77,17 @@ pub trait BillingRepository: Send + Sync {
         period_start: Date,
         channel: &str,
     ) -> Result<(), AppError>;
+
+    // Property billing settings methods
+    async fn get_billing_settings_by_property_id(
+        &self,
+        property_id: Uuid,
+    ) -> Result<Option<BillingSettings>, AppError>;
+
+    async fn upsert_billing_settings(&self, settings: BillingSettings) -> Result<(), AppError>;
+
+    async fn get_billing_summary_for_agency(
+        &self,
+        agency_id: Uuid,
+    ) -> Result<Vec<BillingSummary>, AppError>;
 }

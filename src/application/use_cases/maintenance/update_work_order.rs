@@ -61,6 +61,8 @@ pub struct UpdateWorkOrderInput {
     pub is_tenant_visible: Option<bool>,
     /// Full replacement of the attachments array (append logic lives in the handler).
     pub attachments: Option<Vec<WorkOrderAttachment>>,
+    /// Full replacement of the subtasks array.
+    pub subtasks: Option<Vec<crate::domain::maintenance::WorkOrderSubtask>>,
 
     // ── Notification recipients (optional) ────────────────────────────────────
     pub notify_resident_email: Option<String>,
@@ -98,6 +100,7 @@ impl UpdateWorkOrderUseCase {
                 actual_cost_kes: input.actual_cost_kes,
                 is_tenant_visible: input.is_tenant_visible,
                 attachments: input.attachments,
+                subtasks: input.subtasks,
             })
             .await?;
 

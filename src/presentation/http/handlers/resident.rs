@@ -114,6 +114,7 @@ pub async fn invite_resident(
     let uc = InviteResidentUseCase {
         resident_repo: Arc::new(PgResidentRepo::from(ctx.pool)),
         auth_repo: state.identity.auth_repo.clone(),
+        agency_repo: state.identity.agency_repo.clone(),
         auth_port: state.identity.auth_port.clone(),
         notifications: state.notifications.clone(),
     };

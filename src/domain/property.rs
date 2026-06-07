@@ -5,6 +5,78 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+// ── Property policies / configuration ────────────────────────────────────────
+
+/// Accepted method of rent / service-charge payment for this property.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentMethodKind {
+    #[default]
+    Mpesa,
+    Bank,
+    Cash,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct PaymentMethod {
+    pub method: PaymentMethodKind,
+    /// e.g. M-Pesa paybill number or bank account number.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_number: Option<String>,
+    /// e.g. bank name or M-Pesa paybill name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_name: Option<String>,
+    /// Free-text instructions printed on rent statements (e.g. "Use unit number as reference").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+}
+
+/// Service charges collected from tenants for shared costs in multi-unit properties.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct ServiceCharges {
+    pub enabled: bool,
+    /// Monthly fee per unit for security (KES).
+    pub security_fee_kes: Decimal,
+    /// Monthly water charge per unit (KES).
+    pub water_rate_per_unit: Decimal,
+    /// Monthly garbage/waste collection fee per unit (KES).
+    pub garbage_fee_kes: Decimal,
+    /// Electricity for common areas — split equally across units (KES total).
+    pub electricity_common_kes: Decimal,
+    /// Any other fixed fees, e.g. `[{"name": "Parking", "amount": 500}]`.
+    #[serde(default)]
+    pub other_fees: Vec<serde_json::Value>,
+}
+
+/// All per-property policy configuration that agents/owners can customise.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct PropertyPolicies {
+    /// Accepted rent payment methods for this property.
+    #[serde(default)]
+    pub payment_methods: Vec<PaymentMethod>,
+    /// Agent management fee as a percentage of collected rent (2.5–10 %).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_commission_percent: Option<Decimal>,
+    /// "flat" or "percent".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub late_fee_type: Option<String>,
+    /// Late-fee amount (KES if flat, percentage if percent).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub late_fee_value: Option<Decimal>,
+    /// Number of days after the due date before a late fee is applied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub late_fee_grace_days: Option<i32>,
+    /// How many months of rent the deposit equals (typically 1–3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deposit_months: Option<i32>,
+    /// Maximum days within which deposit must be refunded after move-out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deposit_refund_days: Option<i32>,
+    /// Service charge config — only relevant for multi-unit properties.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_charges: Option<ServiceCharges>,
+}
+
 // ── PropertyConfig discriminated union ───────────────────────────────────────
 
 /// The `type` field discriminates the variant (e.g. `"single_family"`).
@@ -55,6 +127,10 @@ pub enum BillingCycle {
 pub struct UnitType {
     pub id: Uuid,
     pub name: String,
+    /// Optional category label, e.g. `"studio"`, `"1br"`, `"penthouse"`.
+    /// Free-form string so agencies can define their own taxonomy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit_type: Option<String>,
     pub bedrooms: i16,
     pub bathrooms: i16,
     pub base_rent: Option<Decimal>,
@@ -76,6 +152,9 @@ pub struct Property {
     pub photos: Vec<String>,
     pub documents: Vec<PropertyDocument>,
     pub maintenance: PropertyMaintenanceConfig,
+    /// Per-property policy settings: payment methods, agent commission,
+    /// late-fee overrides, deposit rules, service charges.
+    pub policies: Option<PropertyPolicies>,
     pub created_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -149,6 +228,8 @@ pub struct UpdatePropertyCommand {
     pub address: Option<String>,
     pub city: Option<String>,
     pub work_order_prefix: Option<String>,
+    /// When `Some`, replaces the entire policies blob. `None` = leave unchanged.
+    pub policies: Option<PropertyPolicies>,
 }
 
 // ── Unit commands ─────────────────────────────────────────────────────────────

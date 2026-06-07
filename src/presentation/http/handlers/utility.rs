@@ -28,7 +28,7 @@ use crate::{
     },
     domain::auth::AuthenticatedUser,
     infrastructure::db::{
-        property_billing_repository_sqlx::PgPropertyBillingRepo,
+        billing_repository_sqlx::PgBillingRepo,
         utility_repository_sqlx::PgUtilityRepo,
     },
     presentation::{
@@ -243,7 +243,7 @@ pub async fn generate_bill(
     require_feature!(state, ctx.agency.id, "utility_billing");
 
     let repo = Arc::new(PgUtilityRepo::from(ctx.pool.clone()));
-    let billing_repo = Arc::new(PgPropertyBillingRepo::new(ctx.pool));
+    let billing_repo = Arc::new(PgBillingRepo::for_agency(ctx.pool, ctx.agency.id));
 
     let bill = GenerateBillUseCase::new(repo, billing_repo)
         .execute(id)

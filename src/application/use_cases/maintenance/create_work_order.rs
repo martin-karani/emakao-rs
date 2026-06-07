@@ -125,6 +125,7 @@ impl CreateWorkOrderUseCase {
                 is_tenant_visible: input.is_tenant_visible,
                 internal_notes: input.internal_notes.clone(),
                 attachments: input.attachments,
+                subtasks: vec![],
             })
             .await?;
 

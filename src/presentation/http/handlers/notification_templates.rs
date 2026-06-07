@@ -14,8 +14,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
 use crate::{
     application::{
@@ -26,71 +24,21 @@ use crate::{
             upsert_template::{UpsertTemplateInput, UpsertTemplateUseCase},
         },
     },
-    domain::{auth::AuthenticatedUser, notification_template::NotificationTemplate},
+    domain::auth::AuthenticatedUser,
     infrastructure::{
         db::notification_template_repository_sqlx::PgNotificationTemplateRepo,
         notifications::template_validator::MiniJinjaValidator,
     },
-    presentation::app_state::AppState,
+    presentation::{
+        app_state::AppState,
+        http::{
+            dto::notification_template::{
+                DeleteTemplateQuery, ListTemplatesQuery, UpsertTemplateRequest,
+            },
+            responses::notification_template::NotificationTemplateResponse,
+        },
+    },
 };
-
-// ── Response DTO ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct NotificationTemplateResponse {
-    pub id: uuid::Uuid,
-    pub property_id: Option<uuid::Uuid>,
-    pub channel: String,
-    pub event_key: String,
-    pub locale: String,
-    pub subject: Option<String>,
-    pub body: String,
-}
-
-impl From<NotificationTemplate> for NotificationTemplateResponse {
-    fn from(t: NotificationTemplate) -> Self {
-        Self {
-            id: t.id,
-            property_id: t.property_id,
-            channel: t.channel,
-            event_key: t.event_key,
-            locale: t.locale,
-            subject: t.subject,
-            body: t.body,
-        }
-    }
-}
-
-// ── Request DTOs ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct ListTemplatesQuery {
-    pub property_id: Option<uuid::Uuid>,
-    pub channel: Option<String>,
-    pub event_key: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpsertTemplateRequest {
-    pub property_id: Option<uuid::Uuid>,
-    #[serde(default = "default_locale")]
-    pub locale: String,
-    pub subject: Option<String>,
-    pub body: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DeleteTemplateQuery {
-    pub property_id: Option<uuid::Uuid>,
-    #[serde(default = "default_locale")]
-    pub locale: String,
-}
-
-fn default_locale() -> String {
-    "en".into()
-}
-
-// ── Handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn list_templates(
     State(state): State<AppState>,
@@ -138,8 +86,6 @@ pub async fn upsert_template(
     let repo = Arc::new(PgNotificationTemplateRepo::new(
         state.infra.tenant_pools.platform().clone(),
     ));
-    // The MiniJinja environment lives in AppState; we wrap it in the
-    // infrastructure adapter that implements the `TemplateValidator` port.
     let validator = Arc::new(MiniJinjaValidator::new((*state.jinja).clone()));
 
     UpsertTemplateUseCase::new(repo, validator)
@@ -154,7 +100,6 @@ pub async fn upsert_template(
         })
         .await?;
 
-    // Audit — template mutations are always logged.
     state
         .customisation()
         .audit

@@ -3,7 +3,7 @@ use crate::{
         errors::AppError,
         ports::auth_repository::{
             AuthRepository, ConsumedInvite, CreateInviteTokenCommand, CreateMembershipCommand,
-            CreateUserCommand, PasswordResetToken, PortalIdentity, SlimAgency, StaffMember,
+            CreateUserCommand, PasswordResetToken, PortalIdentity, StaffMember,
             UpsertPortalIndexCommand,
         },
     },
@@ -194,82 +194,6 @@ impl AuthRepository for PgAuthRepo {
 
         use sqlx::Row;
         Ok(row.map(|r| (r.get("role"), r.get("is_active"))))
-    }
-
-    async fn find_agency_by_slug(&self, slug: &str) -> Result<Option<SlimAgency>, AppError> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, slug, schema_name, fga_store_id
-            FROM agencies WHERE slug = $1 AND status::text = 'active'
-            "#,
-        )
-        .bind(slug)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
-
-        use sqlx::Row;
-        Ok(row.map(|r| SlimAgency {
-            id: r.get("id"),
-            name: r.get("name"),
-            slug: r.get("slug"),
-            schema_name: r.get("schema_name"),
-            fga_store_id: r.get("fga_store_id"),
-        }))
-    }
-
-    async fn find_agency_by_id(&self, id: Uuid) -> Result<Option<SlimAgency>, AppError> {
-        let row = sqlx::query(
-            r#"
-            SELECT id, name, slug, schema_name, fga_store_id
-            FROM agencies WHERE id = $1 AND status::text = 'active'
-            "#,
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
-
-        use sqlx::Row;
-        Ok(row.map(|r| SlimAgency {
-            id: r.get("id"),
-            name: r.get("name"),
-            slug: r.get("slug"),
-            schema_name: r.get("schema_name"),
-            fga_store_id: r.get("fga_store_id"),
-        }))
-    }
-
-    // ── Existence guard ───────────────────────────────────────────────────────
-    async fn contact_exists_for_agency(
-        &self,
-        agency_id: Uuid,
-        contact: &str,
-        contact_type: &str,
-        role: &str,
-    ) -> Result<bool, AppError> {
-        let exists: Option<bool> = sqlx::query_scalar(
-            r#"
-            SELECT EXISTS (
-                SELECT 1
-                FROM portal_user_index pui
-                JOIN user_agency_roles uar ON uar.id = pui.membership_id
-                WHERE pui.contact = $1
-                  AND pui.contact_type = $2::contact_type
-                  AND uar.agency_id = $3
-                  AND uar.role = $4::user_role
-            )
-            "#,
-        )
-        .bind(contact)
-        .bind(contact_type)
-        .bind(agency_id)
-        .bind(role)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
-
-        Ok(exists.unwrap_or(false))
     }
 
     // ── Write methods ─────────────────────────────────────────────────────────

@@ -350,6 +350,7 @@ pub async fn update_work_order(
             actual_cost_kes: dto.actual_cost_kes,
             is_tenant_visible: dto.is_tenant_visible,
             attachments: dto.attachments,
+            subtasks: dto.subtasks,
             notify_resident_email: None,
             notify_resident_phone: None,
         })

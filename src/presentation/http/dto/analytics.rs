@@ -1,8 +1,10 @@
-//
-// Query parameters for analytics endpoints are defined directly
-// inside the handler file (analytics.rs) as `AnalyticsParams`,
-// because they carry `time::Date` fields that need the utoipa
-// IntoParams derive close to the handler.
-//
-// This module is a placeholder for any future request-body DTOs,
-// such as a scheduled-export configuration payload.
+use serde::Deserialize;
+use utoipa::IntoParams;
+use uuid::Uuid;
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct AnalyticsParams {
+    pub from: time::Date,
+    pub to: time::Date,
+    pub property_id: Option<Uuid>,
+}

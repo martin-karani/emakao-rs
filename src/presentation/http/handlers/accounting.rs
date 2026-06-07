@@ -6,10 +6,6 @@ use axum::{
     response::IntoResponse,
     Extension, Json,
 };
-use rust_decimal::Decimal;
-use serde::Deserialize;
-use time::Date;
-use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
@@ -26,7 +22,7 @@ use crate::{
         },
     },
     domain::{
-        accounting::{AccountType, JournalEntryStatus, JournalLine},
+        accounting::{AccountType, JournalEntryStatus},
         auth::AuthenticatedUser,
     },
     infrastructure::db::accounting_repository_sqlx::PgAccountingRepo,
@@ -35,6 +31,10 @@ use crate::{
         error::ErrorResponse,
         extractors::AgencyContext,
         http::{
+            dto::accounting::{
+                CreateAccountDto, ListAccountsParams, ListJournalEntriesParams, PostJournalEntryDto,
+                VatReportParams,
+            },
             helpers::permission::check_permission,
             responses::accounting::{
                 AccountResponse, JournalEntryResponse, TrialBalanceResponse, VatReportResponse,
@@ -42,61 +42,6 @@ use crate::{
         },
     },
 };
-
-// ── Query params ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct ListAccountsParams {
-    pub account_type: Option<String>,
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
-
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct ListJournalEntriesParams {
-    pub status: Option<String>,
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
-
-#[derive(Debug, Deserialize, IntoParams)]
-pub struct VatReportParams {
-    pub period_start: Date,
-    pub period_end: Date,
-}
-
-fn default_limit() -> i64 {
-    50
-}
-
-// ── Request bodies ────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateAccountDto {
-    pub code: String,
-    pub name: String,
-    pub account_type: AccountType,
-    #[serde(default)]
-    pub vat_applicable: bool,
-    pub vat_rate: Option<Decimal>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct PostJournalEntryDto {
-    pub reference: String,
-    pub description: Option<String>,
-    pub lines: Vec<JournalLine>,
-    #[serde(default = "bool_true")]
-    pub post_immediately: bool,
-}
-
-fn bool_true() -> bool {
-    true
-}
 
 // ── Accounts ──────────────────────────────────────────────────────────────────
 

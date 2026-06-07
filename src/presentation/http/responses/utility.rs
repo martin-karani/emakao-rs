@@ -1,3 +1,9 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Removed recorded_by (internal audit detail)
+// ─────────────────────────────────────────────────────────────────────────────
+
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -8,6 +14,7 @@ use crate::domain::{
     enums::{BillingMode, MeterType, UtilityBillStatus},
     utility::{MeterReading, UtilityBill, UtilityMeter},
 };
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UtilityMeterResponse {
     pub id: Uuid,
@@ -16,6 +23,7 @@ pub struct UtilityMeterResponse {
     pub billing_mode: BillingMode,
     pub meter_number: String,
     pub rate_per_unit: Decimal,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 
@@ -38,10 +46,12 @@ pub struct MeterReadingResponse {
     pub id: Uuid,
     pub meter_id: Uuid,
     pub reading_value: Decimal,
+    #[serde(with = "time::serde::rfc3339")]
     pub read_at: OffsetDateTime,
-    pub recorded_by: Uuid,
 }
 
+// recorded_by intentionally excluded — internal audit detail.
+// Use GET /api/v1/audit-log?entity=meter_reading&id={id} for actor history.
 impl From<MeterReading> for MeterReadingResponse {
     fn from(r: MeterReading) -> Self {
         Self {
@@ -49,7 +59,6 @@ impl From<MeterReading> for MeterReadingResponse {
             meter_id: r.meter_id,
             reading_value: r.reading_value,
             read_at: r.read_at,
-            recorded_by: r.recorded_by,
         }
     }
 }
@@ -62,6 +71,7 @@ pub struct UtilityBillResponse {
     pub units_consumed: Decimal,
     pub amount_kes: Decimal,
     pub status: UtilityBillStatus,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 

@@ -36,8 +36,6 @@ use axum::{
     response::IntoResponse,
     Extension, Json,
 };
-use serde::Serialize;
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -46,7 +44,10 @@ use crate::{
         helpers::upload::{attachment_s3_key, ext_from_mime, validate_mime, validate_size},
     },
     domain::auth::AuthenticatedUser,
-    presentation::app_state::AppState,
+    presentation::{
+        app_state::AppState,
+        http::responses::upload::UploadResponse,
+    },
 };
 
 // ── Allowed contexts ──────────────────────────────────────────────────────────
@@ -56,19 +57,6 @@ use crate::{
 /// `document` is intentionally absent — persisted files go through
 /// `POST /api/v1/documents`.
 const ALLOWED_CONTEXTS: &[&str] = &["payment_proof", "work_order", "avatar", "property_photo"];
-
-// ── Response ──────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct UploadResponse {
-    /// Canonical S3 object key — store this in the referencing table
-    /// (e.g. `payment_claims.proof_key`).
-    pub key: String,
-    /// 15-minute presigned GET URL for immediate client download.
-    pub url: String,
-    pub content_type: String,
-    pub size_bytes: usize,
-}
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 

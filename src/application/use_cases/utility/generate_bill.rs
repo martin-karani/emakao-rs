@@ -5,7 +5,7 @@ use crate::{
     application::{
         errors::AppError,
         ports::{
-            property_billing_repository::PropertyBillingRepository,
+            billing_repository::BillingRepository,
             utility_repository::UtilityRepository,
         },
     },
@@ -14,13 +14,13 @@ use crate::{
 
 pub struct GenerateBillUseCase {
     pub repo: Arc<dyn UtilityRepository>,
-    pub billing_repo: Arc<dyn PropertyBillingRepository>,
+    pub billing_repo: Arc<dyn BillingRepository>,
 }
 
 impl GenerateBillUseCase {
     pub fn new(
         repo: Arc<dyn UtilityRepository>,
-        billing_repo: Arc<dyn PropertyBillingRepository>,
+        billing_repo: Arc<dyn BillingRepository>,
     ) -> Self {
         Self { repo, billing_repo }
     }
@@ -56,7 +56,7 @@ impl GenerateBillUseCase {
         let mut rate = meter.rate_per_unit;
         if let Ok(Some(settings)) = self
             .billing_repo
-            .get_by_property_id(meter.property_id)
+            .get_billing_settings_by_property_id(meter.property_id)
             .await
         {
             if settings.water_rate_per_unit > rust_decimal::Decimal::ZERO

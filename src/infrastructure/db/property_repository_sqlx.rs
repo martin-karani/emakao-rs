@@ -48,6 +48,7 @@ struct PropertyRow {
     documents: sqlx::types::Json<serde_json::Value>,
     work_order_prefix: Option<String>,
     work_order_seq: Option<i32>,
+    policies: Option<sqlx::types::Json<serde_json::Value>>,
     created_by: Uuid,
     created_at: time::OffsetDateTime,
     updated_at: time::OffsetDateTime,
@@ -70,6 +71,11 @@ impl TryFrom<PropertyRow> for Property {
         let documents = serde_json::from_value(row.documents.0)
             .map_err(|e| AppError::ExternalService(e.to_string()))?;
 
+        let policies = match row.policies {
+            Some(p) => serde_json::from_value(p.0).ok(),
+            None => None,
+        };
+
         Ok(Property {
             id: row.id,
             agency_id: row.agency_id,
@@ -86,6 +92,7 @@ impl TryFrom<PropertyRow> for Property {
                 work_order_prefix: row.work_order_prefix.unwrap_or_default(),
                 work_order_seq: row.work_order_seq.unwrap_or(0),
             },
+            policies,
             created_by: row.created_by,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -104,7 +111,7 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
             WHERE p.agency_id = $1
@@ -137,7 +144,7 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
             WHERE p.id = $1 AND p.agency_id = $2
@@ -278,7 +285,7 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
             WHERE p.id = $1
@@ -308,6 +315,7 @@ impl PropertyRepository for PgPropertyRepo {
             documents: row.get("documents"),
             work_order_prefix: row.get("work_order_prefix"),
             work_order_seq: row.get("work_order_seq"),
+            policies: row.get("policies"),
             created_by: row.get("created_by"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
@@ -318,6 +326,9 @@ impl PropertyRepository for PgPropertyRepo {
 
     async fn update(&self, cmd: UpdatePropertyCommand) -> Result<Property, AppError> {
         // Update properties table
+        let policies_val = cmd
+            .policies
+            .map(|p| serde_json::to_value(p).unwrap_or_default());
         let updated = sqlx::query(
             r#"
             UPDATE properties
@@ -325,6 +336,7 @@ impl PropertyRepository for PgPropertyRepo {
                 name       = COALESCE($3, name),
                 address    = COALESCE($4, address),
                 city       = COALESCE($5, city),
+                policies   = COALESCE($6, policies),
                 updated_at = now()
             WHERE id = $1 AND agency_id = $2
             "#,
@@ -334,6 +346,7 @@ impl PropertyRepository for PgPropertyRepo {
         .bind(cmd.name)
         .bind(cmd.address)
         .bind(cmd.city)
+        .bind(policies_val)
         .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -365,7 +378,7 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
             WHERE p.id = $1

@@ -8,7 +8,19 @@ pub struct CreateAgencyDto {
     pub name: String,
 
     /// Lowercase, hyphen-separated, e.g. "acme-realty".
-    /// Must be unique; becomes both the URL slug and the Postgres schema prefix.
     #[garde(pattern(r"^[a-z0-9]+(?:-[a-z0-9]+)*$"), length(min = 2, max = 63))]
     pub slug: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct PatchAgencySettingsDto {
+    /// JSON object merged into the agency settings document.
+    pub patch: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpsertAgencyIntegrationDto {
+    pub credentials: serde_json::Value,
+    #[serde(default)]
+    pub settings: serde_json::Value,
 }

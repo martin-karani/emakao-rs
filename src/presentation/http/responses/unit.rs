@@ -1,3 +1,8 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 // src/presentation/http/responses/unit.rs
 //
 // Serialisable response type returned from unit endpoints.
@@ -14,18 +19,25 @@ use crate::domain::{enums::UnitStatus, property::Unit};
 pub struct UnitResponse {
     pub id: Uuid,
     pub property_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unit_type_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_unit_id: Option<Uuid>,
     pub unit_number: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub floor: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub size_sqm: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bedrooms: Option<i16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bathrooms: Option<i16>,
     /// Monthly rent in KES (serialised as a decimal string to avoid float drift).
     pub rent_amount_kes: Decimal,
     /// Security deposit in KES.
     pub deposit_kes: Decimal,
     pub status: UnitStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,

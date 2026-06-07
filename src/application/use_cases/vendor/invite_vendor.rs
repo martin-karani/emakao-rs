@@ -11,6 +11,7 @@ use crate::application::{
         templates::{EmailTemplate, SmsTemplate},
     },
     ports::{
+        agency_repository::AgencyRepository,
         auth_port::AuthPort,
         auth_repository::{
             AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand, CreateUserCommand,
@@ -40,6 +41,7 @@ pub struct InviteVendorInput {
 pub struct InviteVendorUseCase {
     pub vendor_repo: Arc<dyn VendorRepository>,
     pub auth_repo: Arc<dyn AuthRepository>,
+    pub agency_repo: Arc<dyn AgencyRepository>,
     pub auth_port: Arc<dyn AuthPort>,
     pub notifications: NotificationService,
 }
@@ -48,12 +50,14 @@ impl InviteVendorUseCase {
     pub fn new(
         vendor_repo: Arc<dyn VendorRepository>,
         auth_repo: Arc<dyn AuthRepository>,
+        agency_repo: Arc<dyn AgencyRepository>,
         auth_port: Arc<dyn AuthPort>,
         notifications: NotificationService,
     ) -> Self {
         Self {
             vendor_repo,
             auth_repo,
+            agency_repo,
             auth_port,
             notifications,
         }
@@ -73,7 +77,7 @@ impl InviteVendorUseCase {
         };
 
         let already_exists = self
-            .auth_repo
+            .agency_repo
             .contact_exists_for_agency(
                 input.agency_id,
                 contact.value(),

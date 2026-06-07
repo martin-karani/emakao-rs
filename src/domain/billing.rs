@@ -1,4 +1,4 @@
-// Pure domain types for the billing automation scheduler.
+// Pure domain types for the billing automation scheduler and property billing settings.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -6,6 +6,7 @@ use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::domain::enums::BillingFrequency;
+use utoipa::ToSchema;
 
 /// One row in `billing_cycles` — written when a rent charge is posted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,4 +231,36 @@ fn days_in_month(year: i32, month: time::Month) -> u8 {
             }
         }
     }
+}
+
+// ── Property billing settings ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, sqlx::FromRow)]
+pub struct BillingSettings {
+    pub property_id: Uuid,
+    pub currency_code: String,
+    pub rent_due_day: i32,
+    pub late_fee_type: String, // "flat" | "percent"
+    pub late_fee_value: Decimal,
+    pub late_fee_grace_days: i32,
+
+    pub water_rate_per_unit: Decimal,
+    pub garbage_fee_kes: Decimal,
+    pub security_fee_kes: Decimal,
+
+    pub other_fixed_fees: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, sqlx::FromRow)]
+pub struct BillingSummary {
+    pub property_id: Uuid,
+    pub property_name: String,
+    pub currency_code: String,
+    pub rent_due_day: i32,
+    pub late_fee_type: String,
+    pub late_fee_value: Decimal,
+    pub late_fee_grace_days: i32,
+    pub water_rate_per_unit: Decimal,
+    pub garbage_fee_kes: Decimal,
+    pub security_fee_kes: Decimal,
 }

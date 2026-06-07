@@ -1,14 +1,23 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added ToSchema derives
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use serde::Serialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use time::OffsetDateTime;
 use crate::domain::tax::{TaxObligation, TaxComplianceSummary};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TaxObligationResponse {
     pub id: Uuid,
     pub agency_id: Uuid,
     pub owner_id: Uuid,
     pub property_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub agreement_id: Option<Uuid>,
     pub obligation_type: String,
     pub tax_period: String,
@@ -17,11 +26,17 @@ pub struct TaxObligationResponse {
     pub tax_rate: String,
     pub due_date: String,
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub kra_prn: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub kra_ack_number: Option<String>,
+    #[serde(with = "time::serde::rfc3339::option", skip_serializing_if = "Option::is_none")]
     pub filed_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option", skip_serializing_if = "Option::is_none")]
     pub remitted_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 
@@ -50,7 +65,7 @@ impl From<TaxObligation> for TaxObligationResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TaxComplianceSummaryResponse {
     pub total_mri_kes: String,
     pub total_vat_kes: String,

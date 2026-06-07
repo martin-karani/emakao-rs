@@ -1,4 +1,4 @@
-// src/application/use_cases/agency_integration/upsert_integration.rs
+// src/application/use_cases/agency/upsert_integration.rs
 //
 // Persists provider credentials (encrypted by the repository) and
 // returns the redacted integration record.
@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::application::{
     errors::AppError,
-    ports::agency_integration_repository::{AgencyIntegrationRepository, UpsertIntegrationCommand},
+    ports::agency_repository::{AgencyRepository, UpsertIntegrationCommand},
 };
 
 pub struct UpsertIntegrationInput {
@@ -26,11 +26,11 @@ pub struct UpsertIntegrationInput {
 }
 
 pub struct UpsertIntegrationUseCase {
-    repo: Arc<dyn AgencyIntegrationRepository>,
+    repo: Arc<dyn AgencyRepository>,
 }
 
 impl UpsertIntegrationUseCase {
-    pub fn new(repo: Arc<dyn AgencyIntegrationRepository>) -> Self {
+    pub fn new(repo: Arc<dyn AgencyRepository>) -> Self {
         Self { repo }
     }
 
@@ -43,7 +43,7 @@ impl UpsertIntegrationUseCase {
         }
 
         self.repo
-            .upsert(UpsertIntegrationCommand {
+            .upsert_integration(UpsertIntegrationCommand {
                 agency_id: input.agency_id,
                 provider_type: input.provider_type,
                 provider_key: input.provider_key,

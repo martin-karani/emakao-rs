@@ -17,7 +17,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    domain::agency_settings::CommunicationSettings,
+    domain::agency::CommunicationSettings,
     infrastructure::providers::{EmailMessage, ProviderRegistry},
 };
 

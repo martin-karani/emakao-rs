@@ -16,9 +16,9 @@ use utoipa::OpenApi;
 
         // ── Agency Admin ──────────────────────────────────────────────────────
         crate::presentation::http::handlers::agency::create_agency,
-        crate::presentation::http::handlers::agency::write_permission_tuple,
-        crate::presentation::http::handlers::agency::delete_permission_tuple,
-        crate::presentation::http::handlers::agency::update_auth_model,
+        crate::presentation::http::handlers::agency::grant_permission_tuple,
+        crate::presentation::http::handlers::agency::revoke_permission_tuple,
+        crate::presentation::http::handlers::agency::publish_auth_model,
         crate::presentation::http::handlers::agency::create_staff_user,
 
           // ── Staff management ──────────────────────────────────────────────────
@@ -180,6 +180,10 @@ use utoipa::OpenApi;
         // ── Domain enums ──────────────────────────────────────────────────────
         crate::domain::enums::PropertyType,
         crate::domain::property::PropertyConfig,
+        crate::domain::property::PropertyPolicies,
+        crate::domain::property::PaymentMethod,
+        crate::domain::property::PaymentMethodKind,
+        crate::domain::property::ServiceCharges,
         crate::domain::property::PropertyDocument,
         crate::domain::property::BuildingClass,
         crate::domain::property::BillingCycle,
@@ -295,26 +299,26 @@ use utoipa::OpenApi;
         // NOTE: ListDocumentsParams uses IntoParams (query string), not ToSchema.
         // It must NOT appear here — only in the handler's params() annotation.
         crate::presentation::http::responses::document::DocumentResponse,
-        crate::presentation::http::handlers::upload::UploadResponse,
+        crate::presentation::http::responses::upload::UploadResponse,
 
         // ── Inspections ───────────────────────────────────────────────────────
-        crate::presentation::http::handlers::inspection::CreateInspectionDto,
-        crate::presentation::http::handlers::inspection::UpdateInspectionDto,
-        crate::presentation::http::handlers::inspection::ListInspectionsParams,
+        crate::presentation::http::dto::inspection::CreateInspectionDto,
+        crate::presentation::http::dto::inspection::UpdateInspectionDto,
         crate::presentation::http::responses::inspection::InspectionResponse,
 
         // ── Invoices ──────────────────────────────────────────────────────────
+        crate::presentation::http::dto::invoice::CreateInvoiceDto,
+        crate::presentation::http::dto::invoice::UpdateInvoiceStatusDto,
         crate::presentation::http::responses::invoice::InvoiceResponse,
 
         // ── Disbursements ─────────────────────────────────────────────────────
-        crate::presentation::http::handlers::disbursement::CreateDisbursementDto,
-        crate::presentation::http::handlers::disbursement::UpdateDisbursementStatusDto,
-        crate::presentation::http::handlers::disbursement::ListDisbursementsParams,
+        crate::presentation::http::dto::disbursement::CreateDisbursementDto,
+        crate::presentation::http::dto::disbursement::UpdateDisbursementStatusDto,
         crate::presentation::http::responses::disbursement::DisbursementResponse,
 
         // ── Accounting ────────────────────────────────────────────────────────
-        crate::presentation::http::handlers::accounting::CreateAccountDto,
-        crate::presentation::http::handlers::accounting::PostJournalEntryDto,
+        crate::presentation::http::dto::accounting::CreateAccountDto,
+        crate::presentation::http::dto::accounting::PostJournalEntryDto,
         crate::presentation::http::responses::accounting::AccountResponse,
         crate::presentation::http::responses::accounting::JournalLineResponse,
         crate::presentation::http::responses::accounting::JournalEntryResponse,
@@ -324,28 +328,28 @@ use utoipa::OpenApi;
         crate::presentation::http::responses::accounting::VatReportResponse,
 
         // ── Bank reconciliation ───────────────────────────────────────────────
-        crate::presentation::http::handlers::bank_reconciliation::ImportStatementDto,
-        crate::presentation::http::handlers::bank_reconciliation::ImportStatementLineDto,
-        crate::presentation::http::handlers::bank_reconciliation::MatchLineDto,
+        crate::presentation::http::dto::bank_reconciliation::ImportStatementDto,
+        crate::presentation::http::dto::bank_reconciliation::ImportStatementLineDto,
+        crate::presentation::http::dto::bank_reconciliation::MatchLineDto,
         crate::presentation::http::responses::bank_reconciliation::BankStatementResponse,
         crate::presentation::http::responses::bank_reconciliation::BankStatementLineResponse,
         crate::presentation::http::responses::bank_reconciliation::ReconciliationReportResponse,
 
         // ── Subscription ──────────────────────────────────────────────────────
-        crate::presentation::http::handlers::subscription::PlanResponse,
-        crate::presentation::http::handlers::subscription::SubscriptionStatusResponse,
-        crate::presentation::http::handlers::subscription::ChangePlanDto,
-        crate::presentation::http::handlers::subscription::CancelDto,
-        crate::presentation::http::handlers::subscription::SetOverrideDto,
-        crate::presentation::http::handlers::subscription::InitiatePaymentDto,
-        crate::presentation::http::handlers::subscription::InitiatePaymentResponse,
+        crate::presentation::http::responses::subscription::PlanResponse,
+        crate::presentation::http::responses::subscription::SubscriptionStatusResponse,
+        crate::presentation::http::dto::subscription::ChangePlanDto,
+        crate::presentation::http::dto::subscription::CancelDto,
+        crate::presentation::http::dto::subscription::SetOverrideDto,
+        crate::presentation::http::dto::subscription::InitiatePaymentDto,
+        crate::presentation::http::responses::subscription::InitiatePaymentResponse,
 
         // ── Webhooks ──────────────────────────────────────────────────────────
-        crate::presentation::http::handlers::webhook::MpesaCallback,
-        crate::presentation::http::handlers::webhook::MpesaCallbackBody,
-        crate::presentation::http::handlers::webhook::StkCallback,
-        crate::presentation::http::handlers::webhook::CallbackMetadata,
-        crate::presentation::http::handlers::webhook::CallbackItem,
+        crate::presentation::http::dto::webhook::MpesaCallback,
+        crate::presentation::http::dto::webhook::MpesaCallbackBody,
+        crate::presentation::http::dto::webhook::StkCallback,
+        crate::presentation::http::dto::webhook::CallbackMetadata,
+        crate::presentation::http::dto::webhook::CallbackItem,
 
         // ── Health ────────────────────────────────────────────────────────────
         crate::presentation::http::responses::health::HealthResponse,

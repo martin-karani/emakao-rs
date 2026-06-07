@@ -6,7 +6,7 @@ use axum::{
     response::Response,
 };
 
-use crate::{domain::agency_settings::AgencySettings, presentation::app_state::AppState};
+use crate::{domain::agency::AgencySettings, presentation::app_state::AppState};
 
 /// The typed agency-id wrapper expected in extensions.
 /// Must be inserted earlier in the middleware stack (e.g. by JWT validation).

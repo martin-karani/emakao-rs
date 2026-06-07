@@ -1,7 +1,5 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
-use serde::Deserialize;
 use sqlx::Row;
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -12,23 +10,12 @@ use crate::{
     infrastructure::{
         db::resident_repository_sqlx::PgResidentRepo, notifications::dispatcher::Recipient,
     },
-    presentation::{app_state::AppState, extractors::AgencyContext},
+    presentation::{
+        app_state::AppState,
+        extractors::AgencyContext,
+        http::dto::communication::{BroadcastNoticeRequest, BroadcastStatementRequest},
+    },
 };
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct BroadcastNoticeRequest {
-    pub subject: String,
-    pub body: String,
-    /// "sms" | "email" | "both"
-    pub channels: String,
-    /// Mandatory: filter by property
-    pub property_id: Uuid,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct BroadcastStatementRequest {
-    pub property_id: Uuid,
-}
 
 /// POST /api/v1/communication/broadcast
 #[utoipa::path(

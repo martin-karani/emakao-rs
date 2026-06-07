@@ -25,7 +25,11 @@ use uuid::Uuid;
 use crate::{
     application::{
         errors::AppError,
-        ports::{property_repository::PropertyRepository, unit_repository::UnitRepository},
+        ports::{
+            billing_repository::BillingRepository,
+            property_repository::PropertyRepository,
+            unit_repository::UnitRepository,
+        },
         use_cases::property::{
             create_property::{
                 CreatePropertyInput, CreatePropertyUseCase, NewCaretakerInput, UnitTypeInput,
@@ -37,11 +41,18 @@ use crate::{
         },
     },
     domain::{
-        agency_settings::AgencySettings, auth::AuthenticatedUser, property::UpdatePropertyCommand,
+        agency::AgencySettings,
+        auth::AuthenticatedUser,
+        billing::BillingSettings,
+        property::UpdatePropertyCommand,
     },
     infrastructure::{
         audit::AuditEvent,
-        db::{property_repository_sqlx::PgPropertyRepo, unit_repository_sqlx::PgUnitRepo},
+        db::{
+            billing_repository_sqlx::PgBillingRepo,
+            property_repository_sqlx::PgPropertyRepo,
+            unit_repository_sqlx::PgUnitRepo,
+        },
     },
     presentation::{
         app_state::AppState,
@@ -50,7 +61,7 @@ use crate::{
         http::{
             dto::property::{CreatePropertyDto, ListPropertiesParams, UpdatePropertyDto},
             helpers::permission::check_permission,
-            responses::property::PropertyResponse,
+            responses::property::{PropertyResponse, PropertySummaryResponse},
         },
         middleware::subscription::ResolvedSubscription,
         // Macros declared in src/presentation/macros.rs
@@ -67,7 +78,7 @@ use crate::{
     path = "/api/v1/properties",
     params(ListPropertiesParams),
     responses(
-        (status = 200, description = "List of properties",     body = Vec<PropertyResponse>),
+        (status = 200, description = "List of properties",     body = Vec<PropertySummaryResponse>),
         (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
         (status = 402, description = "Subscription inactive",  body = ErrorResponse),
     ),
@@ -105,7 +116,7 @@ pub async fn list_properties(
     Ok(Json(
         items
             .into_iter()
-            .map(PropertyResponse::from)
+            .map(PropertySummaryResponse::from)
             .collect::<Vec<_>>(),
     ))
 }
@@ -245,6 +256,7 @@ pub async fn create_property(
                 .into_iter()
                 .map(|ut| UnitTypeInput {
                     name: ut.name,
+                    unit_type: ut.unit_type,
                     bedrooms: ut.bedrooms,
                     bathrooms: ut.bathrooms,
                     base_rent: ut.base_rent,
@@ -343,7 +355,7 @@ pub async fn update_property(
     let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool));
     let usecase = UpdatePropertyUseCase::new(repo);
 
-    let property = usecase
+        let property = usecase
         .execute(UpdatePropertyCommand {
             id,
             agency_id: ctx.agency.id,
@@ -351,6 +363,7 @@ pub async fn update_property(
             address: dto.address,
             city: dto.city,
             work_order_prefix: dto.work_order_prefix,
+            policies: dto.policies,
         })
         .await?;
 
@@ -429,7 +442,47 @@ pub async fn delete_property(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ── Internal helper ───────────────────────────────────────────────────────────
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+/// GET /api/v1/properties/{id}/billing
+pub async fn get_property_billing(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(property_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo = PgBillingRepo::for_agency(tenant_pool(&state, user.agency_id).await?, user.agency_id);
+    let settings = repo.get_billing_settings_by_property_id(property_id).await?.ok_or_else(|| {
+        AppError::NotFound(format!("billing settings for property {property_id}"))
+    })?;
+
+    Ok(Json(settings))
+}
+
+/// PUT /api/v1/properties/{id}/billing
+pub async fn upsert_property_billing(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(property_id): Path<Uuid>,
+    Json(mut settings): Json<BillingSettings>,
+) -> Result<impl IntoResponse, AppError> {
+    settings.property_id = property_id;
+
+    let repo = PgBillingRepo::for_agency(tenant_pool(&state, user.agency_id).await?, user.agency_id);
+    repo.upsert_billing_settings(settings).await?;
+
+    Ok(StatusCode::OK)
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+async fn tenant_pool(state: &AppState, agency_id: Uuid) -> Result<sqlx::PgPool, AppError> {
+    state
+        .infra
+        .tenant_pools
+        .for_agency(agency_id)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))
+}
 
 /// Load AgencySettings from the customisation cache.
 /// Returns `None` gracefully when the customisation layer has not been

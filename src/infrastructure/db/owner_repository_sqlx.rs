@@ -310,6 +310,7 @@ impl OwnerRepository for PgOwnerRepo {
             documents: sqlx::types::Json<serde_json::Value>,
             work_order_prefix: Option<String>,
             work_order_seq: Option<i32>,
+            policies: Option<sqlx::types::Json<serde_json::Value>>,
             created_by: Uuid,
             created_at: time::OffsetDateTime,
             updated_at: time::OffsetDateTime,
@@ -322,7 +323,7 @@ impl OwnerRepository for PgOwnerRepo {
             p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
             p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
             mc.work_order_prefix, mc.work_order_seq,
-            p.created_by, p.created_at, p.updated_at,
+            p.policies, p.created_by, p.created_at, p.updated_at,
             po.ownership_percent
         FROM properties p
         JOIN property_owners po ON po.property_id = p.id
@@ -351,6 +352,11 @@ impl OwnerRepository for PgOwnerRepo {
                 let documents = serde_json::from_value(row.documents.0)
                     .map_err(|e| AppError::ExternalService(e.to_string()))?;
 
+                let policies = match row.policies {
+                    Some(p) => serde_json::from_value(p.0).ok(),
+                    None => None,
+                };
+
                 let property = Property {
                     id: row.id,
                     agency_id: row.agency_id,
@@ -367,6 +373,7 @@ impl OwnerRepository for PgOwnerRepo {
                         work_order_prefix: row.work_order_prefix.unwrap_or_default(),
                         work_order_seq: row.work_order_seq.unwrap_or(0),
                     },
+                    policies,
                     created_by: row.created_by,
                     created_at: row.created_at,
                     updated_at: row.updated_at,

@@ -11,6 +11,7 @@ use crate::application::{
         templates::{EmailTemplate, SmsTemplate},
     },
     ports::{
+        agency_repository::AgencyRepository,
         auth_port::AuthPort,
         auth_repository::{
             AuthRepository, CreateInviteTokenCommand, CreateMembershipCommand, CreateUserCommand,
@@ -41,6 +42,7 @@ pub struct InviteResidentOutput {
 pub struct InviteResidentUseCase {
     pub resident_repo: Arc<dyn ResidentRepository>,
     pub auth_repo: Arc<dyn AuthRepository>,
+    pub agency_repo: Arc<dyn AgencyRepository>,
     pub auth_port: Arc<dyn AuthPort>,
     pub notifications: NotificationService,
 }
@@ -63,7 +65,7 @@ impl InviteResidentUseCase {
         };
 
         let already_exists = self
-            .auth_repo
+            .agency_repo
             .contact_exists_for_agency(
                 input.agency_id,
                 contact.value(),

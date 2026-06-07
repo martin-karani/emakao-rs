@@ -5,8 +5,6 @@ use axum::{
     response::IntoResponse,
     Extension, Json,
 };
-use serde::Deserialize;
-use utoipa::IntoParams;
 
 use crate::{
     application::{
@@ -17,15 +15,12 @@ use crate::{
     infrastructure::db::dashboard_repository_sqlx::PgDashboardRepo,
     presentation::{
         app_state::AppState, error::ErrorResponse, extractors::AgencyContext,
-        http::helpers::permission::check_permission,
+        http::{
+            dto::dashboard::DashboardParams,
+            helpers::permission::check_permission,
+        },
     },
 };
-
-#[derive(Debug, Deserialize, IntoParams)]
-pub struct DashboardParams {
-    /// How many days ahead to look for expiring leases (default 60, max 180).
-    pub expiring_days: Option<i64>,
-}
 
 /// GET /api/v1/dashboard
 ///

@@ -5,7 +5,7 @@ use crate::{
     application::{
         errors::AppError,
         ports::{
-            auth_port::AuthPort,
+            agency_repository::AgencyRepository, auth_port::AuthPort,
             auth_repository::{AuthRepository, CreateMembershipCommand, CreateUserCommand},
         },
     },
@@ -14,6 +14,7 @@ use crate::{
 
 pub struct RegisterUseCase {
     pub repo: Arc<dyn AuthRepository>,
+    pub agency_repo: Arc<dyn AgencyRepository>,
     pub auth: Arc<dyn AuthPort>,
 }
 
@@ -25,8 +26,8 @@ pub struct RegisterInput {
 }
 
 impl RegisterUseCase {
-    pub fn new(repo: Arc<dyn AuthRepository>, auth: Arc<dyn AuthPort>) -> Self {
-        Self { repo, auth }
+    pub fn new(repo: Arc<dyn AuthRepository>, agency_repo: Arc<dyn AgencyRepository>, auth: Arc<dyn AuthPort>) -> Self {
+        Self { repo, agency_repo, auth }
     }
 
     pub async fn execute(&self, input: RegisterInput) -> Result<StoredUser, AppError> {
@@ -36,9 +37,9 @@ impl RegisterUseCase {
             ));
         }
 
-        // Uses: AuthRepository::contact_exists_for_agency — guard duplicate
+        // Uses: AgencyRepository::contact_exists_for_agency — guard duplicate
         if self
-            .repo
+            .agency_repo
             .contact_exists_for_agency(input.agency_id, &input.email, "email", &input.role)
             .await?
         {

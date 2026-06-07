@@ -21,10 +21,10 @@ use crate::{
         error::ErrorResponse,
         http::{
             dto::auth::{
-                AcceptInviteDto, ChangePasswordDto, ForgotPasswordDto, MessageResponse,
-                PortalLoginDto, RefreshDto, ResetPasswordDto, StaffLoginDto,
+                AcceptInviteDto, ChangePasswordDto, ForgotPasswordDto, PortalLoginDto, RefreshDto,
+                ResetPasswordDto, StaffLoginDto,
             },
-            responses::auth::{LoginResponse, MeResponse, TokenResponse},
+            responses::auth::{LoginResponse, MeResponse, MessageResponse, TokenResponse},
         },
     },
 };
@@ -53,7 +53,7 @@ pub async fn get_me(
 
     let agency = state
         .identity
-        .auth_repo
+        .agency_repo
         .find_agency_by_id(user.agency_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Agency not found".into()))?;
@@ -90,6 +90,7 @@ pub async fn staff_login(
 
     let out = StaffLoginUseCase::new(
         state.identity.auth_repo.clone(),
+        state.identity.agency_repo.clone(),
         state.identity.auth_port.clone(),
     )
     .execute(StaffLoginInput {
@@ -112,6 +113,7 @@ pub async fn portal_login(
 ) -> Result<impl IntoResponse, AppError> {
     let out = PortalLoginUseCase::new(
         state.identity.auth_repo.clone(),
+        state.identity.agency_repo.clone(),
         state.identity.auth_port.clone(),
     )
     .execute(PortalLoginInput {
@@ -258,7 +260,6 @@ pub async fn logout(
             .await
             .map_err(|e| AppError::ExternalService(format!("blacklist: {e}")))?;
     }
-
 
     tracing::info!(user_id = %user.user_id, jti = %claims.jti, "user logged out");
 

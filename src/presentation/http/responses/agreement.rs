@@ -1,3 +1,9 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::{Date, OffsetDateTime};
@@ -8,6 +14,7 @@ use crate::domain::{
     agreement::Agreement,
     enums::{AgreementStatus, BillingFrequency},
 };
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AgreementResponse {
     pub id: Uuid,
@@ -15,12 +22,15 @@ pub struct AgreementResponse {
     pub unit_id: Uuid,
     pub resident_id: Uuid,
     pub start_date: Date,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub end_date: Option<Date>,
     pub rent_amount_kes: Decimal,
     pub deposit_kes: Decimal,
     pub billing_frequency: BillingFrequency,
     pub status: AgreementStatus,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 

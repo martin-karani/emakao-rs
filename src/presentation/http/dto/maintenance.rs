@@ -3,7 +3,7 @@ use crate::domain::{
         WorkOrderCategory, WorkOrderCommentAuthorType, WorkOrderPriority, WorkOrderReporterType,
         WorkOrderStatus,
     },
-    maintenance::WorkOrderAttachment,
+    maintenance::{WorkOrderAttachment, WorkOrderSubtask},
 };
 use garde::Validate;
 use rust_decimal::Decimal;
@@ -96,6 +96,8 @@ pub struct CreateWorkOrderDto {
     /// Pre-uploaded S3 attachment metadata
     #[garde(skip)]
     pub attachments: Option<Vec<WorkOrderAttachment>>,
+    #[garde(skip)]
+    pub subtasks: Option<Vec<WorkOrderSubtask>>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -135,6 +137,9 @@ pub struct UpdateWorkOrderDto {
     /// Full replacement of the attachments list
     #[garde(skip)]
     pub attachments: Option<Vec<WorkOrderAttachment>>,
+    /// Full replacement of the subtasks list
+    #[garde(skip)]
+    pub subtasks: Option<Vec<crate::domain::maintenance::WorkOrderSubtask>>,
 }
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]

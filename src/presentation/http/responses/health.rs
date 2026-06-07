@@ -1,3 +1,9 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
@@ -6,7 +12,9 @@ use utoipa::ToSchema;
 pub struct ComponentStatus {
     pub ok: bool,
     pub critical: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<u128>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
 
@@ -27,7 +35,9 @@ pub struct DatabasePoolStatus {
 
 #[derive(Serialize, ToSchema)]
 pub struct RuntimeStatus {
+    #[serde(with = "time::serde::rfc3339")]
     pub started_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,
     pub uptime_seconds: i64,
     pub websocket_channels: usize,

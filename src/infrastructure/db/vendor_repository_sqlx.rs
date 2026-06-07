@@ -259,6 +259,7 @@ impl VendorRepository for PgVendorRepo {
             is_tenant_visible: bool,
             internal_notes: Option<String>,
             attachments: serde_json::Value,
+            subtasks: serde_json::Value,
             created_at: time::OffsetDateTime,
             updated_at: time::OffsetDateTime,
         }
@@ -277,6 +278,7 @@ impl VendorRepository for PgVendorRepo {
                 estimated_cost_kes, actual_cost_kes,
                 is_tenant_visible, internal_notes,
                 COALESCE(attachments, '[]'::jsonb) AS attachments,
+                COALESCE(subtasks, '[]'::jsonb) AS subtasks,
                 created_at, updated_at
             FROM work_orders
             WHERE vendor_id = $1
@@ -300,6 +302,8 @@ impl VendorRepository for PgVendorRepo {
 
                 let attachments: Vec<WorkOrderAttachment> =
                     serde_json::from_value(r.attachments).unwrap_or_default();
+                let subtasks: Vec<crate::domain::maintenance::WorkOrderSubtask> =
+                    serde_json::from_value(r.subtasks).unwrap_or_default();
 
                 Ok(WorkOrder {
                     id: r.id,
@@ -328,6 +332,7 @@ impl VendorRepository for PgVendorRepo {
                     is_tenant_visible: r.is_tenant_visible,
                     internal_notes: r.internal_notes,
                     attachments,
+                    subtasks,
                     created_at: r.created_at,
                     updated_at: r.updated_at,
                 })

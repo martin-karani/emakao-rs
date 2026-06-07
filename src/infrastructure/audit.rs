@@ -46,23 +46,23 @@ impl AuditLogger {
         let pool = self.pool.clone();
         tokio::spawn(async move {
             let ip = event.ip_address.map(|ip| ip.to_string());
-            if let Err(e) = sqlx::query!(
+            if let Err(e) = sqlx::query(
                 r#"
                 INSERT INTO audit_log
                     (agency_id, actor_id, actor_role, action,
                      entity_type, entity_id, old_data, new_data, ip_address)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 "#,
-                event.agency_id,
-                event.actor_id,
-                event.actor_role,
-                event.action,
-                event.entity_type,
-                event.entity_id,
-                event.old_data,
-                event.new_data,
-                ip,
             )
+            .bind(event.agency_id)
+            .bind(event.actor_id)
+            .bind(event.actor_role)
+            .bind(event.action)
+            .bind(event.entity_type)
+            .bind(event.entity_id)
+            .bind(event.old_data)
+            .bind(event.new_data)
+            .bind(ip)
             .execute(&pool)
             .await
             {
@@ -76,7 +76,8 @@ impl AuditLogger {
         if let Some(l) = self.levels.get(&agency_id) {
             return l.clone();
         }
-        match sqlx::query_scalar!("SELECT audit_level FROM agencies WHERE id = $1", agency_id)
+        match sqlx::query_scalar::<_, String>("SELECT audit_level FROM agencies WHERE id = $1")
+            .bind(agency_id)
             .fetch_one(&self.pool)
             .await
         {

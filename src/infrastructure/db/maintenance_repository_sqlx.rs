@@ -98,11 +98,16 @@ struct WorkOrderRow {
     is_tenant_visible: bool,
     internal_notes: Option<String>,
     attachments: Value,
+    subtasks: Value,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
 }
 
 fn parse_attachments(v: Value) -> Vec<WorkOrderAttachment> {
+    serde_json::from_value(v).unwrap_or_default()
+}
+
+fn parse_subtasks(v: Value) -> Vec<crate::domain::maintenance::WorkOrderSubtask> {
     serde_json::from_value(v).unwrap_or_default()
 }
 
@@ -243,6 +248,7 @@ impl From<WorkOrderRow> for WorkOrder {
             is_tenant_visible: r.is_tenant_visible,
             internal_notes: r.internal_notes,
             attachments: parse_attachments(r.attachments),
+            subtasks: parse_subtasks(r.subtasks),
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -480,7 +486,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
                    wo.estimated_cost_kes, wo.actual_cost_kes,
-                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments, wo.subtasks,
                    wo.created_at, wo.updated_at
             FROM work_orders wo
             JOIN properties p ON p.id = wo.property_id
@@ -530,7 +536,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
                    wo.estimated_cost_kes, wo.actual_cost_kes,
-                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments, wo.subtasks,
                    wo.created_at, wo.updated_at
             FROM work_orders wo
             JOIN properties p ON p.id = wo.property_id
@@ -561,7 +567,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
                    wo.estimated_cost_kes, wo.actual_cost_kes,
-                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments, wo.subtasks,
                    wo.created_at, wo.updated_at
             FROM work_orders wo
             JOIN agreements ag ON ag.unit_id = wo.unit_id
@@ -597,7 +603,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
                    wo.estimated_cost_kes, wo.actual_cost_kes,
-                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments, wo.subtasks,
                    wo.created_at, wo.updated_at
             FROM work_orders wo
             JOIN caretakers c ON c.property_id = wo.property_id
@@ -631,7 +637,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    assigned_to, assigned_caretaker_id,
                    due_date, scheduled_at, started_at, completed_at,
                    estimated_cost_kes, actual_cost_kes,
-                   is_tenant_visible, internal_notes, attachments,
+                   is_tenant_visible, internal_notes, attachments, subtasks,
                    created_at, updated_at
             FROM work_orders
             WHERE vendor_id = $1::uuid
@@ -665,7 +671,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                    wo.assigned_to, wo.assigned_caretaker_id,
                    wo.due_date, wo.scheduled_at, wo.started_at, wo.completed_at,
                    wo.estimated_cost_kes, wo.actual_cost_kes,
-                   wo.is_tenant_visible, wo.internal_notes, wo.attachments,
+                   wo.is_tenant_visible, wo.internal_notes, wo.attachments, wo.subtasks,
                    wo.created_at, wo.updated_at
             FROM   work_orders wo
             JOIN   properties p ON p.id = wo.property_id
@@ -684,6 +690,8 @@ impl MaintenanceRepository for PgMaintenanceRepo {
     async fn create(&self, cmd: CreateWorkOrderCommand) -> Result<WorkOrder, AppError> {
         let attachments =
             serde_json::to_value(&cmd.attachments).unwrap_or(serde_json::Value::Array(vec![]));
+        let subtasks =
+            serde_json::to_value(&cmd.subtasks).unwrap_or(serde_json::Value::Array(vec![]));
 
         let mut tx = self.pool.begin().await?;
 
@@ -711,7 +719,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 reported_by, reporter_type, reporter_resident_id, reporter_caretaker_id,
                 assigned_to, assigned_caretaker_id,
                 due_date, scheduled_at, estimated_cost_kes,
-                is_tenant_visible, internal_notes, attachments
+                is_tenant_visible, internal_notes, attachments, subtasks
             )
             VALUES (
                 uuidv7(), $1::uuid, $2::uuid, $3::uuid,
@@ -720,7 +728,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 $10::uuid, $11::text::work_order_reporter_type, $12::uuid, $13::uuid,
                 $14::uuid, $15::uuid,
                 $16::date, $17::timestamptz, $18,
-                $19::boolean, $20::text, $21::jsonb
+                $19::boolean, $20::text, $21::jsonb, $22::jsonb
             )
             RETURNING
                 id, property_id, unit_id, vendor_id,
@@ -732,7 +740,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 assigned_to, assigned_caretaker_id,
                 due_date, scheduled_at, started_at, completed_at,
                 estimated_cost_kes, actual_cost_kes,
-                is_tenant_visible, internal_notes, attachments,
+                is_tenant_visible, internal_notes, attachments, subtasks,
                 created_at, updated_at
             "#,
         )
@@ -757,6 +765,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         .bind(cmd.is_tenant_visible)
         .bind(cmd.internal_notes)
         .bind(attachments)
+        .bind(subtasks)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -773,6 +782,10 @@ impl MaintenanceRepository for PgMaintenanceRepo {
             .attachments
             .as_ref()
             .map(|a| serde_json::to_value(a).unwrap_or(Value::Array(vec![])));
+        let subtasks = cmd
+            .subtasks
+            .as_ref()
+            .map(|s| serde_json::to_value(s).unwrap_or(Value::Array(vec![])));
 
         let row = sqlx::query_as::<_, WorkOrderRow>(
             r#"
@@ -793,6 +806,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 actual_cost_kes      = CASE WHEN $23::boolean THEN $24           ELSE actual_cost_kes END,
                 is_tenant_visible    = COALESCE($25::boolean,  is_tenant_visible),
                 attachments          = COALESCE($26::jsonb,    attachments),
+                subtasks             = COALESCE($27::jsonb,    subtasks),
                 updated_at           = now()
             WHERE id = $1::uuid
             RETURNING
@@ -805,7 +819,7 @@ impl MaintenanceRepository for PgMaintenanceRepo {
                 assigned_to, assigned_caretaker_id,
                 due_date, scheduled_at, started_at, completed_at,
                 estimated_cost_kes, actual_cost_kes,
-                is_tenant_visible, internal_notes, attachments,
+                is_tenant_visible, internal_notes, attachments, subtasks,
                 created_at, updated_at
             "#,
         )
@@ -835,12 +849,12 @@ impl MaintenanceRepository for PgMaintenanceRepo {
         .bind(cmd.actual_cost_kes.flatten())
         .bind(cmd.is_tenant_visible)
         .bind(attachments)
-        .fetch_optional(&self.pool).await?
+        .bind(subtasks)
+        .fetch_optional(&self.pool)
+        .await?
         .ok_or_else(|| AppError::NotFound(format!("work order {}", cmd.id)))?;
         Ok(WorkOrder::from(row))
     }
-
-    // ── Comments ──────────────────────────────────────────────────────────────
 
     async fn find_comments(
         &self,

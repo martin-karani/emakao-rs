@@ -1,3 +1,9 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
@@ -20,6 +26,7 @@ pub struct StaffUserResponse {
     /// `true` if the frontend should redirect to /change-password on next login.
     pub must_change_password: bool,
     /// When the user row was created (= when the invite was sent for the invite flow).
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 

@@ -7,10 +7,7 @@ use uuid::Uuid;
 
 use crate::application::{
     notifications::service::NotificationService,
-    ports::{
-        billing_repository::BillingRepository,
-        property_billing_repository::PropertyBillingRepository,
-    },
+    ports::billing_repository::BillingRepository,
 };
 use crate::domain::billing::current_billing_period;
 use crate::infrastructure::db::billing_repository_sqlx::PgBillingRepo;
@@ -55,8 +52,9 @@ pub async fn charge_rent_worker(
 
     let repo = PgBillingRepo::for_agency(pool.clone(), job.agency_id);
     let property_billing_repo =
-        crate::infrastructure::db::property_billing_repository_sqlx::PgPropertyBillingRepo::new(
+        crate::infrastructure::db::billing_repository_sqlx::PgBillingRepo::for_agency(
             pool,
+            job.agency_id,
         );
     let today = OffsetDateTime::now_utc().date();
 
@@ -68,7 +66,7 @@ pub async fn charge_rent_worker(
     for ag in agreements {
         // Load property settings for this agreement's property
         let settings = property_billing_repo
-            .get_by_property_id(ag.property_id)
+            .get_billing_settings_by_property_id(ag.property_id)
             .await
             .ok()
             .flatten();
@@ -154,8 +152,9 @@ pub async fn apply_late_fees_worker(
 
     let repo = PgBillingRepo::for_agency(pool.clone(), job.agency_id);
     let property_billing_repo =
-        crate::infrastructure::db::property_billing_repository_sqlx::PgPropertyBillingRepo::new(
+        crate::infrastructure::db::billing_repository_sqlx::PgBillingRepo::for_agency(
             pool,
+            job.agency_id,
         );
     let today = OffsetDateTime::now_utc().date();
 
@@ -184,7 +183,7 @@ pub async fn apply_late_fees_worker(
 
         // Determine which policy to use
         let property_policy = property_billing_repo
-            .get_by_property_id(ag.property_id)
+            .get_billing_settings_by_property_id(ag.property_id)
             .await
             .ok()
             .flatten();

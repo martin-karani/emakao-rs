@@ -1,6 +1,5 @@
 pub mod accounting;
 pub mod agency;
-pub mod agency_integration;
 pub mod agreement;
 pub mod analytics;
 pub mod auth;
@@ -20,7 +19,6 @@ pub mod payment;
 pub mod property;
 pub mod resident;
 pub mod role;
-pub mod settings_update;
 pub mod subscription;
 pub mod tax;
 pub mod utility;

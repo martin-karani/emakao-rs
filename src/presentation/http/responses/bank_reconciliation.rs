@@ -1,3 +1,12 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added BankStatementSummaryResponse for list endpoints
+//   - Removed created_by (internal audit detail)
+//   - Removed Clone from all response structs
+//   - Added rfc3339 serialization to all OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::{Date, OffsetDateTime};
@@ -11,7 +20,7 @@ use crate::domain::bank_reconciliation::{
 // ── Statement line ────────────────────────────────────────────────────────────
 
 /// A single transaction line from an imported bank statement.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BankStatementLineResponse {
     pub id: Uuid,
     pub statement_id: Uuid,
@@ -19,10 +28,13 @@ pub struct BankStatementLineResponse {
     pub description: String,
     /// Positive = credit / money in.  Negative = debit / money out.
     pub amount: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
     /// UUID of the matched journal entry, if reconciled.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub matched_entry_id: Option<Uuid>,
     pub status: ReconciliationStatus,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 
@@ -42,14 +54,44 @@ impl From<BankStatementLine> for BankStatementLineResponse {
     }
 }
 
+// ── Statement Summary ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BankStatementSummaryResponse {
+    pub id: Uuid,
+    pub agency_id: Uuid,
+    pub bank_name: String,
+    pub account_number: String,
+    pub statement_date: Date,
+    pub opening_balance: Decimal,
+    pub closing_balance: Decimal,
+    pub line_count: usize,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+}
+
+// created_by intentionally excluded — internal audit detail.
+// Use GET /api/v1/audit-log?entity=bank_statement&id={id} for actor history.
+impl From<BankStatement> for BankStatementSummaryResponse {
+    fn from(s: BankStatement) -> Self {
+        Self {
+            id: s.id,
+            agency_id: s.agency_id,
+            bank_name: s.bank_name,
+            account_number: s.account_number,
+            statement_date: s.statement_date,
+            opening_balance: s.opening_balance,
+            closing_balance: s.closing_balance,
+            line_count: s.lines.len(),
+            created_at: s.created_at,
+        }
+    }
+}
+
 // ── Statement ─────────────────────────────────────────────────────────────────
 
 /// A bank statement with its transaction lines.
-///
-/// The `lines` field is populated for single-statement GET requests.
-/// List responses omit lines for performance — use the detail endpoint to
-/// fetch a specific statement with its full set of lines.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BankStatementResponse {
     pub id: Uuid,
     pub agency_id: Uuid,
@@ -58,12 +100,13 @@ pub struct BankStatementResponse {
     pub statement_date: Date,
     pub opening_balance: Decimal,
     pub closing_balance: Decimal,
-    /// Empty for list responses; populated by `GET /api/v1/bank-statements/:id`.
     pub lines: Vec<BankStatementLineResponse>,
-    pub created_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 
+// created_by intentionally excluded — internal audit detail.
+// Use GET /api/v1/audit-log?entity=bank_statement&id={id} for actor history.
 impl From<BankStatement> for BankStatementResponse {
     fn from(s: BankStatement) -> Self {
         Self {
@@ -79,7 +122,6 @@ impl From<BankStatement> for BankStatementResponse {
                 .into_iter()
                 .map(BankStatementLineResponse::from)
                 .collect(),
-            created_by: s.created_by,
             created_at: s.created_at,
         }
     }
@@ -91,7 +133,7 @@ impl From<BankStatement> for BankStatementResponse {
 ///
 /// `unmatched_lines` lists every line that has not yet been linked to a
 /// journal entry — the primary work list for the bookkeeper.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ReconciliationReportResponse {
     pub statement_id: Uuid,
     pub bank_name: String,

@@ -76,8 +76,3 @@ pub struct ResetPasswordDto {
     #[garde(length(min = 8, max = 128))]
     pub new_password: String,
 }
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct MessageResponse {
-    pub message: String,
-}

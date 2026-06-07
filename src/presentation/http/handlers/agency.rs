@@ -1,39 +1,62 @@
-//! HTTP handlers for platform-admin operations: agency provisioning, staff
-//! seeding, and OpenFGA permissions management.
+//! HTTP handlers for agency operations:
 //!
-//! ## Route ownership
+//! **Platform admin** (`/api/v1/admin/agencies/...`)
+//! - Provision agencies, seed staff, manage OpenFGA tuples/models
 //!
-//! | Handler                  | Method | Path                                                          |
-//! |--------------------------|--------|---------------------------------------------------------------|
-//! | `create_agency`          | POST   | `/api/v1/admin/agencies`                                      |
-//! | `create_staff_user`      | POST   | `/api/v1/admin/agencies/{agency_id}/staff`                    |
-//! | `write_permission_tuple` | POST   | `/api/v1/admin/agencies/{fga_store_id}/permissions/tuples`    |
-//! | `delete_permission_tuple`| DELETE | `/api/v1/admin/agencies/{fga_store_id}/permissions/tuples`    |
-//! | `update_auth_model`      | POST   | `/api/v1/admin/agencies/{fga_store_id}/permissions/model`     |
+//! **Tenant customisation** (`/api/agency/...`)
+//! - Settings, third-party integrations, portfolio billing summaries
 
-use axum::{Json, extract::{Path, State}, http::StatusCode, response::IntoResponse};
+use std::sync::Arc;
+
+use axum::{
+    extract::{Extension, Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use garde::Validate;
 use uuid::Uuid;
 
 use crate::{
     application::{
         errors::AppError,
-        ports::role_repository::RoleRepository,
+        ports::{billing_repository::BillingRepository, role_repository::RoleRepository},
         use_cases::{
-            agency::provision::ProvisionAgencyInput,
+            agency::{
+                deactivate_integration::{DeactivateIntegrationInput, DeactivateIntegrationUseCase},
+                list_integrations::ListIntegrationsUseCase,
+                provision::ProvisionAgencyInput,
+                settings_update::{self, UpdateAgencySettingsCommand},
+                upsert_integration::{UpsertIntegrationInput, UpsertIntegrationUseCase},
+            },
             auth::register::{RegisterInput, RegisterUseCase},
         },
     },
-    infrastructure::db::role_repository_sqlx::PgRoleRepo,
+    domain::auth::AuthenticatedUser,
+    infrastructure::db::{
+        agency_repository_sqlx::PgAgencyRepo,
+        billing_repository_sqlx::PgBillingRepo,
+        pool::AgencyPool,
+        role_repository_sqlx::PgRoleRepo,
+    },
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
         http::{
             dto::{
-                agency::CreateAgencyDto,
-                openfga::{DeleteTupleDto, UpdateAuthModelDto, WriteTupleDto}, staff::CreateStaffUserDto,
+                agency::{CreateAgencyDto, PatchAgencySettingsDto, UpsertAgencyIntegrationDto},
+                openfga::{DeleteTupleDto, UpdateAuthModelDto, WriteTupleDto},
+                staff::CreateStaffUserDto,
             },
-            responses::{agency::AgencyResponse, openfga::ModelVersionResponse, staff::CreatedStaffUserResponse},
+            responses::{
+                agency::{
+                    AgencyIntegrationResponse, AgencyResponse, AgencySettingsResponse,
+                    PatchAgencySettingsResponse,
+                },
+                openfga::ModelVersionResponse,
+                property::BillingSummaryResponse,
+                staff::CreatedStaffUserResponse,
+            },
         },
     },
 };
@@ -138,7 +161,7 @@ pub async fn create_staff_user(
     // we can write the FGA tuple without a second DB round-trip.
     let agency = state
         .identity
-        .auth_repo
+        .agency_repo
         .find_agency_by_id(agency_id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("agency {agency_id} not found")))?;
@@ -153,6 +176,7 @@ pub async fn create_staff_user(
 
     let user = RegisterUseCase::new(
         state.identity.auth_repo.clone(),
+        state.identity.agency_repo.clone(),
         state.identity.auth_port.clone(),
     )
     .execute(RegisterInput {
@@ -250,7 +274,7 @@ pub async fn create_staff_user(
     ),
     tag = "Admin"
 )]
-pub async fn write_permission_tuple(
+pub async fn grant_permission_tuple(
     State(state): State<AppState>,
     axum::extract::Path(fga_store_id): axum::extract::Path<String>,
     Json(dto): Json<WriteTupleDto>,
@@ -279,7 +303,7 @@ pub async fn write_permission_tuple(
     ),
     tag = "Admin"
 )]
-pub async fn delete_permission_tuple(
+pub async fn revoke_permission_tuple(
     State(state): State<AppState>,
     axum::extract::Path(fga_store_id): axum::extract::Path<String>,
     Json(dto): Json<DeleteTupleDto>,
@@ -310,7 +334,7 @@ pub async fn delete_permission_tuple(
     ),
     tag = "Admin"
 )]
-pub async fn update_auth_model(
+pub async fn publish_auth_model(
     State(state): State<AppState>,
     axum::extract::Path(fga_store_id): axum::extract::Path<String>,
     Json(dto): Json<UpdateAuthModelDto>,
@@ -323,4 +347,290 @@ pub async fn update_auth_model(
     Ok(Json(ModelVersionResponse {
         authorization_model_id: model_id,
     }))
+}
+
+// ── Tenant settings ───────────────────────────────────────────────────────────
+
+/// GET /api/agency/settings
+#[utoipa::path(
+    get,
+    path = "/api/agency/settings",
+    tag = "Agency",
+    responses(
+        (status = 200, description = "Agency settings", body = AgencySettingsResponse),
+        (status = 401, description = "Unauthorised"),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn get_agency_settings(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<impl IntoResponse, AppError> {
+    let settings = state
+        .customisation()
+        .settings
+        .get_or_load(user.agency_id, state.infra.tenant_pools.platform())
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+    Ok(Json(AgencySettingsResponse::from(settings.as_ref())))
+}
+
+/// PATCH /api/agency/settings
+#[utoipa::path(
+    patch,
+    path = "/api/agency/settings",
+    tag = "Agency",
+    request_body = PatchAgencySettingsDto,
+    responses(
+        (status = 200, description = "Settings updated"),
+        (status = 400, description = "Invalid patch (must be a JSON object)"),
+        (status = 401, description = "Unauthorised"),
+        (status = 403, description = "Forbidden — requires agency_settings:write"),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn patch_agency_settings(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(body): Json<PatchAgencySettingsDto>,
+) -> Result<impl IntoResponse, AppError> {
+    state
+        .customisation()
+        .permissions
+        .require(user.user_id, user.agency_id, "agency_settings:write")
+        .await?;
+
+    settings_update::execute(
+        &Arc::new(state.clone()),
+        UpdateAgencySettingsCommand {
+            agency_id: user.agency_id,
+            actor_id: Some(user.user_id),
+            actor_role: Some(user.role.clone()),
+            ip_address: None,
+            patch: body.patch,
+        },
+    )
+    .await
+    .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+    Ok(Json(PatchAgencySettingsResponse {
+        message: "Settings updated".into(),
+    }))
+}
+
+// ── Tenant integrations ───────────────────────────────────────────────────────
+
+/// GET /api/agency/integrations
+pub async fn list_agency_integrations(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Extension(AgencyPool(pool)): Extension<AgencyPool>,
+) -> Result<impl IntoResponse, AppError> {
+    state
+        .customisation()
+        .permissions
+        .require(user.user_id, user.agency_id, "agency_settings:write")
+        .await?;
+
+    let repo = Arc::new(PgAgencyRepo::new_with_encryption(
+        pool,
+        state.customisation().enc_key.clone(),
+    ));
+
+    let integrations = ListIntegrationsUseCase::new(repo)
+        .execute(user.agency_id)
+        .await?;
+
+    Ok(Json(
+        integrations
+            .into_iter()
+            .map(AgencyIntegrationResponse::from)
+            .collect::<Vec<_>>(),
+    ))
+}
+
+/// PUT /api/agency/integrations/{provider_type}/{provider_key}
+pub async fn upsert_agency_integration(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Extension(AgencyPool(pool)): Extension<AgencyPool>,
+    Path((provider_type, provider_key)): Path<(String, String)>,
+    Json(body): Json<UpsertAgencyIntegrationDto>,
+) -> Result<impl IntoResponse, AppError> {
+    state
+        .customisation()
+        .permissions
+        .require(user.user_id, user.agency_id, "agency_settings:write")
+        .await?;
+
+    let repo = Arc::new(PgAgencyRepo::new_with_encryption(
+        pool.clone(),
+        state.customisation().enc_key.clone(),
+    ));
+
+    UpsertIntegrationUseCase::new(repo)
+        .execute(UpsertIntegrationInput {
+            agency_id: user.agency_id,
+            provider_type: provider_type.clone(),
+            provider_key: provider_key.clone(),
+            credentials: body.credentials,
+            settings: body.settings,
+        })
+        .await?;
+
+    let enc_key = &*state.customisation().enc_key;
+    state
+        .customisation()
+        .providers
+        .load_agency(user.agency_id, &pool, enc_key)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+    state
+        .customisation()
+        .audit
+        .log(crate::infrastructure::audit::AuditEvent {
+            agency_id: user.agency_id,
+            actor_id: Some(user.user_id),
+            actor_role: Some(user.role.clone()),
+            action: format!("integration.{provider_type}.{provider_key}.upserted"),
+            entity_type: "agency_integration".into(),
+            entity_id: user.agency_id,
+            old_data: None,
+            new_data: Some(
+                serde_json::json!({ "provider_type": provider_type, "provider_key": provider_key }),
+            ),
+            ip_address: None,
+        });
+
+    Ok(StatusCode::OK)
+}
+
+/// DELETE /api/agency/integrations/{provider_type}/{provider_key}
+pub async fn deactivate_agency_integration(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Extension(AgencyPool(pool)): Extension<AgencyPool>,
+    Path((provider_type, provider_key)): Path<(String, String)>,
+) -> Result<impl IntoResponse, AppError> {
+    state
+        .customisation()
+        .permissions
+        .require(user.user_id, user.agency_id, "agency_settings:write")
+        .await?;
+
+    let repo = Arc::new(PgAgencyRepo::new_with_encryption(
+        pool,
+        state.customisation().enc_key.clone(),
+    ));
+
+    DeactivateIntegrationUseCase::new(repo)
+        .execute(DeactivateIntegrationInput {
+            agency_id: user.agency_id,
+            provider_type: provider_type.clone(),
+            provider_key: provider_key.clone(),
+        })
+        .await?;
+
+    match provider_type.as_str() {
+        "sms" => {
+            state.customisation().providers.sms.agency.remove(&user.agency_id);
+        }
+        "email" => {
+            state.customisation().providers.email.remove(&user.agency_id);
+        }
+        "payment" => {
+            state.customisation().providers.payment.remove(&user.agency_id);
+        }
+        "storage" => {
+            state.customisation().providers.storage.remove(&user.agency_id);
+        }
+        _ => {}
+    }
+
+    state
+        .customisation()
+        .audit
+        .log(crate::infrastructure::audit::AuditEvent {
+            agency_id: user.agency_id,
+            actor_id: Some(user.user_id),
+            actor_role: Some(user.role.clone()),
+            action: format!("integration.{provider_type}.{provider_key}.deactivated"),
+            entity_type: "agency_integration".into(),
+            entity_id: user.agency_id,
+            old_data: None,
+            new_data: None,
+            ip_address: None,
+        });
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ── Portfolio billing summary ─────────────────────────────────────────────────
+
+/// GET /api/agency/billing-summary
+pub async fn list_property_billing_summaries(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo = PgBillingRepo::for_agency(tenant_pool(&state, user.agency_id).await?, user.agency_id);
+    let rows = repo.get_billing_summary_for_agency(user.agency_id).await?;
+
+    let summaries: Vec<BillingSummaryResponse> = rows
+        .into_iter()
+        .map(|r| {
+            let late_fee = if r.late_fee_value > rust_decimal::Decimal::ZERO {
+                format!(
+                    "{} {} ({}d grace)",
+                    if r.late_fee_type == "flat" {
+                        r.currency_code.clone()
+                    } else {
+                        String::new()
+                    },
+                    r.late_fee_value,
+                    r.late_fee_grace_days
+                )
+            } else {
+                "None".to_string()
+            };
+
+            let mut utils = Vec::new();
+            if r.water_rate_per_unit > rust_decimal::Decimal::ZERO {
+                utils.push(format!("Water: {}/unit", r.water_rate_per_unit));
+            }
+            if r.garbage_fee_kes > rust_decimal::Decimal::ZERO {
+                utils.push(format!("Garbage: {}", r.garbage_fee_kes));
+            }
+            if r.security_fee_kes > rust_decimal::Decimal::ZERO {
+                utils.push(format!("Security: {}", r.security_fee_kes));
+            }
+
+            BillingSummaryResponse {
+                property_id: r.property_id,
+                property_name: r.property_name,
+                currency_code: r.currency_code,
+                rent_due_day: r.rent_due_day,
+                late_fee_summary: late_fee,
+                utility_summary: if utils.is_empty() {
+                    "None".to_string()
+                } else {
+                    utils.join(", ")
+                },
+            }
+        })
+        .collect();
+
+    Ok(Json(summaries))
+}
+
+async fn tenant_pool(state: &AppState, agency_id: Uuid) -> Result<sqlx::PgPool, AppError> {
+    state
+        .infra
+        .tenant_pools
+        .for_agency(agency_id)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))
 }

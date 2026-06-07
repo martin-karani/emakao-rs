@@ -333,7 +333,7 @@ pub async fn list_my_properties(
 
     let responses: Vec<PropertyWithPercentResponse> = props
         .into_iter()
-        .map(|(prop, pct)| PropertyWithPercentResponse::from(prop, pct))
+        .map(|(prop, pct)| PropertyWithPercentResponse::new(prop, pct))
         .collect();
 
     Ok(Json(responses))

@@ -15,8 +15,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -29,71 +27,16 @@ use crate::{
             patch_rule::{PatchRuleInput, PatchRuleUseCase},
         },
     },
-    domain::{auth::AuthenticatedUser, workflow_rule::WorkflowRule},
+    domain::auth::AuthenticatedUser,
     infrastructure::db::workflow_rule_repository_sqlx::PgWorkflowRuleRepo,
-    presentation::app_state::AppState,
+    presentation::{
+        app_state::AppState,
+        http::{
+            dto::workflow_rule::{CreateWorkflowRuleRequest, PatchWorkflowRuleRequest},
+            responses::workflow_rule::WorkflowRuleResponse,
+        },
+    },
 };
-
-// ── Response DTO ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct WorkflowRuleResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub event_type: String,
-    pub is_active: bool,
-    pub offset_hours: i32,
-    pub conditions: serde_json::Value,
-    pub actions: serde_json::Value,
-}
-
-impl From<WorkflowRule> for WorkflowRuleResponse {
-    fn from(r: WorkflowRule) -> Self {
-        Self {
-            id: r.id,
-            name: r.name,
-            event_type: r.event_type,
-            is_active: r.is_active,
-            offset_hours: r.offset_hours,
-            conditions: r.conditions,
-            actions: r.actions,
-        }
-    }
-}
-
-// ── Request DTOs ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateWorkflowRuleRequest {
-    pub name: String,
-    pub event_type: String,
-    #[serde(default)]
-    pub is_active: bool,
-    #[serde(default)]
-    pub offset_hours: i32,
-    #[serde(default = "empty_object")]
-    pub conditions: serde_json::Value,
-    #[serde(default = "empty_array")]
-    pub actions: serde_json::Value,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct PatchWorkflowRuleRequest {
-    pub name: Option<String>,
-    pub is_active: Option<bool>,
-    pub offset_hours: Option<i32>,
-    pub conditions: Option<serde_json::Value>,
-    pub actions: Option<serde_json::Value>,
-}
-
-fn empty_object() -> serde_json::Value {
-    serde_json::json!({})
-}
-fn empty_array() -> serde_json::Value {
-    serde_json::json!([])
-}
-
-// ── Handlers ──────────────────────────────────────────────────────────────────
 
 pub async fn list_rules(
     State(state): State<AppState>,

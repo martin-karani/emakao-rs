@@ -3,6 +3,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{infrastructure::audit::AuditEvent, presentation::app_state::AppState};
+use sqlx::Row;
 
 // ── Command ───────────────────────────────────────────────────────────────────
 
@@ -28,21 +29,24 @@ pub async fn execute(
     }
 
     // ── 2. Capture old settings for audit diff ───────────────────────────────
-    let old_row = sqlx::query!("SELECT settings FROM agencies WHERE id = $1", cmd.agency_id)
-        .fetch_one(state.infra.tenant_pools.platform())
-        .await?;
+    let old_settings: serde_json::Value =
+        sqlx::query("SELECT settings FROM agencies WHERE id = $1")
+            .bind(cmd.agency_id)
+            .fetch_one(state.infra.tenant_pools.platform())
+            .await?
+            .try_get("settings")?;
 
     // ── 3. Merge-update in Postgres ──────────────────────────────────────────
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE agencies
         SET settings   = settings || $2,
             updated_at = now()
         WHERE id = $1
         "#,
-        cmd.agency_id,
-        cmd.patch,
     )
+    .bind(cmd.agency_id)
+    .bind(cmd.patch.clone())
     .execute(state.infra.tenant_pools.platform())
     .await?;
 
@@ -77,8 +81,8 @@ pub async fn execute(
         action: "agency.settings.updated".to_string(),
         entity_type: "agency".to_string(),
         entity_id: cmd.agency_id,
-        old_data: Some(old_row.settings),
-        new_data: Some(cmd.patch),
+        old_data: Some(old_settings),
+        new_data: Some(cmd.patch.clone()),
         ip_address: cmd.ip_address,
     });
 

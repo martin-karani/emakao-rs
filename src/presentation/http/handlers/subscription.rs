@@ -4,111 +4,26 @@ use axum::{
     response::IntoResponse,
     Extension, Json,
 };
-use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
-use utoipa::{IntoParams, ToSchema};
+use garde::Validate;
 use uuid::Uuid;
 
 use crate::{
     application::errors::AppError,
-    domain::{agency::ResolvedAgency, subscription::SubscriptionPlan},
+    domain::agency::ResolvedAgency,
     presentation::{
-        app_state::AppState, error::ErrorResponse, middleware::subscription::ResolvedSubscription,
+        app_state::AppState,
+        error::ErrorResponse,
+        http::{
+            dto::subscription::{
+                CancelDto, ChangePlanDto, InitiatePaymentDto, PaginationQuery, SetOverrideDto,
+            },
+            responses::subscription::{
+                InitiatePaymentResponse, PlanResponse, SubscriptionStatusResponse,
+            },
+        },
+        middleware::subscription::ResolvedSubscription,
     },
 };
-
-#[derive(Serialize, ToSchema)]
-pub struct SubscriptionStatusResponse {
-    pub is_active: bool,
-    pub is_trial: bool,
-    pub is_paid: bool,
-    pub in_grace_period: bool,
-    pub trial_days_remaining: i64,
-    pub days_until_renewal: i64,
-    pub plan_slug: String,
-    pub plan_name: String,
-    pub status: String,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct PlanResponse {
-    pub id: Uuid,
-    pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub price_kes: i32,
-    pub yearly_price_kes: Option<i32>,
-    pub trial_days: i32,
-    pub sort_order: i32,
-    /// Arbitrary JSON metadata blob
-    #[schema(value_type = Object, nullable = true)]
-    pub metadata: Option<serde_json::Value>,
-}
-
-impl From<SubscriptionPlan> for PlanResponse {
-    fn from(p: SubscriptionPlan) -> Self {
-        Self {
-            id: p.id,
-            slug: p.slug,
-            name: p.name,
-            description: p.description,
-            price_kes: p.price_kes,
-            yearly_price_kes: p.yearly_price_kes,
-            trial_days: p.trial_days,
-            sort_order: p.sort_order,
-            metadata: p.metadata,
-        }
-    }
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct ChangePlanDto {
-    pub plan_slug: String,
-    pub mpesa_ref: Option<String>,
-    /// Admin-only: override the plan price
-    pub custom_price: Option<i32>,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct CancelDto {
-    pub reason: Option<String>,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct SetOverrideDto {
-    pub feature_key: String,
-    /// `"true"`, `"false"`, or a custom string value
-    pub value: String,
-    pub reason: Option<String>,
-    pub expires_at: Option<OffsetDateTime>,
-}
-
-#[derive(Deserialize, IntoParams, ToSchema)]
-pub struct PaginationQuery {
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
-
-#[derive(Deserialize, garde::Validate, ToSchema)]
-pub struct InitiatePaymentDto {
-    #[garde(length(min = 1))]
-    pub plan_slug: String,
-    /// Safaricom phone number, e.g. `"254712345678"`
-    #[garde(length(min = 12, max = 13))]
-    pub phone_number: String,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct InitiatePaymentResponse {
-    pub checkout_request_id: String,
-    pub message: String,
-}
-
-fn default_limit() -> i64 {
-    20
-}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Agency-facing handlers

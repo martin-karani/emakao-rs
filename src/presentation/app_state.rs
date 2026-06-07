@@ -34,7 +34,7 @@ use crate::{
         },
     },
     config::Config,
-    domain::agency_settings::AgencySettings,
+    domain::agency::AgencySettings,
     infrastructure::{
         audit::AuditLogger,
         auth::jwt::JwtAuth,
@@ -84,6 +84,7 @@ pub struct InfraState {
 pub struct IdentityState {
     pub auth_port: Arc<dyn AuthPort>,
     pub auth_repo: Arc<dyn AuthRepository>,
+    pub agency_repo: Arc<dyn AgencyRepository>,
     pub auth_uc: Arc<AuthUseCases>,
 }
 
@@ -435,6 +436,7 @@ impl AppState {
             identity: IdentityState {
                 auth_port: Arc::clone(&jwt) as Arc<dyn AuthPort>,
                 auth_repo,
+                agency_repo,
                 auth_uc,
             },
             integration: IntegrationState { email, sms, mpesa },

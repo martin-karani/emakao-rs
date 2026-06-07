@@ -68,6 +68,7 @@ pub struct CreatePropertyInput {
 
 pub struct UnitTypeInput {
     pub name: String,
+    pub unit_type: Option<String>,
     pub bedrooms: i16,
     pub bathrooms: i16,
     pub base_rent: Option<rust_decimal::Decimal>,
@@ -133,6 +134,7 @@ impl CreatePropertyUseCase {
             .map(|ut| UnitType {
                 id: Uuid::new_v4(),
                 name: ut.name,
+                unit_type: ut.unit_type,
                 bedrooms: ut.bedrooms,
                 bathrooms: ut.bathrooms,
                 base_rent: ut.base_rent,

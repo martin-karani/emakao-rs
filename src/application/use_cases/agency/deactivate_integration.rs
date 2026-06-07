@@ -1,4 +1,4 @@
-// src/application/use_cases/agency_integration/deactivate_integration.rs
+// src/application/use_cases/agency/deactivate_integration.rs
 //
 // Sets `is_active = false` for the given (provider_type, provider_key) pair.
 //
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::application::{
-    errors::AppError, ports::agency_integration_repository::AgencyIntegrationRepository,
+    errors::AppError, ports::agency_repository::AgencyRepository,
 };
 
 pub struct DeactivateIntegrationInput {
@@ -21,17 +21,17 @@ pub struct DeactivateIntegrationInput {
 }
 
 pub struct DeactivateIntegrationUseCase {
-    repo: Arc<dyn AgencyIntegrationRepository>,
+    repo: Arc<dyn AgencyRepository>,
 }
 
 impl DeactivateIntegrationUseCase {
-    pub fn new(repo: Arc<dyn AgencyIntegrationRepository>) -> Self {
+    pub fn new(repo: Arc<dyn AgencyRepository>) -> Self {
         Self { repo }
     }
 
     pub async fn execute(&self, input: DeactivateIntegrationInput) -> Result<(), AppError> {
         self.repo
-            .deactivate(input.agency_id, &input.provider_type, &input.provider_key)
+            .deactivate_integration(input.agency_id, &input.provider_type, &input.provider_key)
             .await
     }
 }

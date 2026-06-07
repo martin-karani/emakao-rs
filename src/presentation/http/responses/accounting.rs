@@ -1,3 +1,11 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Removed Clone from all response structs
+//   - Added rfc3339 serialization to all OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+//   - Kept posted_by with comment (needed for frontend audit trail display)
+// ─────────────────────────────────────────────────────────────────────────────
+
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::{Date, OffsetDateTime};
@@ -11,7 +19,7 @@ use crate::domain::accounting::{
 
 // ── Account ───────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AccountResponse {
     pub id: Uuid,
     pub agency_id: Uuid,
@@ -21,8 +29,11 @@ pub struct AccountResponse {
     pub balance: Decimal,
     pub is_system: bool,
     pub vat_applicable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vat_rate: Option<Decimal>,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 
@@ -46,11 +57,12 @@ impl From<Account> for AccountResponse {
 
 // ── Journal entry ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct JournalLineResponse {
     pub account_id: Uuid,
     pub debit_kes: Decimal,
     pub credit_kes: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
@@ -65,16 +77,20 @@ impl From<JournalLine> for JournalLineResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct JournalEntryResponse {
     pub id: Uuid,
     pub agency_id: Uuid,
     pub reference: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub status: JournalEntryStatus,
     pub lines: Vec<JournalLineResponse>,
+    // posted_by kept: needed by frontend to display financial audit trail
     pub posted_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
     pub posted_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 
@@ -96,7 +112,7 @@ impl From<JournalEntry> for JournalEntryResponse {
 
 // ── Trial balance ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TrialBalanceLineResponse {
     pub account_id: Uuid,
     pub code: String,
@@ -122,7 +138,7 @@ impl From<TrialBalanceLine> for TrialBalanceLineResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TrialBalanceResponse {
     pub lines: Vec<TrialBalanceLineResponse>,
     pub total_debits: Decimal,
@@ -149,7 +165,7 @@ impl From<TrialBalance> for TrialBalanceResponse {
 // ── VAT report ────────────────────────────────────────────────────────────────
 
 /// One account's contribution to the VAT return for the period.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct VatReportLineResponse {
     pub account_id: Uuid,
     pub code: String,
@@ -181,7 +197,7 @@ impl From<VatReportLine> for VatReportLineResponse {
 ///
 /// `net_vat_payable_kes` = `output_vat_kes` − `input_vat_kes`.
 /// A negative value means KRA owes a refund.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct VatReportResponse {
     pub period_start: Date,
     pub period_end: Date,

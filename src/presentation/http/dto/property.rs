@@ -4,7 +4,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::domain::{
     enums::PropertyType,
-    property::{PropertyConfig, PropertyDocument},
+    property::{PropertyConfig, PropertyDocument, PropertyPolicies},
 };
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -12,6 +12,9 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateUnitTypeDto {
     pub name: String,
+    /// Optional category label, e.g. `"studio"`, `"1br"`, `"penthouse"`.
+    #[serde(default)]
+    pub unit_type: Option<String>,
     pub bedrooms: i16,
     pub bathrooms: i16,
     pub base_rent: Option<Decimal>,
@@ -88,6 +91,11 @@ pub struct UpdatePropertyDto {
 
     #[garde(length(min = 2, max = 8), pattern(r"^[A-Z][A-Z0-9]{1,7}$"))]
     pub work_order_prefix: Option<String>,
+
+    /// Policy settings: payment methods, agent commission, late-fee config,
+    /// deposit rules, and service charges.
+    #[garde(skip)]
+    pub policies: Option<PropertyPolicies>,
 }
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]

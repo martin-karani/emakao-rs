@@ -1,3 +1,10 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+//   - Kept posted_by with comment (needed for financial audit trail)
+// ─────────────────────────────────────────────────────────────────────────────
+
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::{Date, OffsetDateTime};
@@ -8,20 +15,30 @@ use crate::domain::{
     enums::LedgerEntryType,
     ledger::{BalanceSummary, LedgerEntry},
 };
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LedgerEntryResponse {
     pub id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub agreement_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unit_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resident_id: Option<Uuid>,
     pub entry_type: LedgerEntryType,
     pub amount_kes: Decimal,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub external_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mpesa_receipt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub period_start: Option<Date>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub period_end: Option<Date>,
+    // posted_by kept: needed by frontend to display financial audit trail
     pub posted_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
     pub posted_at: OffsetDateTime,
     pub is_reconciled: bool,
 }
@@ -53,6 +70,7 @@ pub struct BalanceSummaryResponse {
     pub total_charged: Decimal,
     pub total_paid: Decimal,
     pub outstanding: Decimal,
+    #[serde(with = "time::serde::rfc3339::option", skip_serializing_if = "Option::is_none")]
     pub last_payment_at: Option<OffsetDateTime>,
 }
 

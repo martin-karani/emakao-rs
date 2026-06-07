@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     application::{errors::AppError, ports::billing_repository::BillingRepository},
     domain::{
-        billing::{ActiveAgreementBillingView, LateFeePolicy},
+        billing::{ActiveAgreementBillingView, BillingSettings, BillingSummary, LateFeePolicy},
         enums::BillingFrequency,
     },
 };
@@ -372,5 +372,88 @@ impl BillingRepository for PgBillingRepo {
         .map_err(|e| AppError::InternalServer(e.to_string()))?;
 
         Ok(())
+    }
+
+    // Property billing settings methods
+    async fn get_billing_settings_by_property_id(
+        &self,
+        property_id: Uuid,
+    ) -> Result<Option<BillingSettings>, AppError> {
+        let row = sqlx::query_as::<_, BillingSettings>(
+            r#"
+            SELECT property_id, currency_code, rent_due_day, late_fee_type, late_fee_value, late_fee_grace_days,
+                   water_rate_per_unit, garbage_fee_kes, security_fee_kes, other_fixed_fees
+            FROM property_billing_settings
+            WHERE property_id = $1
+            "#,
+        )
+        .bind(property_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        Ok(row)
+    }
+
+    async fn upsert_billing_settings(&self, s: BillingSettings) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO property_billing_settings (
+                property_id, currency_code, rent_due_day, late_fee_type, late_fee_value, late_fee_grace_days,
+                water_rate_per_unit, garbage_fee_kes, security_fee_kes, other_fixed_fees
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (property_id) DO UPDATE SET
+                currency_code = EXCLUDED.currency_code,
+                rent_due_day = EXCLUDED.rent_due_day,
+                late_fee_type = EXCLUDED.late_fee_type,
+                late_fee_value = EXCLUDED.late_fee_value,
+                late_fee_grace_days = EXCLUDED.late_fee_grace_days,
+                water_rate_per_unit = EXCLUDED.water_rate_per_unit,
+                garbage_fee_kes = EXCLUDED.garbage_fee_kes,
+                security_fee_kes = EXCLUDED.security_fee_kes,
+                other_fixed_fees = EXCLUDED.other_fixed_fees,
+                updated_at = now()
+            "#,
+        )
+        .bind(s.property_id)
+        .bind(s.currency_code)
+        .bind(s.rent_due_day)
+        .bind(s.late_fee_type)
+        .bind(s.late_fee_value)
+        .bind(s.late_fee_grace_days)
+        .bind(s.water_rate_per_unit)
+        .bind(s.garbage_fee_kes)
+        .bind(s.security_fee_kes)
+        .bind(s.other_fixed_fees)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn get_billing_summary_for_agency(
+        &self,
+        agency_id: Uuid,
+    ) -> Result<Vec<BillingSummary>, AppError> {
+        let rows = sqlx::query_as::<_, BillingSummary>(
+            r#"
+            SELECT p.id as property_id, p.name as property_name, 
+                   s.currency_code, s.rent_due_day, 
+                   s.late_fee_type, s.late_fee_value, s.late_fee_grace_days,
+                   s.water_rate_per_unit, s.garbage_fee_kes, s.security_fee_kes
+            FROM properties p
+            JOIN property_billing_settings s ON s.property_id = p.id
+            WHERE p.agency_id = $1
+            ORDER BY p.name ASC
+            "#,
+        )
+        .bind(agency_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        Ok(rows)
     }
 }

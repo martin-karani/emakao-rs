@@ -1,3 +1,9 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
@@ -5,18 +11,25 @@ use uuid::Uuid;
 
 use crate::domain::enums::PortalStatus;
 use crate::domain::resident::Resident;
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ResidentResponse {
     pub id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<Uuid>,
     pub first_name: String,
     pub last_name: String,
     pub full_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub national_id: Option<String>,
     pub portal_status: PortalStatus,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 

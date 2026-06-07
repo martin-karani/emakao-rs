@@ -4,9 +4,10 @@ use dashmap::DashMap;
 use fred::clients::SubscriberClient;
 use fred::interfaces::{EventInterface, PubsubInterface};
 use sqlx::PgPool;
+use sqlx::Row;
 use uuid::Uuid;
 
-use crate::domain::agency_settings::AgencySettings;
+use crate::domain::agency::AgencySettings;
 
 pub struct SettingsCache {
     inner: DashMap<Uuid, Arc<AgencySettings>>,
@@ -35,11 +36,13 @@ impl SettingsCache {
             return Ok(Arc::clone(&entry));
         }
 
-        let row = sqlx::query!(r#"SELECT settings FROM agencies WHERE id = $1"#, agency_id)
+        let row = sqlx::query(r#"SELECT settings FROM agencies WHERE id = $1"#)
+            .bind(agency_id)
             .fetch_one(pool)
             .await?;
 
-        let settings = Arc::new(AgencySettings::from_jsonb(&row.settings));
+        let settings_jsonb: serde_json::Value = row.try_get("settings")?;
+        let settings = Arc::new(AgencySettings::from_jsonb(&settings_jsonb));
         self.inner.insert(agency_id, Arc::clone(&settings));
         Ok(settings)
     }
@@ -57,7 +60,8 @@ impl SettingsCache {
         redis: &fred::clients::RedisPool,
     ) -> anyhow::Result<()> {
         self.invalidate(agency_id);
-        redis.next()
+        redis
+            .next()
             .publish::<(), _, _>("cache:invalidate:agency", agency_id.to_string())
             .await?;
         Ok(())
@@ -75,10 +79,7 @@ pub async fn run_invalidation_listener(
     cache: Arc<SettingsCache>,
     entitlements: Arc<crate::infrastructure::cache::EntitlementCache>,
 ) {
-    if let Err(e) = subscriber
-        .subscribe("cache:invalidate:agency")
-        .await
-    {
+    if let Err(e) = subscriber.subscribe("cache:invalidate:agency").await {
         tracing::error!("settings cache: failed to subscribe: {e}");
         return;
     }

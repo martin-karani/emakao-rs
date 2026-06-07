@@ -36,6 +36,11 @@ pub struct MeResponse {
     pub agency_slug: String,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MessageResponse {
+    pub message: String,
+}
+
 impl From<LoginOutput> for LoginResponse {
     fn from(value: LoginOutput) -> Self {
         Self {

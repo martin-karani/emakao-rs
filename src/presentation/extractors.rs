@@ -21,7 +21,7 @@ use axum::{
 use sqlx::PgPool;
 
 use crate::{
-    domain::{agency::ResolvedAgency, agency_settings::AgencySettings},
+    domain::agency::{AgencySettings, ResolvedAgency},
     infrastructure::db::pool::AgencyPool,
 };
 

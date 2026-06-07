@@ -1,3 +1,11 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Removed Clone from response struct
+//   - Removed uploaded_by (internal audit detail)
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
@@ -16,7 +24,7 @@ use crate::{
 ///
 /// `s3_key` is intentionally excluded from serialisation; it is an internal
 /// storage detail that callers do not need.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentResponse {
     pub id: Uuid,
     pub agency_id: Uuid,
@@ -26,17 +34,24 @@ pub struct DocumentResponse {
     pub size_bytes: i64,
 
     pub document_type: DocumentType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
 
     // Entity linkage
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub property_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unit_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resident_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub agreement_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub work_order_id: Option<Uuid>,
 
-    pub uploaded_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 
     /// 15-minute presigned S3 GET URL.  Use this to render or download the
@@ -74,6 +89,8 @@ impl DocumentResponse {
 
     // ── Private ───────────────────────────────────────────────────────────────
 
+    // uploaded_by intentionally excluded — internal audit detail.
+    // Use GET /api/v1/audit-log?entity=document&id={id} for actor history.
     fn assemble(d: Document, download_url: String) -> Self {
         Self {
             id: d.id,
@@ -89,7 +106,6 @@ impl DocumentResponse {
             resident_id: d.resident_id,
             agreement_id: d.agreement_id,
             work_order_id: d.work_order_id,
-            uploaded_by: d.uploaded_by,
             created_at: d.created_at,
             download_url,
         }

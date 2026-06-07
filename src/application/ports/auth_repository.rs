@@ -66,15 +66,6 @@ pub struct ConsumedInvite {
     pub contact_type: String,
 }
 
-/// Slim agency row — avoids injecting AgencyRepository into auth use cases.
-pub struct SlimAgency {
-    pub id: Uuid,
-    pub name: String,
-    pub slug: String,
-    pub schema_name: String,
-    pub fga_store_id: Option<String>,
-}
-
 // ── Port ──────────────────────────────────────────────────────────────────────
 
 #[async_trait]
@@ -111,20 +102,6 @@ pub trait AuthRepository: Send + Sync + 'static {
         user_id: Uuid,
         agency_id: Uuid,
     ) -> Result<Option<(String /* role */, bool /* is_active */)>, AppError>;
-
-    // ── Agency lookup (avoids a second repo dep in auth use cases) ────────────
-
-    async fn find_agency_by_slug(&self, slug: &str) -> Result<Option<SlimAgency>, AppError>;
-
-    async fn find_agency_by_id(&self, id: Uuid) -> Result<Option<SlimAgency>, AppError>;
-
-    async fn contact_exists_for_agency(
-        &self,
-        agency_id: Uuid,
-        contact: &str,
-        contact_type: &str,
-        role: &str,
-    ) -> Result<bool, AppError>;
 
     async fn create_user(&self, cmd: CreateUserCommand) -> Result<StoredUser, AppError>;
 

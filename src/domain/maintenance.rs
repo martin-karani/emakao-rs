@@ -7,7 +7,7 @@ use time::{Date, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-// ── Attachment (shared by work order and comment) ─────────────────────────────
+// ── Attachment & Subtask (shared by work order and comment) ─────────────────────────────
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct WorkOrderAttachment {
@@ -16,6 +16,13 @@ pub struct WorkOrderAttachment {
     pub name: String, // original filename
     pub mime: String, // MIME type, e.g. "image/jpeg"
     pub size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct WorkOrderSubtask {
+    pub id: String,
+    pub title: String,
+    pub is_completed: bool,
 }
 
 // ── Caretaker ─────────────────────────────────────────────────────────────────
@@ -90,10 +97,11 @@ pub struct WorkOrder {
     pub estimated_cost_kes: Option<rust_decimal::Decimal>,
     pub actual_cost_kes: Option<rust_decimal::Decimal>,
 
-    // visibility
+    // visibility & content
     pub is_tenant_visible: bool,
     pub internal_notes: Option<String>,
     pub attachments: Vec<WorkOrderAttachment>,
+    pub subtasks: Vec<WorkOrderSubtask>,
 
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
@@ -119,6 +127,7 @@ pub struct CreateWorkOrderCommand {
     pub is_tenant_visible: bool,
     pub internal_notes: Option<String>,
     pub attachments: Vec<WorkOrderAttachment>,
+    pub subtasks: Vec<WorkOrderSubtask>,
 }
 
 pub struct UpdateWorkOrderCommand {
@@ -141,6 +150,8 @@ pub struct UpdateWorkOrderCommand {
     pub is_tenant_visible: Option<bool>,
     /// Replaces the entire attachments array (append logic lives in use-case)
     pub attachments: Option<Vec<WorkOrderAttachment>>,
+    /// Replaces the entire subtasks array
+    pub subtasks: Option<Vec<WorkOrderSubtask>>,
 }
 
 // ── Work Order Comment ────────────────────────────────────────────────────────

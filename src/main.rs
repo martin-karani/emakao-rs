@@ -65,11 +65,11 @@ async fn main() -> anyhow::Result<()> {
     // Errors are logged but do not abort startup — agencies with bad credentials
     // will simply fall back to the platform default provider.
     {
-        let ids: Vec<uuid::Uuid> =
-            sqlx::query_scalar!("SELECT id FROM agencies WHERE status = 'active'")
-                .fetch_all(&platform_pool)
-                .await
-                .unwrap_or_default();
+        let ids: Vec<uuid::Uuid> = sqlx::query_scalar("SELECT id FROM agencies WHERE status = $1")
+            .bind("active")
+            .fetch_all(&platform_pool)
+            .await
+            .unwrap_or_default();
 
         for agency_id in ids {
             match state.infra.tenant_pools.for_agency(agency_id).await {

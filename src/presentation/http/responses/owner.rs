@@ -1,3 +1,10 @@
+// ── REFACTORED ────────────────────────────────────────────────────────────────
+// Changes from original:
+//   - Removed created_by (internal audit detail)
+//   - Added rfc3339 serialization to OffsetDateTime fields
+//   - Applied #[serde(skip_serializing_if)] to optional fields
+// ─────────────────────────────────────────────────────────────────────────────
+
 use rust_decimal::Decimal;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -7,22 +14,33 @@ use uuid::Uuid;
 use crate::domain::disbursement::Disbursement;
 use crate::domain::enums::{DisbursementMethod, DisbursementStatus, PortalStatus};
 use crate::domain::owner::Owner;
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OwnerResponse {
     pub id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<Uuid>,
     pub display_name: String,
     pub first_name: String,
     pub last_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub company_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub kra_pin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bank_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bank_account: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mpesa_number: Option<String>,
     pub portal_status: PortalStatus,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 
@@ -57,16 +75,21 @@ pub struct DisbursementResponse {
     pub property_id: Uuid,
     pub amount_kes: Decimal,
     pub method: DisbursementMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
     pub status: DisbursementStatus,
     pub period_start: time::Date,
     pub period_end: time::Date,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
-    pub created_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
 }
 
+// created_by intentionally excluded — internal audit detail.
+// Use GET /api/v1/audit-log?entity=disbursement&id={id} for actor history.
 impl From<Disbursement> for DisbursementResponse {
     fn from(d: Disbursement) -> Self {
         Self {
@@ -81,7 +104,6 @@ impl From<Disbursement> for DisbursementResponse {
             period_start: d.period_start,
             period_end: d.period_end,
             notes: d.notes,
-            created_by: d.created_by,
             created_at: d.created_at,
             updated_at: d.updated_at,
         }

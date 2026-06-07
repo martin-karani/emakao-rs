@@ -15,10 +15,6 @@ use axum::{
     response::IntoResponse,
     Extension, Json,
 };
-use rust_decimal::Decimal;
-use serde::Deserialize;
-use time::Date;
-use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
@@ -43,54 +39,14 @@ use crate::{
         error::ErrorResponse,
         extractors::AgencyContext,
         http::{
+            dto::bank_reconciliation::{
+                ImportStatementDto, ImportStatementLineDto, ListStatementsParams, MatchLineDto,
+            },
             helpers::permission::check_permission,
-            responses::bank_reconciliation::{BankStatementResponse, ReconciliationReportResponse},
+            responses::bank_reconciliation::{BankStatementResponse, BankStatementSummaryResponse, ReconciliationReportResponse},
         },
     },
 };
-
-// ── Query params ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, IntoParams)]
-pub struct ListStatementsParams {
-    #[serde(default = "default_limit")]
-    pub limit: i64,
-    #[serde(default)]
-    pub offset: i64,
-}
-
-fn default_limit() -> i64 {
-    20
-}
-
-// ── Request bodies ────────────────────────────────────────────────────────────
-
-/// A single line in an imported bank statement.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ImportStatementLineDto {
-    pub value_date: Date,
-    pub description: String,
-    /// Positive = credit / money in.  Negative = debit / money out.
-    pub amount: Decimal,
-    pub reference: Option<String>,
-}
-
-/// Import a bank statement with all its transaction lines.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ImportStatementDto {
-    pub bank_name: String,
-    pub account_number: String,
-    pub statement_date: Date,
-    pub opening_balance: Decimal,
-    pub closing_balance: Decimal,
-    pub lines: Vec<ImportStatementLineDto>,
-}
-
-/// Match a statement line to an existing posted journal entry.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct MatchLineDto {
-    pub journal_entry_id: Uuid,
-}
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
@@ -99,7 +55,7 @@ pub struct MatchLineDto {
     get, path = "/api/v1/bank-statements",
     params(ListStatementsParams),
     responses(
-        (status = 200, description = "List of bank statements (lines omitted)", body = Vec<BankStatementResponse>),
+        (status = 200, description = "List of bank statements (lines omitted)", body = Vec<BankStatementSummaryResponse>),
         (status = 401, description = "Unauthorised", body = ErrorResponse),
     ),
     tag = "BankReconciliation", security(("bearer_token" = []))
@@ -132,7 +88,7 @@ pub async fn list_statements(
     Ok(Json(
         stmts
             .into_iter()
-            .map(BankStatementResponse::from)
+            .map(BankStatementSummaryResponse::from)
             .collect::<Vec<_>>(),
     ))
 }
