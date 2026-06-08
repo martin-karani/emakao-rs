@@ -99,7 +99,6 @@ aes-gcm           = "0.10"
 
 # JSONLogic condition evaluation for workflow_rules
 jsonlogic         = "0.4"
-futures-util = "0.3.32"
 redis = { version = "0.32", features = ["aio", "tokio-comp", "connection-manager"] }
 
 [profile.dev]

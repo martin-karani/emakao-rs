@@ -221,18 +221,36 @@ fn database_pool_status(state: &AppState) -> DatabasePoolStatus {
 
 fn configuration_status(state: &AppState) -> ConfigurationStatus {
     ConfigurationStatus {
-        admin_api_key_configured: has_value(state.config.admin_api_key.as_deref().unwrap_or_default()),
+        admin_api_key_configured: has_value(
+            state.config.admin_api_key.as_deref().unwrap_or_default(),
+        ),
         smtp_configured: has_value(&state.config.smtp_host) && has_value(&state.config.smtp_from),
-        mpesa_configured: has_value(&state.config.mpesa_consumer_key)
-            && has_value(&state.config.mpesa_consumer_secret)
-            && has_value(&state.config.mpesa_shortcode)
-            && has_value(&state.config.mpesa_passkey)
+        mpesa_configured: has_value(
+            state.config
+                .mpesa_consumer_key
+                .as_deref()
+                .unwrap_or_default(),
+        ) && has_value(
+            state.config
+                .mpesa_consumer_secret
+                .as_deref()
+                .unwrap_or_default(),
+        ) && has_value(state.config.mpesa_shortcode.as_deref().unwrap_or_default())
+            && has_value(state.config.mpesa_passkey.as_deref().unwrap_or_default())
             && has_value(&state.config.mpesa_callback_url),
-        africa_talking_configured: has_value(&state.config.at_api_key)
+        africa_talking_configured: has_value(state.config.at_api_key.as_deref().unwrap_or_default())
             && has_value(&state.config.at_username),
-        aws_s3_configured: has_value(&state.config.aws_access_key_id)
-            && has_value(&state.config.aws_secret_access_key)
-            && has_value(&state.config.aws_region)
+        aws_s3_configured: has_value(
+            state.config
+                .aws_access_key_id
+                .as_deref()
+                .unwrap_or_default(),
+        ) && has_value(
+            state.config
+                .aws_secret_access_key
+                .as_deref()
+                .unwrap_or_default(),
+        ) && has_value(&state.config.aws_region)
             && has_value(&state.config.s3_bucket),
     }
 }

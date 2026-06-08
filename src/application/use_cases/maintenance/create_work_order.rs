@@ -66,6 +66,9 @@ pub struct CreateWorkOrderInput {
     // ── Attachments ───────────────────────────────────────────────────────────
     pub attachments: Vec<WorkOrderAttachment>,
 
+    // ── Subtasks ──────────────────────────────────────────────────────────────
+    pub subtasks: Vec<crate::domain::maintenance::WorkOrderSubtask>,
+
     // ── Notification recipients (optional) ────────────────────────────────────
     pub notify_resident_email: Option<String>,
     pub notify_resident_phone: Option<String>,
@@ -125,7 +128,7 @@ impl CreateWorkOrderUseCase {
                 is_tenant_visible: input.is_tenant_visible,
                 internal_notes: input.internal_notes.clone(),
                 attachments: input.attachments,
-                subtasks: vec![],
+                subtasks: input.subtasks,
             })
             .await?;
 

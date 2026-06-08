@@ -142,6 +142,7 @@ pub struct UnitType {
 pub struct Property {
     pub id: Uuid,
     pub agency_id: Uuid,
+    pub slug: String,
     pub name: String,
     pub address: String,
     pub city: String,
@@ -207,6 +208,7 @@ pub struct Unit {
 pub struct CreatePropertyCommand {
     pub agency_id: Uuid,
     pub created_by: Uuid,
+    pub slug: String,
     pub name: String,
     pub address: String,
     pub city: String,
@@ -224,6 +226,7 @@ pub struct CreatePropertyCommand {
 pub struct UpdatePropertyCommand {
     pub id: Uuid,
     pub agency_id: Uuid,
+    pub slug: Option<String>,
     pub name: Option<String>,
     pub address: Option<String>,
     pub city: Option<String>,
@@ -262,4 +265,72 @@ pub struct UpdateUnitCommand {
     pub deposit_kes: Option<Decimal>,
     pub status: Option<UnitStatus>,
     pub description: Option<Option<String>>,
+}
+
+/// Convert an arbitrary string into a lowercase URL slug.
+pub fn slugify(input: &str) -> String {
+    let mut result = String::new();
+    let mut last_was_hyphen = false;
+
+    for ch in input.trim().chars() {
+        let normalized = ch.to_ascii_lowercase();
+        if normalized.is_ascii_alphanumeric() {
+            result.push(normalized);
+            last_was_hyphen = false;
+        } else if !last_was_hyphen && !result.is_empty() {
+            result.push('-');
+            last_was_hyphen = true;
+        }
+    }
+
+    let slug = result.trim_matches('-').to_string();
+    if slug.is_empty() {
+        "property".to_string()
+    } else {
+        slug
+    }
+}
+
+/// Guarantee uniqueness within an agency by suffixing `-2`, `-3`, and so on.
+pub fn unique_slug(base: &str, existing_slugs: &[String]) -> String {
+    if !existing_slugs.iter().any(|slug| slug == base) {
+        return base.to_string();
+    }
+
+    let mut n = 2u32;
+    loop {
+        let candidate = format!("{base}-{n}");
+        if !existing_slugs.iter().any(|slug| slug == &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{slugify, unique_slug};
+
+    #[test]
+    fn slugify_normalizes_spaces_and_symbols() {
+        assert_eq!(slugify("Westlands Heights"), "westlands-heights");
+        assert_eq!(slugify("The  Residences @ Kilimani!"), "the-residences-kilimani");
+    }
+
+    #[test]
+    fn slugify_trims_and_falls_back_when_empty() {
+        assert_eq!(slugify("  ---  "), "property");
+        assert_eq!(slugify("  Riverside Plaza  "), "riverside-plaza");
+    }
+
+    #[test]
+    fn unique_slug_appends_numeric_suffixes() {
+        let existing = vec![
+            "westlands-heights".to_string(),
+            "westlands-heights-2".to_string(),
+        ];
+
+        assert_eq!(unique_slug("westlands-heights", &existing), "westlands-heights-3");
+        assert_eq!(unique_slug("kilimani-court", &existing), "kilimani-court");
+    }
 }

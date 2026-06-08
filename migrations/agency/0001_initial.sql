@@ -2,53 +2,6 @@
 --
 -- Agency schema — full baseline (one schema per tenant inside emakao_agency).
 --
--- Tables (in FK-safe order):
---   1.  properties
---   2.  units
---   3.  residents
---   4.  agreements
---   5.  owners
---   6.  property_owners
---   7.  payment_claims
---   8.  ledger_entries
---   9.  vendors
---  10.  caretakers
---  11.  work_orders
---  12.  work_order_comments
---  13.  work_order_activity
---  14.  utility_meters
---  15.  meter_readings
---  16.  utility_bills
---  17.  applicants
---  18.  disbursements
---  19.  inspections
---  20.  invoices
---  21.  conversations
---  22.  messages
---  23.  documents
---  24.  rent_charges
---  25.  late_fee_charges
---  26.  rent_reminders_sent
---  27.  accounts
---  28.  journal_entries
---  29.  journal_lines
---  30.  bank_statements
---  31.  bank_statement_lines
---  32.  tax_obligations
---  33.  owner_annual_rental_income
---  34.  late_fee_policy
---  35.  agency_integrations
---  36.  agency_notification_toggles
---  37.  notification_templates
---  38.  workflow_rules
---  39.  workflow_executions
---  40.  report_configs
---  41.  scheduled_reports
---  42.  onboarding_checklists
---  43.  agency_onboarding_progress
---  44.  data_retention_policy
---  45.  archival_log
---  46.  agency_feature_flags
 -- =============================================================================
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -96,7 +49,8 @@ CREATE TYPE property_type AS ENUM (
     'commercial',
     'community',
     'student',
-    'affordable_housing'
+    'affordable_housing',
+    'multifamily'
 );
 
 CREATE TYPE unit_status AS ENUM (
@@ -329,24 +283,76 @@ CREATE TYPE mri_regime AS ENUM (
 CREATE TABLE properties (
     id               UUID          NOT NULL PRIMARY KEY DEFAULT uuidv7(),
     agency_id        UUID          NOT NULL,
+    slug             TEXT          NOT NULL,
     name             TEXT          NOT NULL CHECK (length(trim(name)) > 0),
     address          TEXT          NOT NULL CHECK (length(trim(address)) > 0),
     city             TEXT          NOT NULL DEFAULT '',
     country_code     CHAR(2)       NOT NULL DEFAULT 'KE',
     property_type    property_type NOT NULL,
     config           JSONB         NOT NULL DEFAULT '{}',
-    work_order_prefix VARCHAR(8)   NOT NULL DEFAULT '',
-        CHECK (work_order_prefix ~ '^[A-Z][A-Z0-9]{1,7}$'),
-    work_order_seq   INT           NOT NULL DEFAULT 0 CHECK (work_order_seq >= 0),
+    billing_currency TEXT          NOT NULL DEFAULT 'KES',
+    policies         JSONB,
+    unit_types       JSONB         NOT NULL DEFAULT '[]',
+    photos           JSONB         NOT NULL DEFAULT '[]',
+    documents        JSONB         NOT NULL DEFAULT '[]',
     created_by       UUID          NOT NULL,
     created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    UNIQUE (work_order_prefix)
+    updated_at       TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_properties_agency     ON properties (agency_id);
 CREATE INDEX idx_properties_type       ON properties (agency_id, property_type);
 CREATE INDEX idx_properties_created_by ON properties (created_by);
+CREATE UNIQUE INDEX uq_properties_agency_slug ON properties (agency_id, slug);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 1.1 property_maintenance_configs
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE property_maintenance_configs (
+    property_id       UUID         NOT NULL PRIMARY KEY REFERENCES properties (id) ON DELETE CASCADE,
+    work_order_prefix TEXT         NOT NULL,
+    work_order_seq    INT          NOT NULL DEFAULT 1,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 1.2 property_billing_settings
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE property_billing_settings (
+    property_id         UUID           NOT NULL PRIMARY KEY REFERENCES properties (id) ON DELETE CASCADE,
+    rent_due_day        INT            NOT NULL DEFAULT 5 CHECK (rent_due_day >= 1 AND rent_due_day <= 28),
+    late_fee_type       TEXT           NOT NULL DEFAULT 'flat' CHECK (late_fee_type IN ('flat', 'percent')),
+    late_fee_value      NUMERIC(14,2)  NOT NULL DEFAULT 0 CHECK (late_fee_value >= 0),
+    late_fee_grace_days INT            NOT NULL DEFAULT 0 CHECK (late_fee_grace_days >= 0),
+    currency_code       CHAR(3)        NOT NULL DEFAULT 'KES',
+    
+    -- Utility Constants
+    water_rate_per_unit NUMERIC(14,2)  NOT NULL DEFAULT 0 CHECK (water_rate_per_unit >= 0),
+    garbage_fee_kes     NUMERIC(14,2)  NOT NULL DEFAULT 0 CHECK (garbage_fee_kes >= 0),
+    security_fee_kes    NUMERIC(14,2)  NOT NULL DEFAULT 0 CHECK (security_fee_kes >= 0),
+    
+    -- Flexible metadata for other fixed fees (e.g. {"parking": 1000})
+    other_fixed_fees    JSONB          NOT NULL DEFAULT '{}',
+    
+    updated_at          TIMESTAMPTZ    NOT NULL DEFAULT now()
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 1.3 property_agents
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE property_agents (
+    property_id UUID NOT NULL REFERENCES properties (id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL, -- References users(id) in platform DB
+    agency_id   UUID NOT NULL, -- Sanity check
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (property_id, user_id)
+);
+
+CREATE INDEX idx_property_agents_user ON property_agents (user_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. units
@@ -355,6 +361,7 @@ CREATE INDEX idx_properties_created_by ON properties (created_by);
 CREATE TABLE units (
     id              UUID          NOT NULL PRIMARY KEY DEFAULT uuidv7(),
     property_id     UUID          NOT NULL REFERENCES properties (id) ON DELETE CASCADE,
+    unit_type_id    UUID,
     parent_unit_id  UUID          REFERENCES units (id) ON DELETE SET NULL,
     unit_number     TEXT          NOT NULL CHECK (length(trim(unit_number)) > 0),
     floor           INTEGER       CHECK (floor >= -10),
@@ -374,6 +381,7 @@ CREATE TABLE units (
 CREATE INDEX idx_units_property ON units (property_id);
 CREATE INDEX idx_units_status   ON units (property_id, status);
 CREATE INDEX idx_units_parent   ON units (parent_unit_id) WHERE parent_unit_id IS NOT NULL;
+CREATE INDEX idx_units_unit_type ON units (unit_type_id) WHERE unit_type_id IS NOT NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. residents
@@ -576,7 +584,6 @@ CREATE TABLE work_orders (
     vendor_id             UUID                     REFERENCES vendors    (id) ON DELETE SET NULL,
     work_order_number     INT                      NOT NULL,
     code                  TEXT                     NOT NULL UNIQUE,
-        CHECK (code ~ '^[A-Z][A-Z0-9]{1,7}-[0-9]+$'),
     title                 TEXT                     NOT NULL CHECK (length(trim(title)) > 0),
     description           TEXT,
     category              work_order_category      NOT NULL DEFAULT 'general',
@@ -597,6 +604,7 @@ CREATE TABLE work_orders (
     is_tenant_visible     BOOLEAN                  NOT NULL DEFAULT true,
     internal_notes        TEXT,
     attachments           JSONB                    NOT NULL DEFAULT '[]',
+    subtasks              JSONB                    NOT NULL DEFAULT '[]',
     created_at            TIMESTAMPTZ              NOT NULL DEFAULT now(),
     updated_at            TIMESTAMPTZ              NOT NULL DEFAULT now()
 );
@@ -1148,14 +1156,17 @@ CREATE TABLE agency_notification_toggles (
 CREATE TABLE notification_templates (
     id         UUID        NOT NULL PRIMARY KEY DEFAULT uuidv7(),
     agency_id  UUID        NOT NULL,
+    property_id UUID       REFERENCES properties (id) ON DELETE CASCADE,
     channel    TEXT        NOT NULL CHECK (channel IN ('sms', 'email', 'whatsapp')),
     event_key  TEXT        NOT NULL,
     locale     TEXT        NOT NULL DEFAULT 'en',
     subject    TEXT,
     body       TEXT        NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (agency_id, channel, event_key, locale)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX idx_notif_templates_upsert_unique 
+ON notification_templates (agency_id, COALESCE(property_id, '00000000-0000-0000-0000-000000000000'), channel, event_key, locale);
 
 CREATE INDEX idx_notif_templates_agency ON notification_templates (agency_id, channel, event_key);
 
@@ -1314,6 +1325,23 @@ CREATE TABLE agency_feature_flags (
 CREATE INDEX idx_feature_flags_key ON agency_feature_flags (key) WHERE enabled = true;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 47. custom_roles
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE custom_roles (
+    id UUID PRIMARY KEY,
+    agency_id UUID NOT NULL,
+    name TEXT NOT NULL,
+    permissions JSONB NOT NULL,
+    is_system BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (agency_id, name)
+);
+
+CREATE INDEX idx_custom_roles_agency ON custom_roles (agency_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- FUNCTIONS & TRIGGERS
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -1336,7 +1364,9 @@ BEGIN
         'work_order_comments', 'documents', 'accounts',
         'tax_obligations', 'late_fee_policy',
         'agency_integrations', 'agency_feature_flags',
-        'agency_onboarding_progress', 'data_retention_policy'
+        'agency_onboarding_progress', 'data_retention_policy',
+        'property_maintenance_configs', 'property_billing_settings',
+        'custom_roles'
     ]
     LOOP
         EXECUTE format('

@@ -277,14 +277,16 @@ impl AppState {
         });
 
         // ── Repositories ──────────────────────────────────────────────────────
-        let auth_repo = Arc::new(PgAuthRepo::new(platform_pool.clone())) as Arc<dyn AuthRepository>;
-        let agency_repo =
-            Arc::new(PgAgencyRepo::new(platform_pool.clone())) as Arc<dyn AgencyRepository>;
-        let subscription_repo = Arc::new(PgSubscriptionRepo::new(platform_pool.clone(), pool_manager.clone()))
-            as Arc<dyn SubscriptionRepository>;
+        let auth_repo: Arc<dyn AuthRepository> = Arc::new(PgAuthRepo::new(platform_pool.clone()));
+        let agency_repo: Arc<dyn AgencyRepository> =
+            Arc::new(PgAgencyRepo::new(platform_pool.clone()));
+        let subscription_repo: Arc<dyn SubscriptionRepository> = Arc::new(PgSubscriptionRepo::new(
+            platform_pool.clone(),
+            pool_manager.clone(),
+        ));
 
         // ── External services ─────────────────────────────────────────────────
-        let email = Arc::new(
+        let email: Arc<dyn EmailPort> = Arc::new(
             SmtpEmail::new(
                 &cfg.smtp_host,
                 cfg.smtp_port,
@@ -293,37 +295,36 @@ impl AppState {
                 cfg.smtp_password.as_deref(),
             )
             .context("failed to build SMTP transport")?,
-        ) as Arc<dyn EmailPort>;
+        );
 
-        let sms = Arc::new(AfricasTalkingSms::new(
-            cfg.at_api_key.clone(),
+        let sms: Arc<dyn SmsPort> = Arc::new(AfricasTalkingSms::new(
+            cfg.at_api_key.clone().unwrap_or_default(),
             cfg.at_username.clone(),
             cfg.at_sender_id.clone(),
-        )) as Arc<dyn SmsPort>;
+        ));
 
         let mpesa = Arc::new(MpesaAdapter::new(
-            cfg.mpesa_consumer_key.clone(),
-            cfg.mpesa_consumer_secret.clone(),
-            cfg.mpesa_shortcode.clone(),
-            cfg.mpesa_passkey.clone(),
+            cfg.mpesa_consumer_key.clone().unwrap_or_default(),
+            cfg.mpesa_consumer_secret.clone().unwrap_or_default(),
+            cfg.mpesa_shortcode.clone().unwrap_or_default(),
+            cfg.mpesa_passkey.clone().unwrap_or_default(),
             cfg.mpesa_callback_url.clone(),
             cfg.mpesa_base_url.clone(),
         ));
 
-        let storage = Arc::new(
+        let storage: Arc<dyn StoragePort> = Arc::new(
             S3Storage::new(
-                &cfg.aws_access_key_id,
-                &cfg.aws_secret_access_key,
+                cfg.aws_access_key_id.as_deref().unwrap_or_default(),
+                cfg.aws_secret_access_key.as_deref().unwrap_or_default(),
                 &cfg.aws_region,
                 cfg.s3_bucket.clone(),
-                if cfg.aws_endpoint_url.is_empty() { None } else { Some(cfg.aws_endpoint_url.as_str()) },
+                cfg.aws_endpoint_url.as_deref(),
             )
             .await,
-        ) as Arc<dyn StoragePort>;
+        );
 
         // ── OpenFGA ───────────────────────────────────────────────────────────
-        let openfga =
-            Arc::new(OpenFgaAdapter::new(cfg.openfga_url.clone())) as Arc<dyn OpenFgaPort>;
+        let openfga: Arc<dyn OpenFgaPort> = Arc::new(OpenFgaAdapter::new(cfg.openfga_url.clone()));
 
         // ── Subscription use-cases ────────────────────────────────────────────
         let sub_cache = Arc::new(SubscriptionCache::new(redis_pool.clone()));
@@ -378,9 +379,6 @@ impl AppState {
         };
 
         // ── Auth use-cases ────────────────────────────────────────────────────
-        // FIX 1: RefreshTokenUseCase::new takes exactly 1 argument.
-        // The struct only holds `auth: Arc<dyn AuthPort>`. Token blacklisting
-        // is enforced in the auth middleware, not inside this use-case.
         let auth_uc = Arc::new(AuthUseCases {
             refresh: Arc::new(RefreshTokenUseCase::new(
                 Arc::clone(&jwt) as Arc<dyn AuthPort>
@@ -404,12 +402,8 @@ impl AppState {
         let jinja = Arc::new(jinja_env);
 
         // ── Notification workers ──────────────────────────────────────────────
-        // FIX 2: build_notification_components(templates_dir, redis_url) — 2 args only.
-        // It builds its own Apalis Redis connections and NotificationService internally.
         let components = build_notification_components("templates", &cfg.redis_url).await?;
 
-        // FIX 3: components.service is NotificationService, not Arc<NotificationService>.
-        // Assign directly; the field type on AppState is NotificationService.
         let notifications = components.service.clone();
 
         // start_notification_workers moves the storage handles out of `components`

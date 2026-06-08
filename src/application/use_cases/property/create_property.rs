@@ -13,8 +13,8 @@ use crate::{
         enums::PropertyType,
         errors::DomainError,
         property::{
-            CreatePropertyCommand, CreateUnitCommand, Property, PropertyConfig, PropertyDocument,
-            UnitType,
+            slugify, unique_slug, CreatePropertyCommand, CreateUnitCommand, Property,
+            PropertyConfig, PropertyDocument, UnitType,
         },
     },
 };
@@ -98,6 +98,9 @@ impl CreatePropertyUseCase {
         }
 
         let city = input.city.trim().to_string();
+        let base_slug = slugify(&name);
+        let existing_slugs = self.repo.list_slugs_for_agency(input.agency_id).await?;
+        let slug = unique_slug(&base_slug, &existing_slugs);
 
         // Validate the custom prefix when the caller supplied one.
         let work_order_prefix = input
@@ -148,6 +151,7 @@ impl CreatePropertyUseCase {
             .create(CreatePropertyCommand {
                 agency_id: input.agency_id,
                 created_by: input.created_by,
+                slug,
                 name,
                 address,
                 city,

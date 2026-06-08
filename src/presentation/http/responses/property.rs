@@ -68,6 +68,7 @@ impl From<PropertyDocument> for PropertyDocumentResponse {
 pub struct PropertySummaryResponse {
     pub id: Uuid,
     pub agency_id: Uuid,
+    pub slug: String,
     pub name: String,
     pub address: String,
     pub city: String,
@@ -86,6 +87,7 @@ impl From<Property> for PropertySummaryResponse {
         Self {
             id: p.id,
             agency_id: p.agency_id,
+            slug: p.slug.clone(),
             name: p.name,
             address: p.address,
             city: p.city,
@@ -102,6 +104,7 @@ impl From<Property> for PropertySummaryResponse {
 pub struct PropertyResponse {
     pub id: Uuid,
     pub agency_id: Uuid,
+    pub slug: String,
     pub name: String,
     pub address: String,
     pub city: String,
@@ -129,6 +132,7 @@ impl From<Property> for PropertyResponse {
         Self {
             id: p.id,
             agency_id: p.agency_id,
+            slug: p.slug,
             name: p.name,
             address: p.address,
             city: p.city,

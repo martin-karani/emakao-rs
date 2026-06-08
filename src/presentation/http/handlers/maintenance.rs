@@ -294,6 +294,7 @@ pub async fn create_work_order(
             is_tenant_visible: dto.is_tenant_visible.unwrap_or(true),
             internal_notes: dto.internal_notes,
             attachments: dto.attachments.unwrap_or_default(),
+            subtasks: dto.subtasks.unwrap_or_default(),
             notify_resident_email: None,
             notify_resident_phone: None,
         })
@@ -396,6 +397,7 @@ pub async fn caretaker_create_work_order(
             is_tenant_visible: dto.is_tenant_visible.unwrap_or(true),
             internal_notes: None,
             attachments: dto.attachments.unwrap_or_default(),
+            subtasks: dto.subtasks.unwrap_or_default(),
             notify_resident_email: None,
             notify_resident_phone: None,
         })
@@ -465,6 +467,7 @@ pub async fn resident_create_work_order(
             is_tenant_visible: true,
             internal_notes: None,
             attachments: dto.attachments.unwrap_or_default(),
+            subtasks: dto.subtasks.unwrap_or_default(),
             notify_resident_email: None,
             notify_resident_phone: None,
         })

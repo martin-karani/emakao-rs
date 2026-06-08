@@ -63,6 +63,10 @@ use utoipa::OpenApi;
         crate::presentation::http::handlers::maintenance::get_work_order,
         crate::presentation::http::handlers::maintenance::create_work_order,
         crate::presentation::http::handlers::maintenance::update_work_order,
+        crate::presentation::http::handlers::maintenance::list_work_order_comments,
+        crate::presentation::http::handlers::maintenance::create_work_order_comment,
+        crate::presentation::http::handlers::maintenance::list_comment_replies,
+        crate::presentation::http::handlers::maintenance::get_work_order_activity,
 
         // ── Owners ────────────────────────────────────────────────────────────
         crate::presentation::http::handlers::owner::list_owners,
@@ -271,7 +275,12 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::maintenance::CreateWorkOrderDto,
         crate::presentation::http::dto::maintenance::UpdateWorkOrderDto,
         crate::presentation::http::dto::maintenance::ListWorkOrdersParams,
+        crate::presentation::http::dto::maintenance::CreateWorkOrderCommentDto,
         crate::presentation::http::responses::maintenance::WorkOrderResponse,
+        crate::presentation::http::responses::maintenance::WorkOrderCommentResponse,
+        crate::presentation::http::responses::maintenance::WorkOrderSubtaskResponse,
+        crate::presentation::http::responses::maintenance::WorkOrderAttachmentResponse,
+        crate::presentation::http::responses::maintenance::WorkOrderActivityResponse,
 
         // ── Owners ────────────────────────────────────────────────────────────
         crate::presentation::http::dto::owner::CreateOwnerDto,

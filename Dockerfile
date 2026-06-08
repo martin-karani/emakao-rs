@@ -1,23 +1,20 @@
-# ── builder ────────────────────────────────────────────────────────────────────
-FROM rust:1.78-slim-bookworm AS builder
-
-RUN apt-get update && apt-get install -y \
-    pkg-config libssl-dev libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
+# ── chef ───────────────────────────────────────────────────────────────────────
+FROM lukemathwalker/cargo-chef:latest-rust-1.78-slim-bookworm AS chef
 WORKDIR /app
+RUN apt-get update && apt-get install -y pkg-config libssl-dev libpq-dev
 
-# Cache dependencies before copying source
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release 2>/dev/null; rm -rf src
+# ── planner ────────────────────────────────────────────────────────────────────
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build real source
-COPY src ./src
-COPY migrations ./migrations
-COPY templates ./templates
-COPY resources ./resources
-RUN touch src/main.rs && cargo build --release
+# ── builder ────────────────────────────────────────────────────────────────────
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY . .
+RUN cargo build --release
 
 # ── runtime ────────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
@@ -28,8 +25,6 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# FIX: binary is named "emakao" (matches [[bin]] name in Cargo.toml),
-# not "emakao-backend" as the old Dockerfile had it.
 COPY --from=builder /app/target/release/emakao      ./emakao
 COPY --from=builder /app/target/release/migrate      ./migrate
 COPY --from=builder /app/migrations                  ./migrations

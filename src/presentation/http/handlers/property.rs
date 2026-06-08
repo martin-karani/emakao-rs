@@ -26,8 +26,7 @@ use crate::{
     application::{
         errors::AppError,
         ports::{
-            billing_repository::BillingRepository,
-            property_repository::PropertyRepository,
+            billing_repository::BillingRepository, property_repository::PropertyRepository,
             unit_repository::UnitRepository,
         },
         use_cases::property::{
@@ -41,16 +40,13 @@ use crate::{
         },
     },
     domain::{
-        agency::AgencySettings,
-        auth::AuthenticatedUser,
-        billing::BillingSettings,
+        agency::AgencySettings, auth::AuthenticatedUser, billing::BillingSettings,
         property::UpdatePropertyCommand,
     },
     infrastructure::{
         audit::AuditEvent,
         db::{
-            billing_repository_sqlx::PgBillingRepo,
-            property_repository_sqlx::PgPropertyRepo,
+            billing_repository_sqlx::PgBillingRepo, property_repository_sqlx::PgPropertyRepo,
             unit_repository_sqlx::PgUnitRepo,
         },
     },
@@ -100,7 +96,7 @@ pub async fn list_properties(
     )
     .await?;
 
-    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool));
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
     let usecase = ListPropertiesUseCase::new(repo);
 
     let items = usecase
@@ -144,9 +140,46 @@ pub async fn get_property(
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(&state, &ctx, &user, "can_view", &format!("property:{id}")).await?;
 
-    let repo = Arc::new(PgPropertyRepo::from(ctx.pool));
+    let repo = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
     let usecase = GetPropertyUseCase::new(repo);
     let property = usecase.execute(ctx.agency.id, id).await?;
+
+    Ok(Json(PropertyResponse::from(property)))
+}
+
+/// Get a single property by slug within the active agency.
+#[utoipa::path(
+    get,
+    path = "/api/v1/properties/by-slug/{slug}",
+    params(("slug" = String, Path, description = "Property slug")),
+    responses(
+        (status = 200, description = "Property found",         body = PropertyResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Property not found",     body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
+pub async fn get_property_by_slug(
+    State(state): State<AppState>,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(slug): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
+    let property = repo
+        .find_by_slug(ctx.agency.id, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("property".into()))?;
+
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "can_view",
+        &format!("property:{}", property.id),
+    )
+    .await?;
 
     Ok(Json(PropertyResponse::from(property)))
 }
@@ -352,13 +385,14 @@ pub async fn update_property(
         None
     };
 
-    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool));
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
     let usecase = UpdatePropertyUseCase::new(repo);
 
-        let property = usecase
+    let property = usecase
         .execute(UpdatePropertyCommand {
             id,
             agency_id: ctx.agency.id,
+            slug: None,
             name: dto.name,
             address: dto.address,
             city: dto.city,
@@ -420,7 +454,7 @@ pub async fn delete_property(
 ) -> Result<impl IntoResponse, AppError> {
     check_permission(&state, &ctx, &user, "can_edit", &format!("property:{id}")).await?;
 
-    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool));
+    let repo: Arc<dyn PropertyRepository> = Arc::new(PgPropertyRepo::from(ctx.pool.clone()));
     let usecase = DeletePropertyUseCase::new(repo);
     usecase.execute(ctx.agency.id, id).await?;
 
@@ -450,10 +484,14 @@ pub async fn get_property_billing(
     Extension(user): Extension<AuthenticatedUser>,
     Path(property_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let repo = PgBillingRepo::for_agency(tenant_pool(&state, user.agency_id).await?, user.agency_id);
-    let settings = repo.get_billing_settings_by_property_id(property_id).await?.ok_or_else(|| {
-        AppError::NotFound(format!("billing settings for property {property_id}"))
-    })?;
+    let repo =
+        PgBillingRepo::for_agency(tenant_pool(&state, user.agency_id).await?, user.agency_id);
+    let settings = repo
+        .get_billing_settings_by_property_id(property_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("billing settings for property {property_id}"))
+        })?;
 
     Ok(Json(settings))
 }
@@ -467,7 +505,8 @@ pub async fn upsert_property_billing(
 ) -> Result<impl IntoResponse, AppError> {
     settings.property_id = property_id;
 
-    let repo = PgBillingRepo::for_agency(tenant_pool(&state, user.agency_id).await?, user.agency_id);
+    let repo =
+        PgBillingRepo::for_agency(tenant_pool(&state, user.agency_id).await?, user.agency_id);
     repo.upsert_billing_settings(settings).await?;
 
     Ok(StatusCode::OK)

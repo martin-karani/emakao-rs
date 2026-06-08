@@ -299,6 +299,7 @@ impl OwnerRepository for PgOwnerRepo {
         struct PropertyRow {
             id: Uuid,
             agency_id: Uuid,
+            slug: String,
             name: String,
             address: String,
             city: String,
@@ -320,7 +321,7 @@ impl OwnerRepository for PgOwnerRepo {
         let rows = sqlx::query_as::<_, PropertyRow>(
             r#"
         SELECT
-            p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+            p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
             p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
             mc.work_order_prefix, mc.work_order_seq,
             p.policies, p.created_by, p.created_at, p.updated_at,
@@ -360,6 +361,7 @@ impl OwnerRepository for PgOwnerRepo {
                 let property = Property {
                     id: row.id,
                     agency_id: row.agency_id,
+                    slug: row.slug,
                     name: row.name,
                     address: row.address,
                     city: row.city,

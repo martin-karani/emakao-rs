@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::{Column, PgPool, Row};
+use sqlx::{PgPool, Row};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -37,6 +37,7 @@ impl From<PgPool> for PgPropertyRepo {
 struct PropertyRow {
     id: Uuid,
     agency_id: Uuid,
+    slug: String,
     name: String,
     address: String,
     city: String,
@@ -79,6 +80,7 @@ impl TryFrom<PropertyRow> for Property {
         Ok(Property {
             id: row.id,
             agency_id: row.agency_id,
+            slug: row.slug,
             name: row.name,
             address: row.address,
             city: row.city,
@@ -108,7 +110,7 @@ impl PropertyRepository for PgPropertyRepo {
         let rows = sqlx::query_as::<_, PropertyRow>(
             r#"
             SELECT
-                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
                 p.policies, p.created_by, p.created_at, p.updated_at
@@ -141,7 +143,7 @@ impl PropertyRepository for PgPropertyRepo {
         let row = sqlx::query_as::<_, PropertyRow>(
             r#"
             SELECT
-                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
                 p.policies, p.created_by, p.created_at, p.updated_at
@@ -160,6 +162,49 @@ impl PropertyRepository for PgPropertyRepo {
             Some(r) => Ok(Some(Property::try_from(r)?)),
             None => Ok(None),
         }
+    }
+
+    async fn find_by_slug(
+        &self,
+        agency_id: Uuid,
+        slug: &str,
+    ) -> Result<Option<Property>, AppError> {
+        let row = sqlx::query_as::<_, PropertyRow>(
+            r#"
+            SELECT
+                p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
+                p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
+                mc.work_order_prefix, mc.work_order_seq,
+                p.policies, p.created_by, p.created_at, p.updated_at
+            FROM properties p
+            LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
+            WHERE p.agency_id = $1 AND p.slug = $2
+            LIMIT 1
+            "#,
+        )
+        .bind(agency_id)
+        .bind(slug)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        match row {
+            Some(r) => Ok(Some(Property::try_from(r)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn list_slugs_for_agency(&self, agency_id: Uuid) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query("SELECT slug FROM properties WHERE agency_id = $1")
+            .bind(agency_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(AppError::Database)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| row.get::<String, _>("slug"))
+            .collect())
     }
 
     async fn create(&self, cmd: CreatePropertyCommand) -> Result<Property, AppError> {
@@ -210,17 +255,18 @@ impl PropertyRepository for PgPropertyRepo {
         let res = sqlx::query(
             r#"
             INSERT INTO properties (
-                id, agency_id, name, address, city, country_code,
+                id, agency_id, slug, name, address, city, country_code,
                 property_type, config, unit_types, photos, documents, created_by
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6,
-                $7::property_type, $8, $9, $10, $11, $12
+                $1, $2, $3, $4, $5, $6, $7,
+                $8::property_type, $9, $10, $11, $12, $13
             )
             "#,
         )
         .bind(property_id)
         .bind(cmd.agency_id)
+        .bind(&cmd.slug)
         .bind(&cmd.name)
         .bind(&cmd.address)
         .bind(&cmd.city)
@@ -282,7 +328,7 @@ impl PropertyRepository for PgPropertyRepo {
         let row = sqlx::query(
             r#"
             SELECT
-                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
                 p.policies, p.created_by, p.created_at, p.updated_at
@@ -304,6 +350,7 @@ impl PropertyRepository for PgPropertyRepo {
         let property_row = PropertyRow {
             id: row.get("id"),
             agency_id: row.get("agency_id"),
+            slug: row.get("slug"),
             name: row.get("name"),
             address: row.get("address"),
             city: row.get("city"),
@@ -337,6 +384,7 @@ impl PropertyRepository for PgPropertyRepo {
                 address    = COALESCE($4, address),
                 city       = COALESCE($5, city),
                 policies   = COALESCE($6, policies),
+                slug       = COALESCE($7, slug),
                 updated_at = now()
             WHERE id = $1 AND agency_id = $2
             "#,
@@ -347,6 +395,7 @@ impl PropertyRepository for PgPropertyRepo {
         .bind(cmd.address)
         .bind(cmd.city)
         .bind(policies_val)
+        .bind(cmd.slug)
         .execute(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
@@ -375,7 +424,7 @@ impl PropertyRepository for PgPropertyRepo {
         let row = sqlx::query_as::<_, PropertyRow>(
             r#"
             SELECT
-                p.id, p.agency_id, p.name, p.address, p.city, p.country_code,
+                p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
                 p.policies, p.created_by, p.created_at, p.updated_at

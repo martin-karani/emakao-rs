@@ -5,7 +5,7 @@ use axum::{
     },
     response::IntoResponse,
 };
-use futures_util::{SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::broadcast;
 use uuid::Uuid;
