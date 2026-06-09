@@ -9,8 +9,8 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::enums::PortalStatus;
-use crate::domain::resident::Resident;
+use crate::domain::enums::{PortalStatus, AgreementStatus};
+use crate::domain::resident::{Resident, TenantWithLease};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ResidentResponse {
@@ -51,3 +51,41 @@ impl From<Resident> for ResidentResponse {
         }
     }
 }
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TenantWithLeaseResponse {
+    pub resident_id: Uuid,
+    pub resident_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resident_email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resident_phone: Option<String>,
+    pub unit_id: Uuid,
+    pub unit_number: String,
+    pub agreement_id: Uuid,
+    pub rent_amount_kes: rust_decimal::Decimal,
+    pub deposit_kes: rust_decimal::Decimal,
+    pub status: AgreementStatus,
+    pub outstanding_balance: rust_decimal::Decimal,
+    pub deposit_paid: rust_decimal::Decimal,
+}
+
+impl From<TenantWithLease> for TenantWithLeaseResponse {
+    fn from(t: TenantWithLease) -> Self {
+        Self {
+            resident_id: t.resident_id,
+            resident_name: t.resident_name,
+            resident_email: t.resident_email,
+            resident_phone: t.resident_phone,
+            unit_id: t.unit_id,
+            unit_number: t.unit_number,
+            agreement_id: t.agreement_id,
+            rent_amount_kes: t.rent_amount_kes,
+            deposit_kes: t.deposit_kes,
+            status: t.status,
+            outstanding_balance: t.outstanding_balance,
+            deposit_paid: t.deposit_paid,
+        }
+    }
+}
+

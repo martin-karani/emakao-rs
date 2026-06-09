@@ -26,7 +26,8 @@ use crate::{
     application::{
         errors::AppError,
         ports::{
-            billing_repository::BillingRepository, property_repository::PropertyRepository,
+            billing_repository::BillingRepository,
+            property_repository::{PropertyRepository, PropertySummaryQuery},
             unit_repository::UnitRepository,
         },
         use_cases::property::{
@@ -57,7 +58,12 @@ use crate::{
         http::{
             dto::property::{CreatePropertyDto, ListPropertiesParams, UpdatePropertyDto},
             helpers::permission::check_permission,
-            responses::property::{PropertyResponse, PropertySummaryResponse},
+            responses::{
+                property::{
+                    PropertyResponse, PropertySummaryDetailResponse, PropertySummaryResponse,
+                },
+                resident::TenantWithLeaseResponse,
+            },
         },
         middleware::subscription::ResolvedSubscription,
         // Macros declared in src/presentation/macros.rs
@@ -510,6 +516,92 @@ pub async fn upsert_property_billing(
     repo.upsert_billing_settings(settings).await?;
 
     Ok(StatusCode::OK)
+}
+
+/// Get a summary of property details (stats, expiring leases, maintenance, rent collection).
+#[utoipa::path(
+    get,
+    path = "/api/v1/properties/{id}/summary",
+    params(("id" = Uuid, Path, description = "Property UUID")),
+    responses(
+        (status = 200, description = "Property summary found", body = PropertySummaryDetailResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Property not found",     body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
+pub async fn get_property_summary(
+    State(state): State<AppState>,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(property_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let repo = PgPropertyRepo::from(ctx.pool.clone());
+
+    // 1. Check permission
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "can_view",
+        &format!("property:{}", property_id),
+    )
+    .await?;
+
+    // 2. Fetch summary
+    let summary = repo
+        .get_summary(PropertySummaryQuery {
+            agency_id: ctx.agency.id,
+            property_id,
+            expiring_lease_days: 30, // Default to 30 days
+        })
+        .await?;
+
+    Ok(Json(PropertySummaryDetailResponse::from(summary)))
+}
+
+/// Get tenants for a property
+#[utoipa::path(
+    get,
+    path = "/api/v1/properties/{id}/tenants",
+    params(("id" = Uuid, Path, description = "Property UUID")),
+    responses(
+        (status = 200, description = "List of tenants", body = Vec<TenantWithLeaseResponse>),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Property not found",     body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
+pub async fn get_property_tenants(
+    State(state): State<AppState>,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(property_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    use crate::application::ports::resident_repository::ResidentRepository;
+    use crate::infrastructure::db::resident_repository_sqlx::PgResidentRepo;
+
+    // 1. Check permission
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "can_view",
+        &format!("property:{}", property_id),
+    )
+    .await?;
+
+    let repo = PgResidentRepo::from(ctx.pool.clone());
+    let tenants = repo.find_tenants_by_property(ctx.agency.id, property_id).await?;
+
+    Ok(Json(
+        tenants
+            .into_iter()
+            .map(TenantWithLeaseResponse::from)
+            .collect::<Vec<_>>(),
+    ))
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

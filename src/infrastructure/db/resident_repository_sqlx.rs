@@ -10,7 +10,7 @@ use crate::{
     domain::{
         enums::{PaymentClaimStatus, PaymentMethodType, PortalStatus},
         payment::PaymentClaim,
-        resident::Resident,
+        resident::{Resident, TenantWithLease},
     },
 };
 
@@ -298,5 +298,101 @@ impl ResidentRepository for PgResidentRepo {
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         Ok(rows.into_iter().map(Resident::from).collect())
+    }
+
+    async fn find_tenants_by_property(
+        &self,
+        _agency_id: Uuid,
+        property_id: Uuid,
+    ) -> Result<Vec<TenantWithLease>, AppError> {
+        #[derive(sqlx::FromRow)]
+        struct TenantRow {
+            resident_id: Uuid,
+            first_name: String,
+            last_name: String,
+            email: Option<String>,
+            phone: Option<String>,
+            unit_id: Uuid,
+            unit_number: String,
+            agreement_id: Uuid,
+            rent_amount_kes: rust_decimal::Decimal,
+            deposit_kes: rust_decimal::Decimal,
+            status: String,
+            outstanding_balance: Option<rust_decimal::Decimal>,
+            deposit_paid: Option<rust_decimal::Decimal>,
+        }
+
+        let rows = sqlx::query_as::<_, TenantRow>(
+            r#"
+            SELECT 
+                r.id as resident_id, 
+                r.first_name, 
+                r.last_name, 
+                r.email, 
+                r.phone,
+                u.id as unit_id, 
+                u.unit_number,
+                a.id as agreement_id, 
+                a.rent_amount_kes, 
+                a.deposit_kes, 
+                a.status::text,
+                (
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN le.entry_type IN ('rent', 'deposit', 'hoa_dues', 'cam_charge', 'utility', 'maintenance_charge', 'late_fee', 'legal_fee', 'penalty') THEN le.amount_kes
+                            WHEN le.entry_type IN ('payment_mpesa', 'payment_bank', 'payment_cash', 'deposit_refund', 'credit_note', 'waiver', 'journal_adjustment') THEN -le.amount_kes
+                            ELSE 0
+                        END
+                    ), 0)
+                    FROM ledger_entries le
+                    WHERE le.agreement_id = a.id
+                ) as outstanding_balance,
+                (
+                    SELECT COALESCE(SUM(le.amount_kes), 0)
+                    FROM ledger_entries le
+                    WHERE le.agreement_id = a.id AND le.entry_type IN ('payment_mpesa', 'payment_bank', 'payment_cash') AND le.description ILIKE '%deposit%'
+                ) as deposit_paid
+            FROM residents r
+            JOIN agreements a ON a.resident_id = r.id
+            JOIN units u ON a.unit_id = u.id
+            WHERE a.property_id = $1
+            ORDER BY u.unit_number ASC
+            "#,
+        )
+        .bind(property_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+
+        fn parse_agreement_status(s: &str) -> crate::domain::enums::AgreementStatus {
+            match s {
+                "draft" => crate::domain::enums::AgreementStatus::Draft,
+                "pending_signature" => crate::domain::enums::AgreementStatus::PendingSignature,
+                "active" => crate::domain::enums::AgreementStatus::Active,
+                "expired" => crate::domain::enums::AgreementStatus::Expired,
+                "terminated" => crate::domain::enums::AgreementStatus::Terminated,
+                "pending_renewal" => crate::domain::enums::AgreementStatus::PendingRenewal,
+                "renewed" => crate::domain::enums::AgreementStatus::Renewed,
+                _ => crate::domain::enums::AgreementStatus::Draft,
+            }
+        }
+
+        Ok(rows
+            .into_iter()
+            .map(|r| TenantWithLease {
+                resident_id: r.resident_id,
+                resident_name: format!("{} {}", r.first_name, r.last_name),
+                resident_email: r.email,
+                resident_phone: r.phone,
+                unit_id: r.unit_id,
+                unit_number: r.unit_number,
+                agreement_id: r.agreement_id,
+                rent_amount_kes: r.rent_amount_kes,
+                deposit_kes: r.deposit_kes,
+                status: parse_agreement_status(&r.status),
+                outstanding_balance: r.outstanding_balance.unwrap_or(rust_decimal::Decimal::ZERO),
+                deposit_paid: r.deposit_paid.unwrap_or(rust_decimal::Decimal::ZERO),
+            })
+            .collect())
     }
 }

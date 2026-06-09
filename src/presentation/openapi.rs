@@ -31,6 +31,7 @@ use utoipa::OpenApi;
         // ── Properties ────────────────────────────────────────────────────────
         crate::presentation::http::handlers::property::list_properties,
         crate::presentation::http::handlers::property::get_property,
+        crate::presentation::http::handlers::property::get_property_summary,
         crate::presentation::http::handlers::property::create_property,
         crate::presentation::http::handlers::property::update_property,
         crate::presentation::http::handlers::property::delete_property,
@@ -243,6 +244,12 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::property::UpdatePropertyDto,
         crate::presentation::http::dto::property::ListPropertiesParams,
         crate::presentation::http::responses::property::PropertyResponse,
+        crate::presentation::http::responses::property::PropertySummaryDetailResponse,
+        crate::domain::property_summary::PropertySummary,
+        crate::domain::property_summary::PropertyStats,
+        crate::domain::property_summary::PropertyRentSummary,
+        crate::domain::dashboard::ExpiringLease,
+        crate::domain::dashboard::MaintenanceSummary,
 
         // ── Units ─────────────────────────────────────────────────────────────
         crate::presentation::http::dto::unit::CreateUnitDto,

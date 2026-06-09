@@ -1,4 +1,4 @@
-use crate::domain::enums::BillingFrequency;
+use crate::domain::enums::{BillingFrequency, PaymentMethodType};
 use garde::Validate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -15,15 +15,20 @@ pub struct CreateAgreementDto {
     #[garde(skip)]
     pub resident_id: Uuid,
     #[garde(skip)]
-    pub start_date: Date,
+    pub start_date: String,
     #[garde(skip)]
-    pub end_date: Option<Date>,
+    pub end_date: Option<String>,
     #[garde(skip)]
     pub rent_amount_kes: Decimal,
     #[garde(skip)]
     pub deposit_kes: Decimal,
     #[garde(skip)]
     pub billing_frequency: BillingFrequency,
+    #[garde(skip)]
+    #[serde(default)]
+    pub record_deposit_payment: bool,
+    #[garde(skip)]
+    pub deposit_payment_method: Option<PaymentMethodType>,
 }
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]

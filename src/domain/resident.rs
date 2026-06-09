@@ -29,3 +29,19 @@ impl Resident {
         self.email.as_deref().or(self.phone.as_deref())
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TenantWithLease {
+    pub resident_id: Uuid,
+    pub resident_name: String,
+    pub resident_email: Option<String>,
+    pub resident_phone: Option<String>,
+    pub unit_id: Uuid,
+    pub unit_number: String,
+    pub agreement_id: Uuid,
+    pub rent_amount_kes: rust_decimal::Decimal,
+    pub deposit_kes: rust_decimal::Decimal,
+    pub status: crate::domain::enums::AgreementStatus,
+    pub outstanding_balance: rust_decimal::Decimal,
+    pub deposit_paid: rust_decimal::Decimal,
+}

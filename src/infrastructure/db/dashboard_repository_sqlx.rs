@@ -233,7 +233,7 @@ impl DashboardRepository for PgDashboardRepo {
                 u.id                AS unit_id,
                 u.unit_number,
                 wo.created_at,
-                EXTRACT(EPOCH FROM (now() - wo.created_at)) / 86400 AS days_open
+                (EXTRACT(EPOCH FROM (now() - wo.created_at)) / 86400)::BIGINT AS days_open
             FROM  work_orders wo
             JOIN  properties  p ON p.id = wo.property_id
             LEFT JOIN units   u ON u.id = wo.unit_id

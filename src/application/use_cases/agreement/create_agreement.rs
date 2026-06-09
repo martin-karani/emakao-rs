@@ -8,14 +8,21 @@ use crate::{
         errors::AppError,
         ports::{
             agreement_repository::{AgreementRepository, CreateAgreementCommand},
+            ledger_repository::LedgerRepository,
             openfga_port::OpenFgaPort,
         },
     },
-    domain::{agreement::Agreement, enums::BillingFrequency, errors::DomainError},
+    domain::{
+        agreement::Agreement, 
+        enums::{BillingFrequency, LedgerEntryType, PaymentMethodType}, 
+        errors::DomainError,
+        ledger::CreateLedgerEntryCommand,
+    },
 };
 
 pub struct CreateAgreementUseCase {
     pub repo: Arc<dyn AgreementRepository>,
+    pub ledger_repo: Arc<dyn LedgerRepository>,
     pub openfga: Arc<dyn OpenFgaPort>,
 }
 
@@ -29,11 +36,18 @@ pub struct CreateAgreementInput {
     pub rent_amount_kes: Decimal,
     pub deposit_kes: Decimal,
     pub billing_frequency: BillingFrequency,
+    pub record_deposit_payment: bool,
+    pub deposit_payment_method: Option<PaymentMethodType>,
+    pub created_by: Uuid,
 }
 
 impl CreateAgreementUseCase {
-    pub fn new(repo: Arc<dyn AgreementRepository>, openfga: Arc<dyn OpenFgaPort>) -> Self {
-        Self { repo, openfga }
+    pub fn new(
+        repo: Arc<dyn AgreementRepository>, 
+        ledger_repo: Arc<dyn LedgerRepository>,
+        openfga: Arc<dyn OpenFgaPort>
+    ) -> Self {
+        Self { repo, ledger_repo, openfga }
     }
 
     pub async fn execute(&self, input: CreateAgreementInput) -> Result<Agreement, AppError> {
@@ -60,6 +74,46 @@ impl CreateAgreementUseCase {
                 billing_frequency: input.billing_frequency,
             })
             .await?;
+
+        // If deposit is positive, we might want to record it
+        if input.deposit_kes > Decimal::ZERO && input.record_deposit_payment {
+            // 1. Post a Deposit Charge
+            self.ledger_repo.create(CreateLedgerEntryCommand {
+                agreement_id: Some(agreement.id),
+                unit_id: Some(input.unit_id),
+                resident_id: Some(input.resident_id),
+                owner_id: None,
+                entry_type: LedgerEntryType::Deposit,
+                amount_kes: input.deposit_kes,
+                description: "Security Deposit Charge".to_string(),
+                external_ref: None,
+                mpesa_receipt: None,
+                period_start: None,
+                period_end: None,
+                posted_by: input.created_by,
+                metadata: serde_json::json!({}),
+            }).await?;
+
+            // 2. Post a Payment if method provided
+            if let Some(method) = input.deposit_payment_method {
+                let entry_type = LedgerEntryType::from_payment_method(method);
+                self.ledger_repo.create(CreateLedgerEntryCommand {
+                    agreement_id: Some(agreement.id),
+                    unit_id: Some(input.unit_id),
+                    resident_id: Some(input.resident_id),
+                    owner_id: None,
+                    entry_type,
+                    amount_kes: input.deposit_kes, // Payments are recorded as positive amounts (credit to ledger is -ve in balance logic) Wait, balance logic does: `CASE WHEN le.entry_type IN ('payment_mpesa', ...) THEN -le.amount_kes`. So we store positive amounts for payments too.
+                    description: "Security Deposit Payment".to_string(),
+                    external_ref: None,
+                    mpesa_receipt: None,
+                    period_start: None,
+                    period_end: None,
+                    posted_by: input.created_by,
+                    metadata: serde_json::json!({}),
+                }).await?;
+            }
+        }
 
         // ── OpenFGA Tuples ───────────────────────────────────────────────────
         //

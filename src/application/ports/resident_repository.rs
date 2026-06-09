@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     application::errors::AppError,
-    domain::{payment::PaymentClaim, resident::Resident},
+    domain::{payment::PaymentClaim, resident::{Resident, TenantWithLease}},
 };
 
 pub struct CreateResidentCommand {
@@ -45,4 +45,10 @@ pub trait ResidentRepository: Send + Sync + 'static {
         agency_id: Uuid,
         property_id: Uuid,
     ) -> Result<Vec<Resident>, AppError>;
+
+    async fn find_tenants_by_property(
+        &self,
+        agency_id: Uuid,
+        property_id: Uuid,
+    ) -> Result<Vec<TenantWithLease>, AppError>;
 }

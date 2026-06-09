@@ -3,7 +3,10 @@ use uuid::Uuid;
 
 use crate::{
     application::errors::AppError,
-    domain::property::{CreatePropertyCommand, Property, UpdatePropertyCommand},
+    domain::{
+        property::{CreatePropertyCommand, Property, UpdatePropertyCommand},
+        property_summary::PropertySummary,
+    },
 };
 
 pub struct PropertyFilter {
@@ -14,8 +17,15 @@ pub struct PropertyFilter {
     pub offset: i64,
 }
 
+pub struct PropertySummaryQuery {
+    pub agency_id: Uuid,
+    pub property_id: Uuid,
+    pub expiring_lease_days: i64,
+}
+
 #[async_trait]
 pub trait PropertyRepository: Send + Sync + 'static {
+    async fn get_summary(&self, query: PropertySummaryQuery) -> Result<PropertySummary, AppError>;
     async fn find_all(&self, filter: PropertyFilter) -> Result<Vec<Property>, AppError>;
     async fn find_by_id(&self, agency_id: Uuid, id: Uuid) -> Result<Option<Property>, AppError>;
     async fn find_by_slug(&self, agency_id: Uuid, slug: &str) -> Result<Option<Property>, AppError>;

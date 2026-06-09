@@ -22,6 +22,7 @@ pub mod notification_template;
 pub mod owner;
 pub mod payment;
 pub mod property;
+pub mod property_summary;
 pub mod resident;
 pub mod role;
 pub mod subscription;

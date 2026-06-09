@@ -14,8 +14,18 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::domain::property_summary::PropertySummary;
 use crate::domain::enums::PropertyType;
 use crate::domain::property::{Property, PropertyConfig, PropertyPolicies, UnitType, PropertyDocument};
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PropertySummaryDetailResponse(pub PropertySummary);
+
+impl From<PropertySummary> for PropertySummaryDetailResponse {
+    fn from(s: PropertySummary) -> Self {
+        Self(s)
+    }
+}
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UnitTypeResponse {

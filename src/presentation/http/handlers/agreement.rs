@@ -6,6 +6,7 @@ use axum::{
 };
 use garde::Validate;
 use std::sync::Arc;
+use time::{macros::format_description, Date};
 use uuid::Uuid;
 
 use crate::{
@@ -15,7 +16,9 @@ use crate::{
     },
     application::{errors::AppError, use_cases::agreement::create_agreement::CreateAgreementInput},
     domain::auth::AuthenticatedUser,
-    infrastructure::db::agreement_repository_sqlx::PgAgreementRepo,
+    infrastructure::db::{
+        agreement_repository_sqlx::PgAgreementRepo, ledger_repository_sqlx::PgLedgerRepo,
+    },
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
@@ -130,15 +133,11 @@ pub async fn create_agreement(
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    let store_id = ctx
-        .agency
-        .fga_store_id
-        .clone()
-        .ok_or_else(|| {
-            AppError::InternalServer(
-                "Agency has no OpenFGA store configured — contact platform admin".into(),
-            )
-        })?;
+    let store_id = ctx.agency.fga_store_id.clone().ok_or_else(|| {
+        AppError::InternalServer(
+            "Agency has no OpenFGA store configured — contact platform admin".into(),
+        )
+    })?;
 
     require_permissions(
         state.openfga.clone(),
@@ -146,24 +145,44 @@ pub async fn create_agreement(
         user.user_id,
         vec![
             ("can_edit", format!("property:{}", dto.property_id)),
-            ("manager", format!("unit:{}", dto.unit_id)),
+            // ("manager", format!("unit:{}", dto.unit_id)),
         ],
     )
     .await?;
 
-    let repo = Arc::new(PgAgreementRepo::from(ctx.pool));
-    let usecase = CreateAgreementUseCase::new(repo, state.openfga.clone());
+    let date_fmt = format_description!("[year]-[month]-[day]");
+
+    let start_date = Date::parse(&dto.start_date, &date_fmt).map_err(|_| {
+        AppError::Unprocessable(format!(
+            "Invalid start_date: '{}', expected YYYY-MM-DD",
+            dto.start_date
+        ))
+    })?;
+
+    let end_date = dto
+        .end_date
+        .as_deref()
+        .map(|s| Date::parse(s, &date_fmt))
+        .transpose()
+        .map_err(|e| AppError::Unprocessable(format!("Invalid end_date: {e}")))?;
+
+    let repo = Arc::new(PgAgreementRepo::from(ctx.pool.clone()));
+    let ledger_repo = Arc::new(PgLedgerRepo::new(ctx.pool.clone()));
+    let usecase = CreateAgreementUseCase::new(repo, ledger_repo, state.openfga.clone());
     let agreement = usecase
         .execute(CreateAgreementInput {
             fga_store_id: ctx.agency.fga_store_id.clone(),
             property_id: dto.property_id,
             unit_id: dto.unit_id,
             resident_id: dto.resident_id,
-            start_date: dto.start_date,
-            end_date: dto.end_date,
+            start_date,
+            end_date,
             rent_amount_kes: dto.rent_amount_kes,
             deposit_kes: dto.deposit_kes,
             billing_frequency: dto.billing_frequency,
+            record_deposit_payment: dto.record_deposit_payment,
+            deposit_payment_method: dto.deposit_payment_method,
+            created_by: user.user_id,
         })
         .await?;
     Ok((

@@ -1,39 +1,25 @@
 use async_trait::async_trait;
+use rust_decimal::Decimal;
 use sqlx::{PgPool, Row};
 use std::collections::HashSet;
+use time::{Date, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::{
     application::{
         errors::AppError,
-        ports::property_repository::{PropertyFilter, PropertyRepository},
+        ports::property_repository::{PropertyFilter, PropertyRepository, PropertySummaryQuery},
     },
     domain::{
+        dashboard::{ExpiringLease, MaintenanceSummary},
         enums::PropertyType,
         property::{CreatePropertyCommand, Property, PropertyConfig, UpdatePropertyCommand},
+        property_summary::{PropertyRentSummary, PropertyStats, PropertySummary},
         work_order_code::{candidate_prefix, unique_prefix},
     },
 };
 
-pub struct PgPropertyRepo {
-    pool: PgPool,
-}
-
-impl PgPropertyRepo {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
-    }
-}
-
-impl From<PgPool> for PgPropertyRepo {
-    fn from(pool: PgPool) -> Self {
-        Self { pool }
-    }
-}
-
-// ── Row type ──────────────────────────────────────────────────────────────────
-
-#[derive(sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 struct PropertyRow {
     id: Uuid,
     agency_id: Uuid,
@@ -102,10 +88,206 @@ impl TryFrom<PropertyRow> for Property {
     }
 }
 
+pub struct PgPropertyRepo {
+    pool: PgPool,
+}
+
+impl From<PgPool> for PgPropertyRepo {
+    fn from(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
 // ── Repository ────────────────────────────────────────────────────────────────
 
 #[async_trait]
 impl PropertyRepository for PgPropertyRepo {
+    async fn get_summary(&self, query: PropertySummaryQuery) -> Result<PropertySummary, AppError> {
+        let generated_at = OffsetDateTime::now_utc();
+
+        // 1. Fetch property basic info
+        let prop = self
+            .find_by_id(query.agency_id, query.property_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("property".into()))?;
+
+        // 2. Stats
+        let stats_row = sqlx::query(
+            r#"
+            SELECT
+                (SELECT COUNT(*) FROM units WHERE property_id = $1)::BIGINT AS total_units,
+                (SELECT COUNT(*) FROM units WHERE property_id = $1 AND status::text = 'occupied')::BIGINT AS occupied_units,
+                (SELECT COUNT(*) FROM agreements WHERE property_id = $1 AND status::text = 'active')::BIGINT AS active_leases,
+                (SELECT COUNT(*) FROM work_orders WHERE property_id = $1 AND status::text NOT IN ('completed', 'cancelled'))::BIGINT AS open_work_orders
+            "#
+        )
+        .bind(query.property_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        let total_units: i64 = stats_row.get("total_units");
+        let occupied_units: i64 = stats_row.get("occupied_units");
+        let active_leases: i64 = stats_row.get("active_leases");
+        let open_work_orders: i64 = stats_row.get("open_work_orders");
+
+        let occupancy_rate = if total_units > 0 {
+            Decimal::from(occupied_units * 100) / Decimal::from(total_units)
+        } else {
+            Decimal::ZERO
+        };
+
+        let stats = PropertyStats {
+            total_units,
+            occupied_units,
+            vacant_units: total_units - occupied_units,
+            occupancy_rate_pct: occupancy_rate,
+            active_leases,
+            open_work_orders,
+        };
+
+        // 3. Expiring leases
+        let lease_rows = sqlx::query(
+            r#"
+            SELECT
+                a.id AS agreement_id,
+                u.id AS unit_id,
+                u.unit_number,
+                r.id AS resident_id,
+                r.first_name || ' ' || r.last_name AS resident_name,
+                a.end_date,
+                (a.end_date - CURRENT_DATE)::INTEGER AS days_until_expiry,
+                a.rent_amount_kes
+            FROM agreements a
+            JOIN units u ON u.id = a.unit_id
+            JOIN residents r ON r.id = a.resident_id
+            WHERE a.property_id = $1
+              AND a.status::text = 'active'
+              AND a.end_date IS NOT NULL
+              AND a.end_date <= CURRENT_DATE + ($2 * INTERVAL '1 day')
+            ORDER BY a.end_date ASC
+            LIMIT 10
+            "#,
+        )
+        .bind(query.property_id)
+        .bind(query.expiring_lease_days as i32)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        let expiring_leases = lease_rows
+            .into_iter()
+            .map(|r| ExpiringLease {
+                agreement_id: r.get("agreement_id"),
+                unit_id: r.get("unit_id"),
+                unit_number: r.get("unit_number"),
+                property_id: query.property_id,
+                property_name: prop.name.clone(),
+                resident_id: r.get("resident_id"),
+                resident_name: r.get("resident_name"),
+                end_date: r.get::<Option<Date>, _>("end_date").unwrap_or_else(|| {
+                    Date::from_calendar_date(2000, time::Month::January, 1).unwrap()
+                }),
+                days_until_expiry: r.get::<Option<i32>, _>("days_until_expiry").unwrap_or(0) as i64,
+                rent_amount_kes: r.get("rent_amount_kes"),
+            })
+            .collect();
+
+        // 4. Pending maintenance
+        let maint_rows = sqlx::query(
+            r#"
+            SELECT
+                wo.id AS work_order_id,
+                wo.code,
+                wo.title,
+                wo.priority::text AS priority,
+                wo.status::text AS status,
+                u.id AS unit_id,
+                u.unit_number,
+                wo.created_at,
+                (EXTRACT(EPOCH FROM (now() - wo.created_at)) / 86400)::BIGINT AS days_open
+            FROM work_orders wo
+            LEFT JOIN units u ON u.id = wo.unit_id
+            WHERE wo.property_id = $1
+              AND wo.status::text NOT IN ('completed', 'cancelled')
+            ORDER BY
+                CASE wo.priority::text
+                    WHEN 'emergency' THEN 0
+                    WHEN 'high' THEN 1
+                    WHEN 'medium' THEN 2
+                    ELSE 3
+                END,
+                wo.created_at ASC
+            LIMIT 10
+            "#,
+        )
+        .bind(query.property_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        let pending_maintenance = maint_rows
+            .into_iter()
+            .map(|r| MaintenanceSummary {
+                work_order_id: r.get("work_order_id"),
+                code: r.get("code"),
+                title: r.get("title"),
+                priority: r.get::<Option<String>, _>("priority").unwrap_or_default(),
+                status: r.get::<Option<String>, _>("status").unwrap_or_default(),
+                property_id: query.property_id,
+                property_name: prop.name.clone(),
+                unit_id: r.get("unit_id"),
+                unit_number: r.get("unit_number"),
+                created_at: r.get("created_at"),
+                days_open: r.get::<Option<i64>, _>("days_open").unwrap_or(0),
+            })
+            .collect();
+
+        // 5. Rent collection (current month)
+        let rent_row = sqlx::query(
+            r#"
+            SELECT
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type::text IN ('rent', 'utility', 'late_fee')), 0) AS expected,
+                COALESCE(SUM(le.amount_kes) FILTER (WHERE le.entry_type::text IN ('payment_mpesa', 'payment_bank', 'payment_cash')), 0) AS collected
+            FROM ledger_entries le
+            JOIN agreements a ON a.id = le.agreement_id
+            WHERE a.property_id = $1
+              AND le.posted_at >= date_trunc('month', now())
+            "#
+        )
+        .bind(query.property_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        let expected: Decimal = rent_row.get("expected");
+        let collected: Decimal = rent_row.get("collected");
+        let outstanding = expected - collected;
+        let collection_rate = if expected > Decimal::ZERO {
+            (collected / expected) * Decimal::from(100)
+        } else {
+            Decimal::from(100)
+        };
+
+        let rent_collection = PropertyRentSummary {
+            total_expected_kes: expected,
+            total_collected_kes: collected,
+            outstanding_kes: outstanding,
+            collection_rate_pct: collection_rate,
+        };
+
+        Ok(PropertySummary {
+            generated_at,
+            property_id: query.property_id,
+            name: prop.name,
+            slug: prop.slug,
+            stats,
+            expiring_leases,
+            pending_maintenance,
+            rent_collection,
+        })
+    }
+
     async fn find_all(&self, filter: PropertyFilter) -> Result<Vec<Property>, AppError> {
         let rows = sqlx::query_as::<_, PropertyRow>(
             r#"
