@@ -20,6 +20,8 @@ pub struct CreateUnitTypeDto {
     pub base_rent: Option<Decimal>,
     pub base_deposit: Option<Decimal>,
     pub quantity: i32,
+    #[serde(default)]
+    pub unit_numbers: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]

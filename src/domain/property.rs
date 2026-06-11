@@ -136,6 +136,8 @@ pub struct UnitType {
     pub base_rent: Option<Decimal>,
     pub base_deposit: Option<Decimal>,
     pub quantity: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit_numbers: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

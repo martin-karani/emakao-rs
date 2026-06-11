@@ -74,6 +74,7 @@ pub struct UnitTypeInput {
     pub base_rent: Option<rust_decimal::Decimal>,
     pub base_deposit: Option<rust_decimal::Decimal>,
     pub quantity: i32,
+    pub unit_numbers: Option<Vec<String>>,
 }
 
 pub struct NewCaretakerInput {
@@ -143,6 +144,7 @@ impl CreatePropertyUseCase {
                 base_rent: ut.base_rent,
                 base_deposit: ut.base_deposit,
                 quantity: ut.quantity,
+                unit_numbers: ut.unit_numbers,
             })
             .collect();
 
@@ -173,11 +175,18 @@ impl CreatePropertyUseCase {
         let mut unit_seq = 1;
 
         for ut in &unit_types {
-            for _ in 0..ut.quantity {
+            for i in 0..ut.quantity {
+                let unit_number = ut
+                    .unit_numbers
+                    .as_ref()
+                    .and_then(|nums| nums.get(i as usize))
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| unit_seq.to_string());
+
                 unit_cmds.push(CreateUnitCommand {
                     property_id: property.id,
                     unit_type_id: Some(ut.id),
-                    unit_number: unit_seq.to_string(),
+                    unit_number,
                     floor: None,
                     size_sqm: None,
                     bedrooms: Some(ut.bedrooms),

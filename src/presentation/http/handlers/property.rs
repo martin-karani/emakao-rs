@@ -301,6 +301,7 @@ pub async fn create_property(
                     base_rent: ut.base_rent,
                     base_deposit: ut.base_deposit,
                     quantity: ut.quantity,
+                    unit_numbers: ut.unit_numbers,
                 })
                 .collect(),
             photos: dto.photos.unwrap_or_default(),
