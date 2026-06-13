@@ -14,7 +14,7 @@ use crate::{
         errors::DomainError,
         property::{
             slugify, unique_slug, CreatePropertyCommand, CreateUnitCommand, Property,
-            PropertyConfig, PropertyDocument, UnitType,
+            PropertyConfig, PropertyDocument, PropertyPolicies, UnitType,
         },
     },
 };
@@ -64,6 +64,7 @@ pub struct CreatePropertyInput {
     pub new_caretakers: Vec<NewCaretakerInput>,
     pub portal_base_url: String,
     pub agency_name: Option<String>,
+    pub policies: Option<PropertyPolicies>,
 }
 
 pub struct UnitTypeInput {
@@ -166,6 +167,7 @@ impl CreatePropertyUseCase {
                 country_code: "KE".to_string(),
                 owner_ids: input.owner_ids,
                 agent_ids: input.agent_ids,
+                policies: input.policies,
             })
             .await?;
 

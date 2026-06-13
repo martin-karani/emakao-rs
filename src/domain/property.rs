@@ -223,6 +223,7 @@ pub struct CreatePropertyCommand {
     pub country_code: String,
     pub owner_ids: Vec<Uuid>,
     pub agent_ids: Vec<Uuid>,
+    pub policies: Option<PropertyPolicies>,
 }
 
 pub struct UpdatePropertyCommand {

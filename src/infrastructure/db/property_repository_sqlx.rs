@@ -434,15 +434,17 @@ impl PropertyRepository for PgPropertyRepo {
         let property_id = Uuid::now_v7();
 
         // Insert property
+        let policies_val = cmd.policies.map(|p| serde_json::to_value(p).unwrap_or_default());
         let res = sqlx::query(
             r#"
             INSERT INTO properties (
                 id, agency_id, slug, name, address, city, country_code,
-                property_type, config, unit_types, photos, documents, created_by
+                property_type, config, unit_types, photos, documents, created_by,
+                policies
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
-                $8::property_type, $9, $10, $11, $12, $13
+                $8::property_type, $9, $10, $11, $12, $13, $14
             )
             "#,
         )
@@ -459,6 +461,7 @@ impl PropertyRepository for PgPropertyRepo {
         .bind(serde_json::to_value(&cmd.photos).unwrap_or_default())
         .bind(serde_json::to_value(&cmd.documents).unwrap_or_default())
         .bind(cmd.created_by)
+        .bind(policies_val)
         .execute(&mut *tx)
         .await;
 

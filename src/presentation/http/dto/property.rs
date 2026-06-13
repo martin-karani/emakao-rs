@@ -70,6 +70,9 @@ pub struct CreatePropertyDto {
 
     #[garde(skip)]
     pub agency_name: Option<String>,
+
+    #[garde(skip)]
+    pub policies: Option<PropertyPolicies>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

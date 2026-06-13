@@ -324,6 +324,7 @@ pub async fn create_property(
                 .portal_base_url
                 .unwrap_or_else(|| "https://app.emakao.co.ke".to_string()),
             agency_name: dto.agency_name,
+            policies: dto.policies,
         })
         .await?;
 
