@@ -188,51 +188,49 @@ pub async fn create_staff_user(
     .await?;
 
     // ── Write OpenFGA agency-membership tuple ──────────────────────────────
-    if let Some(ref store_id) = agency.fga_store_id {
-        let fga_user   = format!("user:{}", user.id);
-        let fga_object = format!("agency:{agency_id}");
+    //
+    // This write is FATAL: if it fails the handler returns an error.
+    // A staff user without an FGA tuple can log in but every permission
+    // check will return FORBIDDEN — an unusable, confusing state.
+    let store_id = agency.fga_store_id.as_deref().ok_or_else(|| {
+        AppError::InternalServer(
+            "Agency has no OpenFGA store configured — contact platform admin".into(),
+        )
+    })?;
 
-        // Map custom roles to base FGA relations
-        let fga_relation = match dto.role.as_str() {
-            "agency_owner" => "agency_owner",
-            "manager"      => "manager",
-            _              => "agent",
-        };
+    let fga_user   = format!("user:{}", user.id);
+    let fga_object = format!("agency:{agency_id}");
 
-        match state
-            .openfga
-            .write_tuple(store_id, &fga_user, fga_relation, &fga_object)
-            .await
-        {
-            Ok(()) => {
-                tracing::info!(
-                    user_id   = %user.id,
-                    agency_id = %agency_id,
-                    role      = %dto.role,
-                    fga_rel   = %fga_relation,
-                    store_id  = %store_id,
-                    "FGA agency-membership tuple written for seeded staff user",
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    user_id   = %user.id,
-                    agency_id = %agency_id,
-                    role      = %dto.role,
-                    error     = %e,
-                    "FGA tuple write failed for seeded staff user — \
-                     user can log in but fine-grained checks may fail; \
-                     re-sync via the admin permissions API",
-                );
-            }
-        }
-    } else {
-        tracing::warn!(
-            agency_id = %agency_id,
-            user_id   = %user.id,
-            "agency has no FGA store — skipping FGA tuple write for seeded staff user",
-        );
-    }
+    // Map custom roles to the three base FGA relations.
+    let fga_relation = match dto.role.as_str() {
+        "admin" | "agency_owner" => "agency_owner",
+        "manager"                => "manager",
+        _                        => "agent",
+    };
+
+    state
+        .openfga
+        .write_tuple(store_id, &fga_user, fga_relation, &fga_object)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                user_id   = %user.id,
+                agency_id = %agency_id,
+                role      = %dto.role,
+                error     = %e,
+                "FGA tuple write failed — aborting staff user creation",
+            );
+            AppError::InternalServer(format!("Failed to write FGA permission tuple: {e}"))
+        })?;
+
+    tracing::info!(
+        user_id   = %user.id,
+        agency_id = %agency_id,
+        role      = %dto.role,
+        fga_rel   = %fga_relation,
+        store_id  = %store_id,
+        "FGA agency-membership tuple written for seeded staff user",
+    );
 
     tracing::info!(
         user_id   = %user.id,

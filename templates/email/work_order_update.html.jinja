@@ -1,47 +1,49 @@
 {% extends "base.html.jinja" %}
 
 {% block title %}Work Order Status Update{% endblock %}
+{% block preheader %}There is a new update on work order #{{ work_order_ref }}.{% endblock %}
 
 {% block content %}
-<h2>Work Order Update</h2>
+<h1>Work order update.</h1>
 <p>Hi {{ resident_name | default("there") }},</p>
 <p>
-  There has been an update to your maintenance request.
+  There is a new update on your maintenance request.
 </p>
 <div class="highlight-box">
-  <table style="width:100%;border-collapse:collapse;">
+  <p class="section-label">Request details</p>
+  <table class="meta-table">
     <tr>
-      <td style="padding:4px 0;color:#555;">Work Order</td>
-      <td style="padding:4px 0;font-weight:600;">#{{ work_order_ref }}</td>
+      <td class="meta-label">Work order</td>
+      <td class="meta-value">#{{ work_order_ref }}</td>
     </tr>
     <tr>
-      <td style="padding:4px 0;color:#555;">Category</td>
-      <td style="padding:4px 0;">{{ category }}</td>
+      <td class="meta-label">Category</td>
+      <td class="meta-value-soft">{{ category }}</td>
     </tr>
     <tr>
-      <td style="padding:4px 0;color:#555;">Status</td>
-      <td style="padding:4px 0;font-weight:600;text-transform:capitalize;">{{ status }}</td>
+      <td class="meta-label">Status</td>
+      <td class="meta-value" style="text-transform:capitalize;">{{ status }}</td>
     </tr>
     {% if scheduled_at %}
     <tr>
-      <td style="padding:4px 0;color:#555;">Scheduled</td>
-      <td style="padding:4px 0;">{{ scheduled_at }}</td>
+      <td class="meta-label">Scheduled</td>
+      <td class="meta-value-soft">{{ scheduled_at }}</td>
     </tr>
     {% endif %}
     {% if vendor_name %}
     <tr>
-      <td style="padding:4px 0;color:#555;">Assigned To</td>
-      <td style="padding:4px 0;">{{ vendor_name }}</td>
+      <td class="meta-label">Assigned to</td>
+      <td class="meta-value-soft">{{ vendor_name }}</td>
     </tr>
     {% endif %}
   </table>
 </div>
 {% if description %}
-<p style="font-size:14px;color:#555;">
+<p>
   <strong>Notes:</strong> {{ description }}
 </p>
 {% endif %}
-<p style="font-size:13px;color:#888888;">
+<p class="note">
   If you have questions about this work order, please contact your property manager.
 </p>
 {% endblock %}

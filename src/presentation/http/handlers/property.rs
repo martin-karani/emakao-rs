@@ -322,7 +322,7 @@ pub async fn create_property(
                 .collect(),
             portal_base_url: dto
                 .portal_base_url
-                .unwrap_or_else(|| "https://app.emakao.co.ke".to_string()),
+                .unwrap_or_else(|| state.config.portal_base_url.clone()),
             agency_name: dto.agency_name,
             policies: dto.policies,
         })

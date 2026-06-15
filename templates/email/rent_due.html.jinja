@@ -1,31 +1,33 @@
 {% extends "base.html.jinja" %}
 
 {% block title %}Rent Payment Reminder{% endblock %}
+{% block preheader %}Rent for {{ unit_ref }} is due on {{ due_date }}.{% endblock %}
 
 {% block content %}
-<h2>Rent Payment Reminder</h2>
+<h1>Rent payment reminder.</h1>
 <p>Hi {{ resident_name }},</p>
-<p>This is a friendly reminder that your rent is due soon.</p>
+<p>This is a friendly reminder that your rent payment is due soon.</p>
 <div class="highlight-box">
-  <table style="width:100%;border-collapse:collapse;">
+  <p class="section-label">Payment details</p>
+  <table class="meta-table">
     <tr>
-      <td style="padding:4px 0;color:#555;">Unit</td>
-      <td style="padding:4px 0;font-weight:600;">{{ unit_ref }}</td>
+      <td class="meta-label">Unit</td>
+      <td class="meta-value">{{ unit_ref }}</td>
     </tr>
     <tr>
-      <td style="padding:4px 0;color:#555;">Amount Due</td>
-      <td style="padding:4px 0;font-weight:600;color:#e07b3c;">KES {{ amount_kes }}</td>
+      <td class="meta-label">Amount due</td>
+      <td class="meta-value">KES {{ amount_kes }}</td>
     </tr>
     <tr>
-      <td style="padding:4px 0;color:#555;">Due Date</td>
-      <td style="padding:4px 0;font-weight:600;">{{ due_date }}</td>
+      <td class="meta-label">Due date</td>
+      <td class="meta-value">{{ due_date }}</td>
     </tr>
   </table>
 </div>
-<p>
+<div class="cta-wrap">
   <a href="{{ payment_url }}" class="cta">Pay Now</a>
-</p>
-<p style="font-size:13px;color:#888888;">
+</div>
+<p class="note">
   If you have already made this payment, please disregard this reminder.
   Late payments may attract a fee as outlined in your lease agreement.
 </p>

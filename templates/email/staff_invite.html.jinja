@@ -1,49 +1,59 @@
 {% extends "base.html.jinja" %}
 
 {% block title %}You've Been Invited to the Emakao Staff Dashboard{% endblock %}
+{% block preheader %}Activate your staff account and start managing operations for {{ agency_name | default("your agency") }}.{% endblock %}
 
 {% block content %}
-<h2>Welcome to the Team, {{ first_name }}!</h2>
+<h1>Welcome to the team, {{ first_name }}.</h1>
 <p>Hi {{ first_name }},</p>
 <p>
   <strong>{{ inviter_name }}</strong> has invited you to join
   <strong>{{ agency_name | default("Emakao") }}</strong> as a
-  <strong>{{ role | title }}</strong> on the Emakao Property Management platform.
+  <strong>{{ role | replace("_", " ") | title }}</strong> on Emakao.
 </p>
 
 <div class="highlight-box">
-  <strong>What you can do in the Staff Dashboard:</strong><br>
+  <p class="section-label">Your access includes</p>
   {% if role == "admin" %}
-    Manage properties, residents, owners, vendors, and staff. Full access to
-    financial reports, lease agreements, maintenance workflows, and agency settings.
+    <ul class="bullet-list">
+      <li>Manage properties, units, residents, owners, vendors, and staff.</li>
+      <li>Review financial performance, agreements, maintenance workflows, and agency settings.</li>
+      <li>Oversee day-to-day operations across the full portfolio.</li>
+    </ul>
   {% elif role == "manager" %}
-    Oversee properties and units, manage lease agreements, review maintenance
-    requests, track payments, and generate reports.
+    <ul class="bullet-list">
+      <li>Oversee properties and units across the agency.</li>
+      <li>Manage lease activity, maintenance requests, and payment workflows.</li>
+      <li>Monitor performance and keep operations moving smoothly.</li>
+    </ul>
   {% else %}
-    View and manage assigned properties, communicate with residents,
-    process maintenance requests, and handle day-to-day operations.
+    <ul class="bullet-list">
+      <li>Work with assigned properties and day-to-day tasks.</li>
+      <li>Support residents, follow up on requests, and track operational updates.</li>
+      <li>Stay aligned with the rest of the property team in one dashboard.</li>
+    </ul>
   {% endif %}
 </div>
 
 <p>
-  Click the button below to activate your account and set your password.
-  This link expires in <strong>48 hours</strong>.
+  Use the secure link below to activate your account and create your password.
+  For your security, this invitation expires in <strong>48 hours</strong>.
 </p>
 
-<p>
+<div class="cta-wrap">
   <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
-</p>
+</div>
 
-<p style="font-size:13px;color:#888888;">
+<p class="note">
   If you were not expecting this invitation, please contact
-  <strong>{{ agency_name | default("Emakao") }}</strong> or ignore this email —
-  your account will not be activated unless you click the link above.
+  <strong>{{ agency_name | default("Emakao") }}</strong> or ignore this email.
+  Your account will not be activated unless you use the link above.
 </p>
 
 <hr class="divider">
 
-<p style="font-size:13px;color:#555555;">
-  Having trouble with the button? Copy and paste this link into your browser:<br>
-  <a href="{{ invite_url }}" style="color:#1a3c5e;">{{ invite_url }}</a>
+<p class="small-text">
+  If the button does not work, copy and paste this link into your browser:<br>
+  <a href="{{ invite_url }}">{{ invite_url }}</a>
 </p>
 {% endblock %}

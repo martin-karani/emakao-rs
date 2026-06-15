@@ -1,28 +1,37 @@
 {% extends "base.html.jinja" %}
 
 {% block title %}Welcome to Emakao – Resident Portal{% endblock %}
+{% block preheader %}Activate your resident portal to view lease details, payments, and maintenance updates.{% endblock %}
 
 {% block content %}
-<h2>You've been invited to the Resident Portal</h2>
+<h1>Your resident portal is ready.</h1>
 <p>Hi {{ first_name }},</p>
 <p>
-  You have been added as a resident by <strong>{{ agency_name | default("your property manager") }}</strong>.
-  Click the button below to activate your account and access your resident portal.
+  <strong>{{ agency_name | default("your property manager") }}</strong> has invited you
+  to activate your Emakao resident portal.
 </p>
 <div class="highlight-box">
-  <strong>What you can do in the Resident Portal:</strong><br>
-  View your lease &amp; payment history, submit maintenance requests, and message your property manager.
+  <p class="section-label">From your portal, you can</p>
+  <ul class="bullet-list">
+    <li>View lease details and payment history.</li>
+    <li>Submit maintenance requests and track progress.</li>
+    <li>Stay connected with your property manager.</li>
+  </ul>
 </div>
 <p>
-  <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
+  Use the secure link below to activate your account. The invitation expires in
+  <strong>48 hours</strong>.
 </p>
-<p style="font-size:13px;color:#888888;">
-  This link expires in <strong>48 hours</strong>. If you did not expect this invitation,
+<div class="cta-wrap">
+  <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
+</div>
+<p class="note">
+  If you did not expect this invitation,
   you can safely ignore this email.
 </p>
 <hr class="divider">
-<p style="font-size:13px;color:#555555;">
-  Having trouble with the button? Copy and paste this link into your browser:<br>
-  <a href="{{ invite_url }}" style="color:#1a3c5e;">{{ invite_url }}</a>
+<p class="small-text">
+  If the button does not work, copy and paste this link into your browser:<br>
+  <a href="{{ invite_url }}">{{ invite_url }}</a>
 </p>
 {% endblock %}

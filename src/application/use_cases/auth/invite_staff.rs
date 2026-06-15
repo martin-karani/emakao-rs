@@ -83,6 +83,12 @@ pub struct InviteStaffUseCase {
 
 impl InviteStaffUseCase {
     pub async fn execute(&self, input: InviteStaffInput) -> Result<InviteStaffOutput, AppError> {
+        if input.role == "agency_owner" || input.role == "admin" {
+            return Err(AppError::Validation(
+                "Agency owners can only be provisioned by the system administrator".into(),
+            ));
+        }
+
         // ── Validate role exists in agency ─────────────────────────────────────
         let _role = self
             .role_repo
@@ -187,7 +193,7 @@ impl InviteStaffUseCase {
                 // Map custom roles to one of the 3 base FGA relations.
                 // admin and manager keep their names; everyone else is an agent in FGA.
                 let fga_relation = match input.role.as_str() {
-                    "admin" => "admin",
+                    "admin" | "agency_owner" => "agency_owner",
                     "manager" => "manager",
                     _ => "agent",
                 };

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use uuid::Uuid;
 
 use crate::{
@@ -175,15 +175,36 @@ impl CreatePropertyUseCase {
 
         let mut unit_cmds = Vec::new();
         let mut unit_seq = 1;
+        let mut used_unit_numbers = HashSet::new();
 
         for ut in &unit_types {
             for i in 0..ut.quantity {
-                let unit_number = ut
+                let requested_unit_number = ut
                     .unit_numbers
                     .as_ref()
                     .and_then(|nums| nums.get(i as usize))
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| unit_seq.to_string());
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+
+                let unit_number = match requested_unit_number {
+                    Some(unit_number)
+                        if !used_unit_numbers.contains(&unit_number) =>
+                    {
+                        unit_number
+                    }
+                    Some(unit_number) if unit_number.parse::<u32>().is_ok() => {
+                        next_generated_unit_number(&used_unit_numbers, &mut unit_seq)
+                    }
+                    Some(unit_number) => {
+                        return Err(AppError::Validation(format!(
+                            "duplicate unit number '{unit_number}' provided while creating the property"
+                        )));
+                    }
+                    None => next_generated_unit_number(&used_unit_numbers, &mut unit_seq),
+                };
+
+                used_unit_numbers.insert(unit_number.clone());
 
                 unit_cmds.push(CreateUnitCommand {
                     property_id: property.id,
@@ -197,7 +218,6 @@ impl CreatePropertyUseCase {
                     deposit_kes: ut.base_deposit.unwrap_or_default(),
                     description: Some(format!("Type: {}", ut.name)),
                 });
-                unit_seq += 1;
             }
         }
 
@@ -258,5 +278,16 @@ impl CreatePropertyUseCase {
         );
 
         Ok(property)
+    }
+}
+
+fn next_generated_unit_number(used_unit_numbers: &HashSet<String>, unit_seq: &mut i32) -> String {
+    loop {
+        let candidate = unit_seq.to_string();
+        *unit_seq += 1;
+
+        if !used_unit_numbers.contains(&candidate) {
+            return candidate;
+        }
     }
 }

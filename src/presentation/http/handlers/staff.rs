@@ -90,7 +90,7 @@ pub async fn invite_staff(
 
     let uc = InviteStaffUseCase {
         auth_repo: state.identity.auth_repo.clone(),
-        role_repo: Arc::new(PgRoleRepo::new(state.pool())),
+        role_repo: Arc::new(PgRoleRepo::new(ctx.pool.clone())),
         auth_port: state.identity.auth_port.clone(),
         notifications: state.notifications.clone(),
         openfga: state.openfga.clone(),
@@ -106,7 +106,7 @@ pub async fn invite_staff(
             role: dto.role,
             inviter_name,
             agency_name: Some(ctx.agency.name.clone()),
-            portal_base_url: "https://app.emakao.co.ke".to_string(),
+            portal_base_url: state.config.portal_base_url.clone(),
         })
         .await?;
 
@@ -263,7 +263,7 @@ pub async fn deactivate_staff(
 
         // Map custom roles to base FGA relations to find the correct tuple to delete
         let fga_relation = match member.role.as_str() {
-            "admin" => "admin",
+            "admin" | "agency_owner" => "agency_owner",
             "manager" => "manager",
             _ => "agent",
         };

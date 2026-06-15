@@ -1,40 +1,44 @@
 {% extends "base.html.jinja" %}
 
 {% block title %}You've Been Invited as a Caretaker on Emakao{% endblock %}
+{% block preheader %}Activate your caretaker access for {{ property_name }} and start handling assigned work orders.{% endblock %}
 
 {% block content %}
-<h2>Welcome, {{ first_name }}!</h2>
+<h1>You have been invited as a caretaker.</h1>
 <p>Hi {{ first_name }},</p>
 <p>
-  You have been invited to join <strong>{{ agency_name | default("Emakao") }}</strong> as a <strong>Caretaker</strong> for <strong>{{ property_name }}</strong> on the Emakao Property Management platform.
+  You have been invited to join <strong>{{ agency_name | default("Emakao") }}</strong>
+  as a <strong>Caretaker</strong> for <strong>{{ property_name }}</strong> on Emakao.
 </p>
 
 <div class="highlight-box">
-  <strong>As a Caretaker, you will be able to:</strong><br>
-  - View and manage maintenance requests (work orders)<br>
-  - Communicate with residents regarding repairs<br>
-  - Track the status of tasks assigned to you<br>
-  - Update work order progress in real-time
+  <p class="section-label">What you can do</p>
+  <ul class="bullet-list">
+    <li>View and manage maintenance requests assigned to you.</li>
+    <li>Coordinate repair updates and follow up with residents when needed.</li>
+    <li>Track task progress from assignment through completion.</li>
+    <li>Update work order status in real time.</li>
+  </ul>
 </div>
 
 <p>
-  Click the button below to activate your account and set your password.
-  This link expires in <strong>48 hours</strong>.
+  Activate your account below and set your password to get started.
+  This invitation expires in <strong>48 hours</strong>.
 </p>
 
-<p>
+<div class="cta-wrap">
   <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
-</p>
+</div>
 
-<p style="font-size:13px;color:#888888;">
-  If you were not expecting this invitation, please ignore this email —
-  your account will not be activated unless you click the link above.
+<p class="note">
+  If you were not expecting this invitation, you can safely ignore this email.
+  No account will be activated unless the invitation link is used.
 </p>
 
 <hr class="divider">
 
-<p style="font-size:13px;color:#555555;">
-  Having trouble with the button? Copy and paste this link into your browser:<br>
-  <a href="{{ invite_url }}" style="color:#1a3c5e;">{{ invite_url }}</a>
+<p class="small-text">
+  If the button does not work, copy and paste this link into your browser:<br>
+  <a href="{{ invite_url }}">{{ invite_url }}</a>
 </p>
 {% endblock %}

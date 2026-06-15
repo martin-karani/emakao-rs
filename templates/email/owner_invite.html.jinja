@@ -1,29 +1,38 @@
 {% extends "base.html.jinja" %}
 
 {% block title %}Welcome to Emakao – Owner Portal{% endblock %}
+{% block preheader %}Activate your owner portal to track property performance, statements, and disbursements.{% endblock %}
 
 {% block content %}
-<h2>Activate Your Owner Portal</h2>
+<h1>Activate your owner portal.</h1>
 <p>Hi {{ first_name }},</p>
 <p>
-  You have been onboarded as a property owner with
+  You have been added as a property owner with
   <strong>{{ agency_name | default("Emakao") }}</strong>.
-  Activate your account to start tracking your properties, viewing statements, and receiving disbursements.
+  Activate your account to start tracking property performance, viewing statements,
+  and staying up to date with disbursements.
 </p>
 <div class="highlight-box">
-  <strong>What you can do in the Owner Portal:</strong><br>
-  View occupancy reports, track rent collection, download statements, and monitor maintenance activity.
+  <p class="section-label">Inside the owner portal</p>
+  <ul class="bullet-list">
+    <li>View occupancy and rent collection updates.</li>
+    <li>Download statements and review account activity.</li>
+    <li>Monitor maintenance activity affecting your property.</li>
+  </ul>
 </div>
 <p>
-  <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
+  Your activation link remains valid for <strong>48 hours</strong>.
 </p>
-<p style="font-size:13px;color:#888888;">
-  This link expires in <strong>48 hours</strong>. If you did not expect this invitation,
+<div class="cta-wrap">
+  <a href="{{ invite_url }}" class="cta">Activate Your Account</a>
+</div>
+<p class="note">
+  If you did not expect this invitation,
   please contact your property manager.
 </p>
 <hr class="divider">
-<p style="font-size:13px;color:#555555;">
-  Having trouble with the button? Copy and paste this link into your browser:<br>
-  <a href="{{ invite_url }}" style="color:#1a3c5e;">{{ invite_url }}</a>
+<p class="small-text">
+  If the button does not work, copy and paste this link into your browser:<br>
+  <a href="{{ invite_url }}">{{ invite_url }}</a>
 </p>
 {% endblock %}

@@ -22,12 +22,14 @@ use crate::{
     infrastructure::db::role_repository_sqlx::PgRoleRepo,
     presentation::{
         app_state::AppState,
+        extractors::AgencyContext,
         http::dto::role::{CreateRoleRequest, UpdateRoleRequest},
     },
 };
 
 pub async fn list_roles(
     State(state): State<AppState>,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<impl IntoResponse, AppError> {
     state
@@ -36,7 +38,7 @@ pub async fn list_roles(
         .require(user.user_id, user.agency_id, "roles:read")
         .await?;
 
-    let repo = Arc::new(PgRoleRepo::new(state.infra.tenant_pools.platform_pool()));
+    let repo = Arc::new(PgRoleRepo::new(ctx.pool.clone()));
     let roles = ListRolesUseCase::new(repo).execute(user.agency_id).await?;
 
     Ok(Json(roles))
@@ -58,6 +60,7 @@ pub async fn list_permissions(
 
 pub async fn create_role(
     State(state): State<AppState>,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Json(body): Json<CreateRoleRequest>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -67,7 +70,7 @@ pub async fn create_role(
         .require(user.user_id, user.agency_id, "roles:write")
         .await?;
 
-    let repo = Arc::new(PgRoleRepo::new(state.infra.tenant_pools.platform_pool()));
+    let repo = Arc::new(PgRoleRepo::new(ctx.pool.clone()));
     let role = CreateRoleUseCase::new(repo)
         .execute(CreateRoleInput {
             agency_id: user.agency_id,
@@ -81,6 +84,7 @@ pub async fn create_role(
 
 pub async fn update_role(
     State(state): State<AppState>,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Path(role_id): Path<Uuid>,
     Json(body): Json<UpdateRoleRequest>,
@@ -91,7 +95,7 @@ pub async fn update_role(
         .require(user.user_id, user.agency_id, "roles:write")
         .await?;
 
-    let repo = Arc::new(PgRoleRepo::new(state.infra.tenant_pools.platform_pool()));
+    let repo = Arc::new(PgRoleRepo::new(ctx.pool.clone()));
     let role = UpdateRoleUseCase::new(repo, state.customisation().permissions.clone())
         .execute(UpdateRoleInput {
             id: role_id,
@@ -105,6 +109,7 @@ pub async fn update_role(
 
 pub async fn delete_role(
     State(state): State<AppState>,
+    ctx: AgencyContext,
     Extension(user): Extension<AuthenticatedUser>,
     Path(role_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -114,7 +119,7 @@ pub async fn delete_role(
         .require(user.user_id, user.agency_id, "roles:write")
         .await?;
 
-    let repo = Arc::new(PgRoleRepo::new(state.infra.tenant_pools.platform_pool()));
+    let repo = Arc::new(PgRoleRepo::new(ctx.pool.clone()));
     DeleteRoleUseCase::new(repo)
         .execute(user.agency_id, role_id)
         .await?;

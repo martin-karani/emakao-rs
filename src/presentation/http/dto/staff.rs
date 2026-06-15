@@ -15,7 +15,7 @@ pub struct CreateStaffUserDto {
     #[garde(length(min = 8))]
     pub password: String,
 
-    /// One of: `"admin"`, `"manager"`, `"agent"`.
+    /// One of: `"agency_owner"`, `"manager"`, `"agent"`.
     #[garde(length(min = 1, max = 50))]
     pub role: String,
 }
@@ -36,7 +36,7 @@ pub struct InviteStaffDto {
     #[garde(email)]
     pub email: String,
 
-    /// One of: `"admin"`, `"manager"`, `"agent"`.
+    /// One of: `"manager"`, `"agent"`. (Note: `"agency_owner"` cannot be invited via this endpoint)
     #[garde(length(min = 1, max = 50))]
     pub role: String,
 }

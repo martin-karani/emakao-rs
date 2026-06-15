@@ -65,14 +65,14 @@ pub async fn staff_portal_guard(req: Request<Body>, next: Next) -> Response {
     let actual = req.extensions().get::<AuthenticatedUser>();
 
     match actual {
-        Some(u) if u.portal == PortalType::Staff && u.role != "admin" => {
+        Some(u) if u.portal == PortalType::Staff => {
             next.run(req).await
         }
         Some(_) => (
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "WRONG_PORTAL",
-                "message": "This token is for platform admin or another portal; you cannot access staff operational routes."
+                "message": "This token is for platform admin or another portal; you cannot access staff operational routes"
             })),
         )
             .into_response(),
