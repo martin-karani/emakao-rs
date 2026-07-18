@@ -32,5 +32,6 @@ pub trait PaymentRepository: Send + Sync + 'static {
         reviewed_by: Uuid,
         review_notes: Option<String>,
         rejection_reason: Option<String>,
+        ledger_entry_id: Option<Uuid>,
     ) -> Result<PaymentClaim, AppError>;
 }

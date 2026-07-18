@@ -13,8 +13,10 @@ pub struct CreateMeterDto {
     pub meter_type: MeterType,
     #[garde(skip)]
     pub billing_mode: BillingMode,
-    #[garde(length(min = 1, max = 50))]
-    pub meter_number: String,
+    /// For water meters this is automatically set to the unit number and can be omitted.
+    /// Required for all other meter types.
+    #[garde(inner(length(min = 1, max = 50)))]
+    pub meter_number: Option<String>,
     /// Positive rate validated inside the use case
     #[garde(skip)]
     pub rate_per_unit: Decimal,

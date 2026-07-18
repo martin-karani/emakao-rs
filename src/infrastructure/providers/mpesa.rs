@@ -29,6 +29,8 @@ pub struct MpesaProvider {
     consumer_secret: String,
     shortcode: String,
     passkey: String,
+    initiator_name: Option<String>,
+    security_credential: Option<String>,
     callback_url: String,
     base_url: String,
     client: reqwest::Client,
@@ -52,6 +54,9 @@ impl MpesaProvider {
             .ok_or_else(|| anyhow::anyhow!("M-Pesa creds: missing passkey"))?
             .to_owned();
 
+        let initiator_name = creds["initiator_name"].as_str().map(|s| s.to_owned());
+        let security_credential = creds["security_credential"].as_str().map(|s| s.to_owned());
+
         let shortcode = settings["shortcode"]
             .as_str()
             .unwrap_or("174379")
@@ -70,6 +75,8 @@ impl MpesaProvider {
             consumer_secret,
             shortcode,
             passkey,
+            initiator_name,
+            security_credential,
             callback_url,
             base_url,
             client: reqwest::Client::new(),
@@ -208,5 +215,79 @@ impl PaymentProvider for MpesaProvider {
             "1" => PaymentStatus::Failed,
             _ => PaymentStatus::Pending,
         })
+    }
+
+    async fn verify_receipt(&self, receipt_number: &str, claim_id: uuid::Uuid, agency_id: uuid::Uuid) -> anyhow::Result<bool> {
+        let token = self.access_token().await?;
+
+        let initiator = self.initiator_name.as_deref().unwrap_or("initiator");
+        // Option B: Assume `security_credential` is already the base64-encrypted password stored in DB
+        let security_credential = self.security_credential.as_deref().unwrap_or("");
+
+        let base_url = &self.base_url;
+        
+        // Emakao expects the environment variable BASE_URL or similar, but for simplicity
+        // we can derive it from callback_url which usually looks like "https://api.emakao.co.ke/api/v1/webhooks/mpesa"
+        // Let's assume the base domain is the same.
+        let parsed_callback = url::Url::parse(&self.callback_url).unwrap_or_else(|_| url::Url::parse("https://api.emakao.co.ke").unwrap());
+        let result_url = format!("{}://{}/api/v1/webhooks/mpesa/transaction-status/{}", parsed_callback.scheme(), parsed_callback.host_str().unwrap_or("api.emakao.co.ke"), agency_id);
+
+        let body = serde_json::json!({
+            "Initiator": initiator,
+            "SecurityCredential": security_credential,
+            "CommandID": "TransactionStatusQuery",
+            "TransactionID": receipt_number,
+            "PartyA": self.shortcode,
+            "IdentifierType": "4",
+            "ResultURL": result_url,
+            "QueueTimeOutURL": result_url,
+            "Remarks": claim_id.to_string(), // Store claim_id in Remarks so webhook can use it
+            "Occasion": ""
+        });
+
+        #[derive(Deserialize)]
+        struct DarajaQueryResp {
+            #[serde(rename = "ResponseCode")]
+            response_code: String,
+            #[serde(rename = "ResponseDescription")]
+            response_description: Option<String>,
+        }
+
+        let resp_res = self
+            .client
+            .post(format!("{}/mpesa/transactionstatus/v1/query", base_url))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await;
+
+        match resp_res {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    let parsed: DarajaQueryResp = resp.json().await?;
+                    if parsed.response_code == "0" {
+                        tracing::info!(receipt = %receipt_number, "Transaction Status query accepted by Safaricom");
+                        Ok(true)
+                    } else {
+                        tracing::warn!(
+                            receipt = %receipt_number,
+                            code = %parsed.response_code,
+                            desc = ?parsed.response_description,
+                            "Transaction Status query rejected by Safaricom"
+                        );
+                        Ok(false)
+                    }
+                } else {
+                    let status = resp.status();
+                    let text = resp.text().await.unwrap_or_default();
+                    tracing::error!(status = %status, text = %text, "Transaction Status API error");
+                    Ok(false)
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to send Transaction Status request");
+                Err(e.into())
+            }
+        }
     }
 }

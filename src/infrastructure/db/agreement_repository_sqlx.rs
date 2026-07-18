@@ -310,4 +310,17 @@ impl AgreementRepository for PgAgreementRepo {
 
         Ok(rows.into_iter().map(TaxAgreementView::from).collect())
     }
+
+    async fn get_deposit_kes(&self, agreement_id: Uuid) -> Result<rust_decimal::Decimal, AppError> {
+        let row = sqlx::query_as::<_, (rust_decimal::Decimal,)>(
+            "SELECT deposit_kes FROM agreements WHERE id = $1",
+        )
+        .bind(agreement_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(format!("get_deposit_kes: {e}")))?
+        .ok_or_else(|| AppError::NotFound(format!("agreement {agreement_id}")))?;
+
+        Ok(row.0)
+    }
 }

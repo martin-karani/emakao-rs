@@ -67,6 +67,7 @@ pub trait PaymentProvider: Send + Sync {
     fn key(&self) -> &'static str;
     async fn initiate_stk(&self, req: StkRequest) -> anyhow::Result<StkResponse>;
     async fn query_status(&self, checkout_id: &str) -> anyhow::Result<PaymentStatus>;
+    async fn verify_receipt(&self, receipt_number: &str, claim_id: uuid::Uuid, agency_id: uuid::Uuid) -> anyhow::Result<bool>;
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────

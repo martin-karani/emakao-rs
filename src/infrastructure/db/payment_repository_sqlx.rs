@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
+use sqlx::types::Json;
 use uuid::Uuid;
 
 use crate::{
     application::{errors::AppError, ports::payment_repository::PaymentRepository},
     domain::{
         enums::{PaymentClaimStatus, PaymentMethodType},
-        payment::{CreatePaymentClaimCommand, PaymentClaim},
+        payment::{CreatePaymentClaimCommand, PaymentAllocationItem, PaymentClaim},
     },
 };
 
@@ -32,11 +33,17 @@ struct PaymentClaimRow {
     property_id: Uuid,
     agreement_id: Option<Uuid>,
     resident_id: Option<Uuid>,
+    unit_id: Option<Uuid>,
     method_type: String,
     amount_kes: rust_decimal::Decimal,
     reference_code: Option<String>,
     proof_url: Option<String>,
     notes: Option<String>,
+    submitted_via: String,
+    raw_message: Option<String>,
+    period_label: Option<String>,
+    payment_for: Option<String>,
+    allocation: Json<Vec<PaymentAllocationItem>>,
     status: String,
     reviewed_by: Option<Uuid>,
     reviewed_at: Option<time::OffsetDateTime>,
@@ -89,11 +96,17 @@ impl From<PaymentClaimRow> for PaymentClaim {
             property_id: r.property_id,
             agreement_id: r.agreement_id,
             resident_id: r.resident_id,
+            unit_id: r.unit_id,
             method_type: parse_method(&r.method_type),
             amount_kes: r.amount_kes,
             reference_code: r.reference_code,
             proof_url: r.proof_url,
             notes: r.notes,
+            submitted_via: r.submitted_via,
+            raw_message: r.raw_message,
+            period_label: r.period_label,
+            payment_for: r.payment_for,
+            allocation: r.allocation.0,
             status: parse_claim_status(&r.status),
             reviewed_by: r.reviewed_by,
             reviewed_at: r.reviewed_at,
@@ -121,9 +134,10 @@ impl PaymentRepository for PgPaymentRepo {
 
         let rows = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
-            SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id,
+            SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id, pc.unit_id,
                    pc.method_type::text, pc.amount_kes, pc.reference_code,
-                   pc.proof_url, pc.notes, pc.status::text,
+                   pc.proof_url, pc.notes, pc.submitted_via, pc.raw_message,
+                   pc.period_label, pc.payment_for, pc.allocation, pc.status::text,
                    pc.reviewed_by, pc.reviewed_at, pc.review_notes,
                    pc.rejection_reason, pc.ledger_entry_id,
                    pc.submitted_by, pc.created_at, pc.updated_at
@@ -155,9 +169,10 @@ impl PaymentRepository for PgPaymentRepo {
     ) -> Result<Option<PaymentClaim>, AppError> {
         let row = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
-            SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id,
+            SELECT pc.id, pc.property_id, pc.agreement_id, pc.resident_id, pc.unit_id,
                    pc.method_type::text, pc.amount_kes, pc.reference_code,
-                   pc.proof_url, pc.notes, pc.status::text,
+                   pc.proof_url, pc.notes, pc.submitted_via, pc.raw_message,
+                   pc.period_label, pc.payment_for, pc.allocation, pc.status::text,
                    pc.reviewed_by, pc.reviewed_at, pc.review_notes,
                    pc.rejection_reason, pc.ledger_entry_id,
                    pc.submitted_by, pc.created_at, pc.updated_at
@@ -179,14 +194,21 @@ impl PaymentRepository for PgPaymentRepo {
         let row = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
             INSERT INTO payment_claims (
-                id, property_id, agreement_id, resident_id,
+                id, property_id, agreement_id, resident_id, unit_id,
                 method_type, amount_kes, reference_code, proof_url,
-                notes, status, submitted_by
+                notes, submitted_via, raw_message, period_label,
+                payment_for, allocation, status, submitted_by
             )
-            VALUES ($1, $2, $3, $4, $5::payment_method_type, $6, $7, $8, $9, 'pending_review'::claim_status, $10)
+            VALUES (
+                $1, $2, $3, $4, $5,
+                $6::payment_method_type, $7, $8, $9,
+                $10, $11, $12, $13,
+                $14, $15, 'pending_review'::claim_status, $16
+            )
             RETURNING
-                id, property_id, agreement_id, resident_id,
-                method_type::text, amount_kes, reference_code, proof_url, notes, status::text,
+                id, property_id, agreement_id, resident_id, unit_id,
+                method_type::text, amount_kes, reference_code, proof_url, notes,
+                submitted_via, raw_message, period_label, payment_for, allocation, status::text,
                 reviewed_by, reviewed_at, review_notes, rejection_reason,
                 ledger_entry_id, submitted_by, created_at, updated_at
             "#,
@@ -195,11 +217,17 @@ impl PaymentRepository for PgPaymentRepo {
         .bind(cmd.property_id)
         .bind(cmd.agreement_id)
         .bind(cmd.resident_id)
+        .bind(cmd.unit_id)
         .bind(method_str(&cmd.method_type))
         .bind(cmd.amount_kes)
         .bind(cmd.reference_code)
         .bind(cmd.proof_url)
         .bind(cmd.notes)
+        .bind(cmd.submitted_via)
+        .bind(cmd.raw_message)
+        .bind(cmd.period_label)
+        .bind(cmd.payment_for)
+        .bind(Json(cmd.allocation))
         .bind(cmd.submitted_by)
         .fetch_one(&self.pool)
         .await
@@ -215,6 +243,7 @@ impl PaymentRepository for PgPaymentRepo {
         reviewed_by: Uuid,
         review_notes: Option<String>,
         rejection_reason: Option<String>,
+        ledger_entry_id: Option<Uuid>,
     ) -> Result<PaymentClaim, AppError> {
         let row = sqlx::query_as::<_, PaymentClaimRow>(
             r#"
@@ -225,11 +254,13 @@ impl PaymentRepository for PgPaymentRepo {
                 reviewed_at      = now(),
                 review_notes     = $4,
                 rejection_reason = $5,
+                ledger_entry_id  = COALESCE($6, ledger_entry_id),
                 updated_at       = now()
             WHERE id = $1
             RETURNING
-                id, property_id, agreement_id, resident_id,
-                method_type::text, amount_kes, reference_code, proof_url, notes, status::text,
+                id, property_id, agreement_id, resident_id, unit_id,
+                method_type::text, amount_kes, reference_code, proof_url, notes,
+                submitted_via, raw_message, period_label, payment_for, allocation, status::text,
                 reviewed_by, reviewed_at, review_notes, rejection_reason,
                 ledger_entry_id, submitted_by, created_at, updated_at
             "#,
@@ -239,6 +270,7 @@ impl PaymentRepository for PgPaymentRepo {
         .bind(reviewed_by)
         .bind(review_notes)
         .bind(rejection_reason)
+        .bind(ledger_entry_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?

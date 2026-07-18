@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     application::{
         errors::AppError,
-        ports::property_repository::{PropertyFilter, PropertyRepository, PropertySummaryQuery},
+        ports::property_repository::{PropertyFilter, PropertyRepository, PropertySummaryQuery, PropertyTeamMember},
     },
     domain::{
         dashboard::{ExpiringLease, MaintenanceSummary},
@@ -102,6 +102,91 @@ impl From<PgPool> for PgPropertyRepo {
 
 #[async_trait]
 impl PropertyRepository for PgPropertyRepo {
+    async fn get_team(&self, agency_id: Uuid, property_id: Uuid) -> Result<Vec<PropertyTeamMember>, AppError> {
+        // Query owners
+        let owner_rows = sqlx::query(
+            r#"
+            SELECT
+                o.id,
+                o.user_id,
+                o.first_name || ' ' || o.last_name as name,
+                o.email,
+                o.phone,
+                o.portal_status::text as status
+            FROM owners o
+            JOIN property_owners po ON po.owner_id = o.id
+            JOIN properties p ON p.id = po.property_id
+            WHERE po.property_id = $1 AND p.agency_id = $2
+            "#
+        )
+        .bind(property_id)
+        .bind(agency_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        // Query caretakers
+        let caretaker_rows = sqlx::query(
+            r#"
+            SELECT
+                c.id,
+                c.user_id,
+                c.first_name || ' ' || c.last_name as name,
+                c.email,
+                c.phone,
+                c.is_active
+            FROM caretakers c
+            JOIN properties p ON p.id = c.property_id
+            WHERE c.property_id = $1 AND p.agency_id = $2
+            "#
+        )
+        .bind(property_id)
+        .bind(agency_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalServer(e.to_string()))?;
+
+        let mut team = Vec::new();
+
+        for row in owner_rows {
+            team.push(PropertyTeamMember {
+                id: row.get("id"),
+                user_id: row.try_get("user_id").ok(),
+                name: row.get("name"),
+                email: row.try_get("email").ok(),
+                phone: row.try_get("phone").ok(),
+                role: "owner".to_string(),
+                status: row.get::<String, _>("status"),
+            });
+        }
+
+        for row in caretaker_rows {
+            let is_active: bool = row.get("is_active");
+            let user_id: Option<Uuid> = row.try_get("user_id").ok();
+            
+            // If user_id is missing, they haven't been linked to a platform user yet, meaning they haven't accepted the invite.
+            let status = if user_id.is_none() {
+                "invited".to_string()
+            } else if is_active {
+                "active".to_string()
+            } else {
+                "inactive".to_string()
+            };
+
+            team.push(PropertyTeamMember {
+                id: row.get("id"),
+                user_id,
+                name: row.get("name"),
+                email: row.try_get("email").ok(),
+                phone: row.try_get("phone").ok(),
+                role: "caretaker".to_string(),
+                status,
+            });
+        }
+
+        Ok(team)
+    }
+
     async fn get_summary(&self, query: PropertySummaryQuery) -> Result<PropertySummary, AppError> {
         let generated_at = OffsetDateTime::now_utc();
 
@@ -366,6 +451,36 @@ impl PropertyRepository for PgPropertyRepo {
         )
         .bind(agency_id)
         .bind(slug)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        match row {
+            Some(r) => Ok(Some(Property::try_from(r)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn find_by_name(
+        &self,
+        agency_id: Uuid,
+        name: &str,
+    ) -> Result<Option<Property>, AppError> {
+        let row = sqlx::query_as::<_, PropertyRow>(
+            r#"
+            SELECT
+                p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
+                p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
+                mc.work_order_prefix, mc.work_order_seq,
+                p.policies, p.created_by, p.created_at, p.updated_at
+            FROM properties p
+            LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
+            WHERE p.agency_id = $1 AND p.name ILIKE $2
+            LIMIT 1
+            "#,
+        )
+        .bind(agency_id)
+        .bind(name)
         .fetch_optional(&self.pool)
         .await
         .map_err(AppError::Database)?;

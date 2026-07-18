@@ -50,3 +50,43 @@ impl CallbackMetadata {
             .and_then(|i| i.value.as_ref())
     }
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TransactionStatusCallback {
+    #[serde(rename = "Result")]
+    pub result: TransactionStatusResult,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TransactionStatusResult {
+    #[serde(rename = "ResultCode")]
+    pub result_code: i32,
+    #[serde(rename = "ResultDesc")]
+    pub result_desc: String,
+    #[serde(rename = "ResultParameters")]
+    pub result_parameters: Option<ResultParameters>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResultParameters {
+    #[serde(rename = "ResultParameter")]
+    pub result_parameter: Vec<ResultParameterItem>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResultParameterItem {
+    #[serde(rename = "Key")]
+    pub key: String,
+    #[schema(value_type = Object, nullable = true)]
+    #[serde(rename = "Value")]
+    pub value: Option<serde_json::Value>,
+}
+
+impl ResultParameters {
+    pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
+        self.result_parameter
+            .iter()
+            .find(|i| i.key == key)
+            .and_then(|i| i.value.as_ref())
+    }
+}

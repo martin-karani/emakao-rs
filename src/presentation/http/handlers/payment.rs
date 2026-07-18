@@ -18,6 +18,7 @@ use crate::{
         use_cases::payment::{approve_claim::ApproveClaimInput, submit_claim::SubmitClaimInput},
     },
     domain::auth::AuthenticatedUser,
+    domain::enums::PortalType,
     infrastructure::db::payment_repository_sqlx::PgPaymentRepo,
     presentation::{
         error::ErrorResponse,
@@ -65,7 +66,7 @@ pub async fn list_claims(
     ))
 }
 
-/// Submit a new payment claim (resident self-reports)
+/// Submit a new payment reconciliation claim
 #[utoipa::path(
     post,
     path = "/api/v1/payments",
@@ -92,13 +93,25 @@ pub async fn submit_claim(
         .execute(SubmitClaimInput {
             property_id: dto.property_id,
             agreement_id: dto.agreement_id,
-            resident_id: Some(user.user_id),
+            resident_id: match user.portal {
+                PortalType::Resident => Some(user.user_id),
+                _ => dto.resident_id,
+            },
+            unit_id: dto.unit_id,
             submitted_by: user.user_id,
             method_type: dto.method_type,
             amount_kes: dto.amount_kes,
             reference_code: dto.reference_code,
             proof_url: dto.proof_url,
             notes: dto.notes,
+            submitted_via: dto.submitted_via.unwrap_or_else(|| match user.portal {
+                PortalType::Resident => "tenant_app".to_string(),
+                _ => "agent_manual".to_string(),
+            }),
+            raw_message: dto.raw_message,
+            period_label: dto.period_label,
+            payment_for: dto.payment_for,
+            allocation: dto.allocation.unwrap_or_default(),
         })
         .await?;
 
@@ -122,14 +135,23 @@ pub async fn submit_claim(
 )]
 pub async fn review_claim(
     ctx: AgencyContext,
+    axum::extract::State(state): axum::extract::State<crate::presentation::app_state::AppState>,
     Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<Uuid>,
     Json(dto): Json<ReviewClaimDto>,
 ) -> Result<impl IntoResponse, AppError> {
     dto.validate()?;
 
-    let repo = Arc::new(PgPaymentRepo::from(ctx.pool));
-    let usecase = ApproveClaimUseCase::new(repo);
+    let repo = Arc::new(PgPaymentRepo::from(ctx.pool.clone()));
+    let ledger_repo = Arc::new(crate::infrastructure::db::ledger_repository_sqlx::PgLedgerRepo::from(ctx.pool.clone()));
+    let resident_repo = Arc::new(crate::infrastructure::db::resident_repository_sqlx::PgResidentRepo::from(ctx.pool.clone()));
+    
+    let usecase = ApproveClaimUseCase::new(
+        repo,
+        ledger_repo,
+        resident_repo,
+        state.customisation().providers.clone()
+    );
 
     let claim = usecase
         .execute(ApproveClaimInput {

@@ -3,7 +3,8 @@ use axum::{routing::get, Router};
 use crate::presentation::{
     app_state::AppState,
     http::handlers::inspection::{
-        create_inspection, delete_inspection, get_inspection, list_inspections, update_inspection,
+        create_inspection, delete_inspection, get_inspection, list_inspections,
+        process_deposit_refund, update_inspection,
     },
 };
 
@@ -19,5 +20,9 @@ pub fn routes() -> Router<AppState> {
             get(get_inspection)
                 .patch(update_inspection)
                 .delete(delete_inspection),
+        )
+        .route(
+            "/api/v1/inspections/{id}/deposit-refund",
+            axum::routing::post(process_deposit_refund),
         )
 }

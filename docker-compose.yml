@@ -55,6 +55,16 @@ services:
       - "1025:1025" # SMTP
       - "8025:8025" # Web UI
 
+  openfga-migrate:
+    image: openfga/openfga:latest
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://emakao:password@postgres:5432/openfga?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   openfga:
     image: openfga/openfga:latest
     command: run
@@ -62,7 +72,13 @@ services:
       - "8080:8080" # HTTP
       - "8081:8081" # gRPC
     environment:
-      OPENFGA_DATASTORE_ENGINE: memory
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://emakao:password@postgres:5432/openfga?sslmode=disable
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:8081"]
       interval: 10s

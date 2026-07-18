@@ -31,21 +31,18 @@ pub struct PaymentMethod {
     pub instructions: Option<String>,
 }
 
-/// Service charges collected from tenants for shared costs in multi-unit properties.
+/// A configured service charge for a property
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
-pub struct ServiceCharges {
-    pub enabled: bool,
-    /// Monthly fee per unit for security (KES).
-    pub security_fee_kes: Decimal,
-    /// Monthly water charge per unit (KES).
-    pub water_rate_per_unit: Decimal,
-    /// Monthly garbage/waste collection fee per unit (KES).
-    pub garbage_fee_kes: Decimal,
-    /// Electricity for common areas — split equally across units (KES total).
-    pub electricity_common_kes: Decimal,
-    /// Any other fixed fees, e.g. `[{"name": "Parking", "amount": 500}]`.
-    #[serde(default)]
-    pub other_fees: Vec<serde_json::Value>,
+pub struct ServiceChargeConfig {
+    /// Identifier or name (e.g. "Security", "Water", "Garbage")
+    pub name: String,
+    /// Whether this is a per-unit charge or a flat rate for all units
+    pub is_per_unit: bool,
+    /// The amount (KES). If per-unit, this is the base amount per unit.
+    pub amount: Decimal,
+    /// Optional label for per-unit charges (e.g. "per liter", "per kWh")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_unit_label: Option<String>,
 }
 
 /// All per-property policy configuration that agents/owners can customise.
@@ -73,8 +70,8 @@ pub struct PropertyPolicies {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deposit_refund_days: Option<i32>,
     /// Service charge config — only relevant for multi-unit properties.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub service_charges: Option<ServiceCharges>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_charges: Option<Vec<ServiceChargeConfig>>,
 }
 
 // ── PropertyConfig discriminated union ───────────────────────────────────────
@@ -83,7 +80,10 @@ pub struct PropertyPolicies {
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PropertyConfig {
-    SingleFamily,
+    SingleFamily {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        floors: Option<u8>,
+    },
     Multifamily {
         floors: u8,
         parking_spaces: u16,
@@ -133,6 +133,10 @@ pub struct UnitType {
     pub unit_type: Option<String>,
     pub bedrooms: i16,
     pub bathrooms: i16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_sqm: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub photos: Option<Vec<String>>,
     pub base_rent: Option<Decimal>,
     pub base_deposit: Option<Decimal>,
     pub quantity: i32,

@@ -17,6 +17,10 @@ pub struct CreateUnitTypeDto {
     pub unit_type: Option<String>,
     pub bedrooms: i16,
     pub bathrooms: i16,
+    #[serde(default)]
+    pub size_sqm: Option<f64>,
+    #[serde(default)]
+    pub photos: Option<Vec<String>>,
     pub base_rent: Option<Decimal>,
     pub base_deposit: Option<Decimal>,
     pub quantity: i32,

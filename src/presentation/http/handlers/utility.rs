@@ -29,8 +29,10 @@ use crate::{
     domain::auth::AuthenticatedUser,
     infrastructure::db::{
         billing_repository_sqlx::PgBillingRepo,
+        unit_repository_sqlx::PgUnitRepo,
         utility_repository_sqlx::PgUtilityRepo,
     },
+    application::ports::unit_repository::UnitRepository,
     presentation::{
         app_state::AppState,
         error::ErrorResponse,
@@ -129,12 +131,26 @@ pub async fn create_meter(
     dto.validate()?;
     require_feature!(state, ctx.agency.id, "utility_billing");
 
+    // For water meters, the meter number is always the unit number.
+    // For other meter types, the caller must supply it.
+    let meter_number = if dto.meter_type == crate::domain::enums::MeterType::Water {
+        let unit = PgUnitRepo::from(ctx.pool.clone())
+            .find_by_id(dto.unit_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("unit {}", dto.unit_id)))?;
+        unit.unit_number
+    } else {
+        dto.meter_number.ok_or_else(|| {
+            AppError::Validation("`meter_number` is required for non-water meters".into())
+        })?
+    };
+
     let meter = CreateMeterUseCase::new(Arc::new(PgUtilityRepo::from(ctx.pool)))
         .execute(CreateMeterInput {
             unit_id: dto.unit_id,
             meter_type: dto.meter_type,
             billing_mode: dto.billing_mode,
-            meter_number: dto.meter_number,
+            meter_number,
             rate_per_unit: dto.rate_per_unit,
         })
         .await?;

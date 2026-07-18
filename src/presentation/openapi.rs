@@ -35,6 +35,8 @@ use utoipa::OpenApi;
         crate::presentation::http::handlers::property::create_property,
         crate::presentation::http::handlers::property::update_property,
         crate::presentation::http::handlers::property::delete_property,
+        crate::presentation::http::handlers::property::list_property_expenses,
+        crate::presentation::http::handlers::property::create_property_expense,
 
         // ── Residents ─────────────────────────────────────────────────────────
         crate::presentation::http::handlers::resident::list_residents,
@@ -178,6 +180,23 @@ use utoipa::OpenApi;
 
         // ── Webhooks ──────────────────────────────────────────────────────────
         crate::presentation::http::handlers::webhook::mpesa_callback,
+
+        // ── Feedback ──────────────────────────────────────────────────────────
+        crate::presentation::http::handlers::feedback::create_feedback,
+
+        // ── Checklists ────────────────────────────────────────────────────────
+        crate::presentation::http::handlers::checklist::create_checklist,
+        crate::presentation::http::handlers::checklist::get_checklist,
+        crate::presentation::http::handlers::checklist::list_checklists,
+        crate::presentation::http::handlers::checklist::update_checklist,
+        crate::presentation::http::handlers::checklist::delete_checklist,
+        crate::presentation::http::handlers::checklist::create_checklist_section,
+        crate::presentation::http::handlers::checklist::list_checklist_sections,
+        crate::presentation::http::handlers::checklist::create_checklist_item,
+        crate::presentation::http::handlers::checklist::list_checklist_items,
+        crate::presentation::http::handlers::checklist::attach_checklist_to_property,
+        crate::presentation::http::handlers::checklist::list_property_checklists,
+        crate::presentation::http::handlers::checklist::detach_checklist_from_property,
     ),
     components(schemas(
         crate::presentation::error::ErrorResponse,
@@ -188,8 +207,9 @@ use utoipa::OpenApi;
         crate::domain::property::PropertyPolicies,
         crate::domain::property::PaymentMethod,
         crate::domain::property::PaymentMethodKind,
-        crate::domain::property::ServiceCharges,
+        crate::domain::property::ServiceChargeConfig,
         crate::domain::property::PropertyDocument,
+        crate::domain::property_expense::PropertyExpenseCategory,
         crate::domain::property::BuildingClass,
         crate::domain::property::BillingCycle,
         crate::domain::enums::LedgerEntryType,
@@ -206,6 +226,17 @@ use utoipa::OpenApi;
         crate::domain::enums::PortalStatus,
         crate::domain::enums::InspectionStatus,
         crate::domain::enums::InspectionType,
+
+        // ── Checklists ────────────────────────────────────────────────────────
+        crate::domain::checklist::ChecklistType,
+        crate::presentation::http::dto::checklist::CreateChecklistDto,
+        crate::presentation::http::dto::checklist::UpdateChecklistDto,
+        crate::presentation::http::dto::checklist::CreateChecklistSectionDto,
+        crate::presentation::http::dto::checklist::CreateChecklistItemDto,
+        crate::presentation::http::dto::checklist::AttachChecklistToPropertyDto,
+        crate::presentation::http::responses::checklist::ChecklistResponse,
+        crate::presentation::http::responses::checklist::ChecklistSectionResponse,
+        crate::presentation::http::responses::checklist::ChecklistItemResponse,
 
         // ── Accounting domain types ────────────────────────────────────────────
         crate::domain::accounting::AccountType,
@@ -243,7 +274,10 @@ use utoipa::OpenApi;
         crate::presentation::http::dto::property::CreatePropertyDto,
         crate::presentation::http::dto::property::UpdatePropertyDto,
         crate::presentation::http::dto::property::ListPropertiesParams,
+        crate::presentation::http::dto::property_expense::CreatePropertyExpenseDto,
+        crate::presentation::http::dto::property_expense::ListPropertyExpensesParams,
         crate::presentation::http::responses::property::PropertyResponse,
+        crate::presentation::http::responses::property_expense::PropertyExpenseResponse,
         crate::presentation::http::responses::property::PropertySummaryDetailResponse,
         crate::domain::property_summary::PropertySummary,
         crate::domain::property_summary::PropertyStats,
@@ -376,6 +410,13 @@ use utoipa::OpenApi;
         crate::presentation::http::responses::health::RuntimeStatus,
         crate::presentation::http::responses::health::ServiceInfo,
         crate::presentation::http::responses::health::ConfigurationStatus,
+
+        // ── Feedback ──────────────────────────────────────────────────────────
+        crate::domain::feedback::Feedback,
+        crate::domain::feedback::FeedbackType,
+        crate::domain::feedback::SatisfactionRating,
+        crate::presentation::http::dto::feedback::CreateFeedbackDto,
+        crate::presentation::http::responses::feedback::FeedbackResponse,
     )),
     tags(
         (name = "Health",              description = "Liveness and readiness probes"),
@@ -401,6 +442,8 @@ use utoipa::OpenApi;
         (name = "Subscription",        description = "Subscription plans and billing"),
         (name = "Admin",               description = "Platform-admin subscription management"),
         (name = "Webhooks",            description = "Inbound webhooks — M-Pesa STK callbacks"),
+        (name = "Feedback",            description = "Submit feedback and support requests"),
+        (name = "Checklists",          description = "Move-in/move-out checklists for properties"),
     ),
     servers(
         (url = "/", description = "Current server")

@@ -9,11 +9,12 @@ use crate::presentation::{
     app_state::AppState,
     http::routes::{
         accounting_routes, agency_routes, agreement_routes, analytics_routes, auth_routes,
-        bank_reconciliation_routes, customisation_routes, dashboard_routes, disbursement_routes,
-        document_routes, health_routes, insights_routes, inspection_routes, invoice_routes,
-        ledger_routes, maintenance_routes, owner_routes, payment_routes, property_routes,
-        resident_routes, staff_routes, subscription_routes, tax_routes, unit_routes, upload_routes,
-        utility_routes, vendor_routes, webhook_routes, websocket_routes,
+        bank_reconciliation_routes, checklist_routes, customisation_routes, dashboard_routes,
+        disbursement_routes, document_routes, feedback_routes, health_routes, insights_routes,
+        inspection_routes, invoice_routes, ledger_routes, maintenance_routes, notification_routes, owner_routes,
+        payment_routes, property_routes, resident_routes, staff_routes, subscription_routes,
+        tax_routes, unit_routes, upload_routes, utility_routes, vendor_routes, webhook_routes,
+        websocket_routes,
     },
     middleware::{
         admin_auth::require_admin,
@@ -150,6 +151,7 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
         .merge(insights_routes::routes())
         .merge(inspection_routes::routes())
         .merge(invoice_routes::routes())
+        .merge(notification_routes::routes())
         .merge(disbursement_routes::routes())
         .merge(upload_routes::routes())
         // Accounting + bank reconciliation
@@ -157,6 +159,9 @@ fn build_staff_api(state: AppState) -> Router<AppState> {
         .merge(bank_reconciliation_routes::routes())
         .merge(staff_routes::staff_routes())
         .merge(tax_routes::routes())
+        // Feedback & support
+        .merge(feedback_routes::feedback_routes())
+        .merge(checklist_routes::checklist_routes())
         // Customisation layer (settings, integrations, templates, workflow rules)
         .merge(customisation_routes::routes())
         .layer(middleware::from_fn_with_state(

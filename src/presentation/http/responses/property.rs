@@ -86,6 +86,7 @@ pub struct PropertySummaryResponse {
     pub property_type: PropertyType,
     /// Number of configured unit type templates (not individual units).
     pub unit_type_count: usize,
+    pub unit_types: Vec<UnitTypeResponse>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -104,6 +105,7 @@ impl From<Property> for PropertySummaryResponse {
             country_code: p.country_code,
             property_type: p.property_type,
             unit_type_count: p.unit_types.len(),
+            unit_types: p.unit_types.into_iter().map(UnitTypeResponse::from).collect(),
             created_at: p.created_at,
             updated_at: p.updated_at,
         }
@@ -172,6 +174,31 @@ impl PropertyWithPercentResponse {
         Self {
             property: PropertyResponse::from(p),
             ownership_percent: percent,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PropertyTeamMemberResponse {
+    pub id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub name: String,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub role: String,
+    pub status: String,
+}
+
+impl From<crate::application::ports::property_repository::PropertyTeamMember> for PropertyTeamMemberResponse {
+    fn from(m: crate::application::ports::property_repository::PropertyTeamMember) -> Self {
+        Self {
+            id: m.id,
+            user_id: m.user_id,
+            name: m.name,
+            email: m.email,
+            phone: m.phone,
+            role: m.role,
+            status: m.status,
         }
     }
 }

@@ -7,6 +7,7 @@
 //   - Applied #[serde(skip_serializing_if)] to optional fields
 // ─────────────────────────────────────────────────────────────────────────────
 
+use rust_decimal::Decimal;
 use serde::Serialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
@@ -15,6 +16,10 @@ use uuid::Uuid;
 use crate::domain::{
     enums::{InspectionStatus, InspectionType},
     inspection::{Inspection, InspectionItem},
+};
+use crate::presentation::http::responses::ledger::LedgerEntryResponse;
+use crate::application::use_cases::inspection::process_deposit_refund::{
+    DepositRefundResult, RefundDeduction,
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -79,6 +84,55 @@ impl From<Inspection> for InspectionResponse {
             summary_notes: i.summary_notes,
             created_at: i.created_at,
             updated_at: i.updated_at,
+        }
+    }
+}
+
+// ── Deposit Refund ────────────────────────────────────────────────────────────
+
+/// A single deduction line item returned in the refund response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RefundDeductionResponse {
+    pub description: String,
+    pub amount_kes: Decimal,
+}
+
+impl From<RefundDeduction> for RefundDeductionResponse {
+    fn from(d: RefundDeduction) -> Self {
+        Self {
+            description: d.description,
+            amount_kes: d.amount_kes,
+        }
+    }
+}
+
+/// Response for POST /api/v1/inspections/{id}/deposit-refund
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DepositRefundResponse {
+    pub inspection_id: Uuid,
+    pub agreement_id: Uuid,
+    /// Original security deposit held (from the agreement)
+    pub deposit_kes: Decimal,
+    /// Sum of all deductions applied
+    pub deductions_total_kes: Decimal,
+    /// Net amount refunded to the tenant
+    pub refund_amount_kes: Decimal,
+    /// Breakdown of each deduction
+    pub deductions: Vec<RefundDeductionResponse>,
+    /// The ledger entry that was created
+    pub ledger_entry: LedgerEntryResponse,
+}
+
+impl From<DepositRefundResult> for DepositRefundResponse {
+    fn from(r: DepositRefundResult) -> Self {
+        Self {
+            inspection_id: r.inspection_id,
+            agreement_id: r.agreement_id,
+            deposit_kes: r.deposit_kes,
+            deductions_total_kes: r.deductions_total_kes,
+            refund_amount_kes: r.refund_amount_kes,
+            deductions: r.deductions.into_iter().map(RefundDeductionResponse::from).collect(),
+            ledger_entry: LedgerEntryResponse::from(r.ledger_entry),
         }
     }
 }

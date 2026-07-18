@@ -72,6 +72,8 @@ pub struct UnitTypeInput {
     pub unit_type: Option<String>,
     pub bedrooms: i16,
     pub bathrooms: i16,
+    pub size_sqm: Option<f64>,
+    pub photos: Option<Vec<String>>,
     pub base_rent: Option<rust_decimal::Decimal>,
     pub base_deposit: Option<rust_decimal::Decimal>,
     pub quantity: i32,
@@ -92,6 +94,12 @@ impl CreatePropertyUseCase {
         let name = input.name.trim().to_string();
         if name.is_empty() {
             return Err(DomainError::PropertyNameEmpty.into());
+        }
+
+        // Check for existing property with the same name in agency
+        let existing_property = self.repo.find_by_name(input.agency_id, &name).await?;
+        if existing_property.is_some() {
+            return Err(AppError::Validation("A property with this name already exists in your agency".into()));
         }
 
         let address = input.address.trim().to_string();
@@ -138,10 +146,12 @@ impl CreatePropertyUseCase {
             .into_iter()
             .map(|ut| UnitType {
                 id: Uuid::new_v4(),
-                name: ut.name,
-                unit_type: ut.unit_type,
+                name: ut.name.clone(),
+                unit_type: ut.unit_type.clone(),
                 bedrooms: ut.bedrooms,
                 bathrooms: ut.bathrooms,
+                photos: ut.photos.clone(),
+                size_sqm: ut.size_sqm,
                 base_rent: ut.base_rent,
                 base_deposit: ut.base_deposit,
                 quantity: ut.quantity,

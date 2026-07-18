@@ -3,9 +3,12 @@ use axum::{routing::get, Router};
 use crate::presentation::{
     app_state::AppState,
     http::handlers::property::{
-        create_property, delete_property, get_property, get_property_billing, get_property_by_slug,
-        get_property_summary, get_property_tenants, list_properties, update_property, upsert_property_billing,
+        create_property, create_property_expense, delete_property, get_property,
+        get_property_billing, get_property_by_slug, get_property_summary, get_property_tenants,
+        get_property_team, list_properties, list_property_expenses, update_property,
+        upsert_property_billing,
     },
+    http::routes::checklist_routes::property_checklist_routes,
 };
 
 pub fn routes() -> Router<AppState> {
@@ -29,6 +32,10 @@ pub fn routes() -> Router<AppState> {
             get(get_property_tenants),
         )
         .route(
+            "/api/v1/properties/{id}/team",
+            get(get_property_team),
+        )
+        .route(
             "/api/v1/properties/by-slug/{slug}",
             get(get_property_by_slug),
         )
@@ -36,4 +43,9 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/properties/{id}/billing",
             get(get_property_billing).put(upsert_property_billing),
         )
+        .route(
+            "/api/v1/properties/{id}/expenses",
+            get(list_property_expenses).post(create_property_expense),
+        )
+        .nest("/api/v1/properties", property_checklist_routes())
 }

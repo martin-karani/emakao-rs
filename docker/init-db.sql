@@ -9,3 +9,8 @@ SELECT 'CREATE DATABASE emakao_agency OWNER emakao'
 WHERE NOT EXISTS (
     SELECT FROM pg_database WHERE datname = 'emakao_agency'
 )\gexec
+
+SELECT 'CREATE DATABASE openfga OWNER emakao'
+WHERE NOT EXISTS (
+    SELECT FROM pg_database WHERE datname = 'openfga'
+)\gexec

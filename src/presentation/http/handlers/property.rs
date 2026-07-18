@@ -26,9 +26,14 @@ use crate::{
     application::{
         errors::AppError,
         ports::{
+            property_expense_repository::PropertyExpenseRepository,
             billing_repository::BillingRepository,
             property_repository::{PropertyRepository, PropertySummaryQuery},
             unit_repository::UnitRepository,
+        },
+        use_cases::property_expense::{
+            create_property_expense::{CreatePropertyExpenseInput, CreatePropertyExpenseUseCase},
+            list_property_expenses::ListPropertyExpensesUseCase,
         },
         use_cases::property::{
             create_property::{
@@ -48,6 +53,7 @@ use crate::{
         audit::AuditEvent,
         db::{
             billing_repository_sqlx::PgBillingRepo, property_repository_sqlx::PgPropertyRepo,
+            property_expense_repository_sqlx::PgPropertyExpenseRepo,
             unit_repository_sqlx::PgUnitRepo,
         },
     },
@@ -56,12 +62,16 @@ use crate::{
         error::ErrorResponse,
         extractors::AgencyContext,
         http::{
-            dto::property::{CreatePropertyDto, ListPropertiesParams, UpdatePropertyDto},
+            dto::{
+                property::{CreatePropertyDto, ListPropertiesParams, UpdatePropertyDto},
+                property_expense::{CreatePropertyExpenseDto, ListPropertyExpensesParams},
+            },
             helpers::permission::check_permission,
             responses::{
                 property::{
                     PropertyResponse, PropertySummaryDetailResponse, PropertySummaryResponse,
                 },
+                property_expense::PropertyExpenseResponse,
                 resident::TenantWithLeaseResponse,
             },
         },
@@ -298,6 +308,8 @@ pub async fn create_property(
                     unit_type: ut.unit_type,
                     bedrooms: ut.bedrooms,
                     bathrooms: ut.bathrooms,
+                    size_sqm: ut.size_sqm,
+                    photos: ut.photos,
                     base_rent: ut.base_rent,
                     base_deposit: ut.base_deposit,
                     quantity: ut.quantity,
@@ -604,6 +616,147 @@ pub async fn get_property_tenants(
             .map(TenantWithLeaseResponse::from)
             .collect::<Vec<_>>(),
     ))
+}
+
+/// Get team (owners, caretakers, etc) for a property
+#[utoipa::path(
+    get,
+    path = "/api/v1/properties/{id}/team",
+    params(("id" = Uuid, Path, description = "Property UUID")),
+    responses(
+        (status = 200, description = "List of team members", body = Vec<crate::presentation::http::responses::property::PropertyTeamMemberResponse>),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Property not found",     body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
+pub async fn get_property_team(
+    State(state): State<AppState>,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(property_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "can_view",
+        &format!("property:{}", property_id),
+    )
+    .await?;
+
+    let repo = PgPropertyRepo::from(ctx.pool.clone());
+    let team = repo.get_team(ctx.agency.id, property_id).await?;
+
+    Ok(Json(
+        team.into_iter()
+            .map(crate::presentation::http::responses::property::PropertyTeamMemberResponse::from)
+            .collect::<Vec<_>>(),
+    ))
+}
+
+/// List expenses captured for a property.
+#[utoipa::path(
+    get,
+    path = "/api/v1/properties/{id}/expenses",
+    params(
+        ("id" = Uuid, Path, description = "Property UUID"),
+        ListPropertyExpensesParams
+    ),
+    responses(
+        (status = 200, description = "List of property expenses", body = Vec<PropertyExpenseResponse>),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 404, description = "Property not found", body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
+pub async fn list_property_expenses(
+    State(state): State<AppState>,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(property_id): Path<Uuid>,
+    Query(params): Query<ListPropertyExpensesParams>,
+) -> Result<impl IntoResponse, AppError> {
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "can_view",
+        &format!("property:{property_id}"),
+    )
+    .await?;
+
+    let repo: Arc<dyn PropertyExpenseRepository> =
+        Arc::new(PgPropertyExpenseRepo::from(ctx.pool.clone()));
+    let usecase = ListPropertyExpensesUseCase::new(repo);
+    let expenses = usecase
+        .execute(
+            ctx.agency.id,
+            property_id,
+            params.limit.unwrap_or(50).min(100),
+            params.offset.unwrap_or(0),
+        )
+        .await?;
+
+    Ok(Json(
+        expenses
+            .into_iter()
+            .map(PropertyExpenseResponse::from)
+            .collect::<Vec<_>>(),
+    ))
+}
+
+/// Create a new operating expense for a property.
+#[utoipa::path(
+    post,
+    path = "/api/v1/properties/{id}/expenses",
+    params(("id" = Uuid, Path, description = "Property UUID")),
+    request_body = CreatePropertyExpenseDto,
+    responses(
+        (status = 201, description = "Expense created", body = PropertyExpenseResponse),
+        (status = 401, description = "Missing or invalid JWT", body = ErrorResponse),
+        (status = 422, description = "Validation error", body = ErrorResponse),
+    ),
+    tag = "Properties",
+    security(("bearer_token" = []))
+)]
+pub async fn create_property_expense(
+    State(state): State<AppState>,
+    ctx: AgencyContext,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(property_id): Path<Uuid>,
+    Json(dto): Json<CreatePropertyExpenseDto>,
+) -> Result<impl IntoResponse, AppError> {
+    dto.validate()?;
+    check_permission(
+        &state,
+        &ctx,
+        &user,
+        "can_edit",
+        &format!("property:{property_id}"),
+    )
+    .await?;
+
+    let repo: Arc<dyn PropertyExpenseRepository> =
+        Arc::new(PgPropertyExpenseRepo::from(ctx.pool.clone()));
+    let usecase = CreatePropertyExpenseUseCase::new(repo);
+    let expense = usecase
+        .execute(CreatePropertyExpenseInput {
+            agency_id: ctx.agency.id,
+            property_id,
+            expense_date: dto.expense_date,
+            category: dto.category,
+            description: dto.description,
+            vendor_name: dto.vendor_name,
+            amount_kes: dto.amount_kes,
+            notes: dto.notes,
+            created_by: user.user_id,
+        })
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(PropertyExpenseResponse::from(expense))))
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

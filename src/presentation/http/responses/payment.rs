@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::domain::{
     enums::{PaymentClaimStatus, PaymentMethodType},
-    payment::PaymentClaim,
+    payment::{PaymentAllocationItem, PaymentClaim},
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -25,6 +25,8 @@ pub struct PaymentClaimResponse {
     pub agreement_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resident_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit_id: Option<Uuid>,
     pub method_type: PaymentMethodType,
     pub amount_kes: Decimal,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -33,6 +35,14 @@ pub struct PaymentClaimResponse {
     pub proof_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    pub submitted_via: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_for: Option<String>,
+    pub allocation: Vec<PaymentAllocationItem>,
     pub status: PaymentClaimStatus,
     // reviewed_by kept: needed by frontend to display financial audit trail
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -58,11 +68,17 @@ impl From<PaymentClaim> for PaymentClaimResponse {
             property_id: c.property_id,
             agreement_id: c.agreement_id,
             resident_id: c.resident_id,
+            unit_id: c.unit_id,
             method_type: c.method_type,
             amount_kes: c.amount_kes,
             reference_code: c.reference_code,
             proof_url: c.proof_url,
             notes: c.notes,
+            submitted_via: c.submitted_via,
+            raw_message: c.raw_message,
+            period_label: c.period_label,
+            payment_for: c.payment_for,
+            allocation: c.allocation,
             status: c.status,
             reviewed_by: c.reviewed_by,
             reviewed_at: c.reviewed_at,

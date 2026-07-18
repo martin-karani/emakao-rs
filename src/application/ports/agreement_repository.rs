@@ -82,4 +82,8 @@ pub trait AgreementRepository: Send + Sync + 'static {
         &self,
         agency_id: Uuid,
     ) -> Result<Vec<TaxAgreementView>, AppError>;
+
+    /// Returns the security deposit amount held for a given agreement.
+    /// Used by the deposit refund use case.
+    async fn get_deposit_kes(&self, agreement_id: Uuid) -> Result<Decimal, AppError>;
 }
