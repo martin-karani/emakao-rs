@@ -55,6 +55,7 @@ pub trait AgreementRepository: Send + Sync + 'static {
         &self,
         agency_id: Uuid,
         property_id: Option<Uuid>,
+        resident_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Agreement>, AppError>;

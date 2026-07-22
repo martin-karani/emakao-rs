@@ -165,6 +165,7 @@ pub struct Property {
     pub created_by: Uuid,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+    pub deleted_at: Option<OffsetDateTime>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]

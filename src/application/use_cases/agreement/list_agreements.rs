@@ -19,11 +19,12 @@ impl ListAgreementsUseCase {
         &self,
         agency_id: Uuid,
         property_id: Option<Uuid>,
+        resident_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Agreement>, AppError> {
         self.repo
-            .find_all(agency_id, property_id, limit, offset)
+            .find_all(agency_id, property_id, resident_id, limit, offset)
             .await
     }
 }

@@ -333,6 +333,8 @@ impl ResidentRepository for PgResidentRepo {
             status: String,
             outstanding_balance: Option<rust_decimal::Decimal>,
             deposit_paid: Option<rust_decimal::Decimal>,
+            start_date: time::Date,
+            end_date: Option<time::Date>,
         }
 
         let rows = sqlx::query_as::<_, TenantRow>(
@@ -349,6 +351,8 @@ impl ResidentRepository for PgResidentRepo {
                 a.rent_amount_kes, 
                 a.deposit_kes, 
                 a.status::text,
+                a.start_date,
+                a.end_date,
                 (
                     SELECT COALESCE(SUM(
                         CASE 
@@ -405,6 +409,8 @@ impl ResidentRepository for PgResidentRepo {
                 status: parse_agreement_status(&r.status),
                 outstanding_balance: r.outstanding_balance.unwrap_or(rust_decimal::Decimal::ZERO),
                 deposit_paid: r.deposit_paid.unwrap_or(rust_decimal::Decimal::ZERO),
+                start_date: r.start_date,
+                end_date: r.end_date,
             })
             .collect())
     }

@@ -33,6 +33,7 @@ pub struct CreateAgreementDto {
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListAgreementsParams {
     pub property_id: Option<Uuid>,
+    pub resident_id: Option<Uuid>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }

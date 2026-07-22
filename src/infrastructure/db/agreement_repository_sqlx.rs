@@ -144,6 +144,7 @@ impl AgreementRepository for PgAgreementRepo {
         &self,
         agency_id: Uuid,
         property_id: Option<Uuid>,
+        resident_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> Result<Vec<Agreement>, AppError> {
@@ -156,12 +157,14 @@ impl AgreementRepository for PgAgreementRepo {
             JOIN properties p ON p.id = a.property_id
             WHERE p.agency_id = $1
               AND ($2::uuid IS NULL OR a.property_id = $2)
+              AND ($3::uuid IS NULL OR a.resident_id = $3)
             ORDER BY a.created_at DESC
-            LIMIT $3 OFFSET $4
+            LIMIT $4 OFFSET $5
             "#,
         )
         .bind(agency_id)
         .bind(property_id)
+        .bind(resident_id)
         .bind(limit)
         .bind(offset)
         .fetch_all(&self.pool)

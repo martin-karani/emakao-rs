@@ -379,6 +379,7 @@ impl OwnerRepository for PgOwnerRepo {
                     created_by: row.created_by,
                     created_at: row.created_at,
                     updated_at: row.updated_at,
+                    deleted_at: None, // Owner repository only deals with active properties
                 };
                 Ok((property, row.ownership_percent))
             })

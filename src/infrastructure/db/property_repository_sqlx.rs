@@ -8,7 +8,9 @@ use uuid::Uuid;
 use crate::{
     application::{
         errors::AppError,
-        ports::property_repository::{PropertyFilter, PropertyRepository, PropertySummaryQuery, PropertyTeamMember},
+        ports::property_repository::{
+            PropertyFilter, PropertyRepository, PropertySummaryQuery, PropertyTeamMember,
+        },
     },
     domain::{
         dashboard::{ExpiringLease, MaintenanceSummary},
@@ -39,6 +41,7 @@ struct PropertyRow {
     created_by: Uuid,
     created_at: time::OffsetDateTime,
     updated_at: time::OffsetDateTime,
+    deleted_at: Option<time::OffsetDateTime>,
 }
 
 impl TryFrom<PropertyRow> for Property {
@@ -84,6 +87,7 @@ impl TryFrom<PropertyRow> for Property {
             created_by: row.created_by,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            deleted_at: row.deleted_at,
         })
     }
 }
@@ -102,7 +106,11 @@ impl From<PgPool> for PgPropertyRepo {
 
 #[async_trait]
 impl PropertyRepository for PgPropertyRepo {
-    async fn get_team(&self, agency_id: Uuid, property_id: Uuid) -> Result<Vec<PropertyTeamMember>, AppError> {
+    async fn get_team(
+        &self,
+        agency_id: Uuid,
+        property_id: Uuid,
+    ) -> Result<Vec<PropertyTeamMember>, AppError> {
         // Query owners
         let owner_rows = sqlx::query(
             r#"
@@ -117,7 +125,7 @@ impl PropertyRepository for PgPropertyRepo {
             JOIN property_owners po ON po.owner_id = o.id
             JOIN properties p ON p.id = po.property_id
             WHERE po.property_id = $1 AND p.agency_id = $2
-            "#
+            "#,
         )
         .bind(property_id)
         .bind(agency_id)
@@ -138,7 +146,7 @@ impl PropertyRepository for PgPropertyRepo {
             FROM caretakers c
             JOIN properties p ON p.id = c.property_id
             WHERE c.property_id = $1 AND p.agency_id = $2
-            "#
+            "#,
         )
         .bind(property_id)
         .bind(agency_id)
@@ -163,7 +171,7 @@ impl PropertyRepository for PgPropertyRepo {
         for row in caretaker_rows {
             let is_active: bool = row.get("is_active");
             let user_id: Option<Uuid> = row.try_get("user_id").ok();
-            
+
             // If user_id is missing, they haven't been linked to a platform user yet, meaning they haven't accepted the invite.
             let status = if user_id.is_none() {
                 "invited".to_string()
@@ -190,11 +198,16 @@ impl PropertyRepository for PgPropertyRepo {
     async fn get_summary(&self, query: PropertySummaryQuery) -> Result<PropertySummary, AppError> {
         let generated_at = OffsetDateTime::now_utc();
 
-        // 1. Fetch property basic info
+        // 1. Fetch property basic info (only if not deleted)
         let prop = self
             .find_by_id(query.agency_id, query.property_id)
             .await?
             .ok_or_else(|| AppError::NotFound("property".into()))?;
+
+        // Double-check property is not deleted
+        if prop.deleted_at.is_some() {
+            return Err(AppError::NotFound("property".into()));
+        }
 
         // 2. Stats
         let stats_row = sqlx::query(
@@ -380,10 +393,11 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.policies, p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at, p.deleted_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
             WHERE p.agency_id = $1
+              AND p.deleted_at IS NULL
               AND ($2::text IS NULL OR p.property_type::text = $2)
               AND ($5::text IS NULL OR p.name ILIKE $5 OR p.address ILIKE $5 OR p.city ILIKE $5)
             ORDER BY p.created_at DESC
@@ -413,10 +427,10 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.policies, p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at, p.deleted_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
-            WHERE p.id = $1 AND p.agency_id = $2
+            WHERE p.id = $1 AND p.agency_id = $2 AND p.deleted_at IS NULL
             "#,
         )
         .bind(id)
@@ -442,10 +456,10 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.policies, p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at, p.deleted_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
-            WHERE p.agency_id = $1 AND p.slug = $2
+            WHERE p.agency_id = $1 AND p.slug = $2 AND p.deleted_at IS NULL
             LIMIT 1
             "#,
         )
@@ -472,10 +486,10 @@ impl PropertyRepository for PgPropertyRepo {
                 p.id, p.agency_id, p.slug, p.name, p.address, p.city, p.country_code,
                 p.property_type::text as property_type, p.config, p.unit_types, p.photos, p.documents,
                 mc.work_order_prefix, mc.work_order_seq,
-                p.policies, p.created_by, p.created_at, p.updated_at
+                p.policies, p.created_by, p.created_at, p.updated_at, p.deleted_at
             FROM properties p
             LEFT JOIN property_maintenance_configs mc ON mc.property_id = p.id
-            WHERE p.agency_id = $1 AND p.name ILIKE $2
+            WHERE p.agency_id = $1 AND p.name ILIKE $2 AND p.deleted_at IS NULL
             LIMIT 1
             "#,
         )
@@ -492,11 +506,13 @@ impl PropertyRepository for PgPropertyRepo {
     }
 
     async fn list_slugs_for_agency(&self, agency_id: Uuid) -> Result<Vec<String>, AppError> {
-        let rows = sqlx::query("SELECT slug FROM properties WHERE agency_id = $1")
-            .bind(agency_id)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(AppError::Database)?;
+        // Only list slugs for non-deleted properties
+        let rows =
+            sqlx::query("SELECT slug FROM properties WHERE agency_id = $1 AND deleted_at IS NULL")
+                .bind(agency_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(AppError::Database)?;
 
         Ok(rows
             .into_iter()
@@ -549,7 +565,9 @@ impl PropertyRepository for PgPropertyRepo {
         let property_id = Uuid::now_v7();
 
         // Insert property
-        let policies_val = cmd.policies.map(|p| serde_json::to_value(p).unwrap_or_default());
+        let policies_val = cmd
+            .policies
+            .map(|p| serde_json::to_value(p).unwrap_or_default());
         let res = sqlx::query(
             r#"
             INSERT INTO properties (
@@ -666,6 +684,7 @@ impl PropertyRepository for PgPropertyRepo {
             created_by: row.get("created_by"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
+            deleted_at: row.get("deleted_at"),
         };
 
         Property::try_from(property_row)
@@ -743,7 +762,10 @@ impl PropertyRepository for PgPropertyRepo {
     }
 
     async fn delete(&self, agency_id: Uuid, id: Uuid) -> Result<(), AppError> {
-        let result = sqlx::query("DELETE FROM properties WHERE id = $1 AND agency_id = $2")
+        // Soft delete: set deleted_at timestamp instead of hard delete
+        let result = sqlx::query(
+            "UPDATE properties SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND agency_id = $2 AND deleted_at IS NULL"
+        )
             .bind(id)
             .bind(agency_id)
             .execute(&self.pool)
@@ -757,11 +779,14 @@ impl PropertyRepository for PgPropertyRepo {
     }
 
     async fn count_for_agency(&self, agency_id: Uuid) -> Result<i64, AppError> {
-        let row = sqlx::query("SELECT COUNT(*) FROM properties WHERE agency_id = $1")
-            .bind(agency_id)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
+        // Count only non-deleted properties
+        let row = sqlx::query(
+            "SELECT COUNT(*) FROM properties WHERE agency_id = $1 AND deleted_at IS NULL",
+        )
+        .bind(agency_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e: sqlx::Error| AppError::InternalServer(e.to_string()))?;
 
         use sqlx::Row;
         Ok(row.get::<i64, _>(0))

@@ -44,4 +44,6 @@ pub struct TenantWithLease {
     pub status: crate::domain::enums::AgreementStatus,
     pub outstanding_balance: rust_decimal::Decimal,
     pub deposit_paid: rust_decimal::Decimal,
+    pub start_date: time::Date,
+    pub end_date: Option<time::Date>,
 }

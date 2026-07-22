@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::domain::enums::{PortalStatus, AgreementStatus};
+use crate::domain::enums::{AgreementStatus, PortalStatus};
 use crate::domain::resident::{Resident, TenantWithLease};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -68,6 +68,9 @@ pub struct TenantWithLeaseResponse {
     pub status: AgreementStatus,
     pub outstanding_balance: rust_decimal::Decimal,
     pub deposit_paid: rust_decimal::Decimal,
+    pub start_date: time::Date,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date: Option<time::Date>,
 }
 
 impl From<TenantWithLease> for TenantWithLeaseResponse {
@@ -79,13 +82,15 @@ impl From<TenantWithLease> for TenantWithLeaseResponse {
             resident_phone: t.resident_phone,
             unit_id: t.unit_id,
             unit_number: t.unit_number,
+            // unit_type: t.unit_type,
             agreement_id: t.agreement_id,
             rent_amount_kes: t.rent_amount_kes,
             deposit_kes: t.deposit_kes,
             status: t.status,
             outstanding_balance: t.outstanding_balance,
             deposit_paid: t.deposit_paid,
+            start_date: t.start_date,
+            end_date: t.end_date,
         }
     }
 }
-

@@ -66,6 +66,7 @@ pub async fn list_agreements(
         .execute(
             ctx.agency.id,
             params.property_id,
+            params.resident_id,
             params.limit.unwrap_or(20).min(100),
             params.offset.unwrap_or(0),
         )
